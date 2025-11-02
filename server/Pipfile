@@ -1,0 +1,16 @@
+[[source]]
+url = "https://pypi.org/simple"
+verify_ssl = true
+name = "pypi"
+
+[packages]
+Flask = ">=3.1,<4"
+Flask-Cors = ">=4,<7"
+Flask-SQLAlchemy = ">=3.1"
+SQLAlchemy = ">=2.0"
+python-dotenv = ">=1.0"
+
+[dev-packages]
+
+[requires]
+python_version = "3.13"

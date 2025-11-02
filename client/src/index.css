@@ -1,0 +1,40 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    color-scheme: light;
+  }
+
+  :root.dark {
+    color-scheme: dark;
+  }
+
+  body {
+    min-height: 100vh;
+    font-family: "Helvetica Neue", "Segoe UI", system-ui, -apple-system, BlinkMacSystemFont, "Roboto", "Helvetica", "Arial", sans-serif;
+    background-color: #ffffff;
+    color: #111111;
+  }
+
+  section {
+    scroll-margin-top: 6rem;
+  }
+
+  ::selection {
+    background-color: rgba(17, 17, 17, 0.8);
+    color: #f5f5f5;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
+  }
+}

@@ -1,0 +1,40 @@
+# Node
+node_modules/
+client/node_modules/
+client/dist/
+client/.vite/
+
+# Logs
+npm-debug.log*
+yarn-debug.log*
+pnpm-debug.log*
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.sqlite3
+
+# Virtual environments
+.venv/
+env/
+venv/
+
+# Environment files
+*.env
+.env.local
+client/.env
+server/.env
+
+# Build artifacts
+dist/
+*.egg-info/
+pip-wheel-metadata/
+
+# IDE
+.vscode/
+.idea/
+
+# macOS
+.DS_Store

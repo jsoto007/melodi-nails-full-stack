@@ -1,0 +1,20 @@
+[
+  {
+    "id": "testimonial-1",
+    "name": "Maya R.",
+    "quote": "Every line healed as sharp as day one. Nova kept the session calm and focused. (demo)",
+    "rating": 5
+  },
+  {
+    "id": "testimonial-2",
+    "name": "Devon C.",
+    "quote": "From consult to finish, the process was transparent and intentional. (demo)",
+    "rating": 5
+  },
+  {
+    "id": "testimonial-3",
+    "name": "Elena V.",
+    "quote": "My color piece feels both minimal and rich. I felt heard at every stage. (demo)",
+    "rating": 5
+  }
+]

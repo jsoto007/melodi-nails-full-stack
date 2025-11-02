@@ -1,0 +1,23 @@
+[
+  {
+    "id": "service-blackwork",
+    "title": "Custom Blackwork",
+    "tagline": "Bold contrast",
+    "description": "Architectural compositions with sharp linework and intentional negative space.",
+    "duration": "2-5 hour sessions"
+  },
+  {
+    "id": "service-fine-line",
+    "title": "Fine Line Detailing",
+    "tagline": "Quiet precision",
+    "description": "Delicate, breathable designs that celebrate subtle storytelling and longevity.",
+    "duration": "1-3 hour sessions"
+  },
+  {
+    "id": "service-color",
+    "title": "Color Stories",
+    "tagline": "Tonal depth",
+    "description": "Considered palettes applied with restraint to keep focus on form and balance.",
+    "duration": "3-6 hour sessions"
+  }
+]
