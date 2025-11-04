@@ -879,7 +879,7 @@ export default function ShareYourIdea() {
                 </MenuButton>
                 <MenuItems
                   transition
-                  className="absolute z-10 mt-2 w-full origin-top rounded-xl border border-gray-200 bg-white py-2 shadow-lg ring-1 ring-black/5 focus:outline-none data-[closed]:scale-95 data-[closed]:transform data-[closed]:opacity-0 data-[enter]:duration-100 data-[enter]:ease-out data-[leave]:duration-75 data-[leave]:ease-in dark:border-gray-700 dark:bg-gray-800 dark:ring-white/10"
+                  className="absolute z-10 mt-2 w-full origin-top rounded-xl border border-gray-200 bg-white py-2 shadow-lg ring-1 ring-black/5 focus:outline-none max-h-60 overflow-y-auto data-[closed]:scale-95 data-[closed]:transform data-[closed]:opacity-0 data-[enter]:duration-100 data-[enter]:ease-out data-[leave]:duration-75 data-[leave]:ease-in dark:border-gray-700 dark:bg-gray-800 dark:ring-white/10"
                 >
                   {PLACEMENT_OPTIONS.map((option) => (
                     <MenuItem key={option.value}>
@@ -923,7 +923,7 @@ export default function ShareYourIdea() {
                 </MenuButton>
                 <MenuItems
                   transition
-                  className="absolute z-10 mt-2 w-full origin-top rounded-xl border border-gray-200 bg-white py-2 shadow-lg ring-1 ring-black/5 focus:outline-none data-[closed]:scale-95 data-[closed]:transform data-[closed]:opacity-0 data-[enter]:duration-100 data-[enter]:ease-out data-[leave]:duration-75 data-[leave]:ease-in dark:border-gray-700 dark:bg-gray-800 dark:ring-white/10"
+                  className="absolute z-10 mt-2 w-full origin-top rounded-xl border border-gray-200 bg-white py-2 shadow-lg ring-1 ring-black/5 focus:outline-none max-h-60 overflow-y-auto data-[closed]:scale-95 data-[closed]:transform data-[closed]:opacity-0 data-[enter]:duration-100 data-[enter]:ease-out data-[leave]:duration-75 data-[leave]:ease-in dark:border-gray-700 dark:bg-gray-800 dark:ring-white/10"
                 >
                   {SIZE_OPTIONS.map((option) => (
                     <MenuItem key={option.value}>
