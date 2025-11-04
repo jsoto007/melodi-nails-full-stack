@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from flask import Flask, send_from_directory
+from flask import Flask, request, send_from_directory
 from flask_cors import CORS
 from flask_migrate import Migrate
 from dotenv import load_dotenv
@@ -44,31 +44,61 @@ def create_app():
 
     app.register_blueprint(api_bp)
 
+    def _serve_client_asset(path: str):
+        static_dir = app.static_folder
+        if not static_dir:
+            app.logger.error("CLIENT_DIST_PATH is not configured; failing over with 404")
+            return None
+
+        build_path = Path(static_dir)
+        if not build_path.exists():
+            app.logger.warning("Client build folder %s missing; cannot serve %s", static_dir, path)
+            return None
+
+        normalized_path = path.strip("/")
+        if normalized_path:
+            candidate = build_path / normalized_path
+            if candidate.exists() and candidate.is_file():
+                return send_from_directory(static_dir, normalized_path)
+            # If the requested path looks like a direct asset (contains a dot) we should not
+            # fall back to index.html because browsers expect an actual file for such requests.
+            if "." in Path(normalized_path).name:
+                return None
+
+        index_file = build_path / "index.html"
+        if not index_file.exists():
+            app.logger.error("index.html not found in %s; cannot serve SPA shell for %s", static_dir, path)
+            return None
+
+        return send_from_directory(static_dir, "index.html")
+
     @app.route("/", defaults={"path": ""})
     @app.route("/<path:path>")
     def _spa_fallback(path: str):
         if path.startswith("api/"):
             return {"error": "Not Found"}, 404
 
-        static_dir = app.static_folder
-        if not static_dir:
-            return {"error": "client_build_missing"}, 404
+        response = _serve_client_asset(path)
+        if response is not None:
+            return response
+        return {"error": "client_build_missing"}, 404
 
-        build_path = Path(static_dir)
-        if not build_path.exists():
-            app.logger.warning("Client build folder %s missing; returning 404 for %s", static_dir, path)
-            return {"error": "client_build_missing"}, 404
+    @app.errorhandler(404)
+    def _spa_handle_404(error):
+        if request.path.startswith("/api/") or request.path == "/api":
+            return error
+        # Preserve 404s for HTTP methods other than safe navigations.
+        if request.method not in {"GET", "HEAD"}:
+            return error
 
-        candidate = build_path / path
-        if path and candidate.exists() and candidate.is_file():
-            return send_from_directory(static_dir, path)
+        response = _serve_client_asset(request.path)
+        if response is not None:
+            # On HEAD requests Flask expects an empty response body, so we mutate the response.
+            if request.method == "HEAD":
+                response.set_data(b"")
+            return response
 
-        index_file = build_path / "index.html"
-        if not index_file.exists():
-            app.logger.error("index.html not found in %s; returning 404 for %s", static_dir, path)
-            return {"error": "client_index_missing"}, 404
-
-        return send_from_directory(static_dir, "index.html")
+        return error
 
     return app
 
