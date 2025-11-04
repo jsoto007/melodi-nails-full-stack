@@ -24,7 +24,9 @@ def _int_from_env(name: str, default: int) -> int:
 
 def _engine_defaults(app: Flask) -> Dict[str, Any]:
     """Return the engine option defaults aligned with deployment repo."""
-    options = dict(db.engine_options)
+    # Flask-SQLAlchemy only sets `engine_options` after the extension initialises,
+    # so default to an empty mapping when the attribute is absent during startup.
+    options = dict(getattr(db, "engine_options", {}) or {})
     options.update(app.config.get("SQLALCHEMY_ENGINE_OPTIONS", {}))
 
     if not options.get("pool_pre_ping"):
