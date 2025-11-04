@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext.jsx';
 import Button from './Button.jsx';
 
@@ -67,6 +67,7 @@ function NavItem({ item, onNavigate }) {
 export default function Header({ theme, onToggleTheme }) {
   const { isAuthenticated, isAdmin, isUser, logout } = useAuth();
   const [menuOpen, setMenuOpen] = useState(false);
+  const navigate = useNavigate();
 
   const navItems = useMemo(() => {
     if (isAdmin) {
@@ -86,6 +87,11 @@ export default function Header({ theme, onToggleTheme }) {
 
   const handleSignOut = async () => {
     await logout();
+    closeMenu();
+  };
+
+  const handleConsultNavigate = () => {
+    navigate('/share-your-idea');
     closeMenu();
   };
 
@@ -160,14 +166,19 @@ export default function Header({ theme, onToggleTheme }) {
           )}
 
           {shouldShowConsult ? (
-            <Button as="a" href="#booking" className="hidden md:inline-flex">
+            <Button type="button" onClick={handleConsultNavigate} className="hidden md:inline-flex">
               Book Consult
             </Button>
           ) : null}
           {shouldShowConsult ? (
-            <a href="#booking" className={calendarButtonClass} aria-label="Book consultation">
+            <button
+              type="button"
+              onClick={handleConsultNavigate}
+              className={calendarButtonClass}
+              aria-label="Book consultation"
+            >
               <IconCalendar className="h-5 w-5" />
-            </a>
+            </button>
           ) : null}
 
           <button
@@ -201,13 +212,13 @@ export default function Header({ theme, onToggleTheme }) {
               <NavItem key={item.label} item={item} onNavigate={closeMenu} />
             ))}
             {shouldShowConsult ? (
-              <a
-                href="#booking"
-                onClick={closeMenu}
+              <button
+                type="button"
+                onClick={handleConsultNavigate}
                 className="text-gray-600 transition-colors hover:text-black focus:outline-none focus-visible:underline dark:text-gray-300 dark:hover:text-gray-100"
               >
                 Book Consult
-              </a>
+              </button>
             ) : null}
           </nav>
           <div className="mt-4 flex flex-col gap-2">

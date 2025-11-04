@@ -1,9 +1,15 @@
+import { useNavigate } from 'react-router-dom';
 import FadeIn from '../components/FadeIn.jsx';
 import Button from '../components/Button.jsx';
 import { prefersReducedMotion } from '../lib/a11y.js';
 
 export default function Hero() {
   const allowMotion = !prefersReducedMotion();
+  const navigate = useNavigate();
+
+  const handleBookConsult = () => {
+    navigate('/share-your-idea');
+  };
 
   return (
     <section
@@ -36,7 +42,7 @@ export default function Hero() {
             <Button as="a" href="#work">
               View Work
             </Button>
-            <Button as="a" href="#booking" variant="secondary">
+            <Button type="button" onClick={handleBookConsult} variant="secondary">
               Book Consultation
             </Button>
           </div>

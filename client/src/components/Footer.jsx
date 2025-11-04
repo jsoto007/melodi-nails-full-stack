@@ -1,3 +1,5 @@
+import { Link } from 'react-router-dom';
+
 const year = new Date().getFullYear();
 
 export default function Footer() {
@@ -16,9 +18,9 @@ export default function Footer() {
           </a>
         </p>
         <div className="flex flex-wrap items-center gap-6 uppercase tracking-[0.2em]">
-          <a href="#booking" className="hover:text-black dark:hover:text-gray-100">
+          <Link to="/share-your-idea" className="hover:text-black dark:hover:text-gray-100">
             Aftercare
-          </a>
+          </Link>
           <a href="#faq" className="hover:text-black dark:hover:text-gray-100">
             Policies
           </a>
