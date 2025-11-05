@@ -27,10 +27,10 @@ function IconCalendar(props) {
 }
 
 const DEFAULT_NAV_ITEMS = [
-  { label: 'Work', href: '#work', type: 'anchor' },
-  { label: 'Services', href: '#services', type: 'anchor' },
-  { label: 'About', href: '#about', type: 'anchor' },
-  { label: 'Contact', href: '#contact', type: 'anchor' }
+  { label: 'Work', to: '/#work', type: 'link' },
+  { label: 'Services', to: '/#services', type: 'link' },
+  { label: 'About', to: '/#about', type: 'link' },
+  { label: 'Contact', to: '/#contact', type: 'link' }
 ];
 
 const USER_NAV_ITEMS = [

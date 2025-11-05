@@ -23,6 +23,28 @@ export default function ScrollRestoration({ behavior = 'smooth' }) {
       isFirstRender.current = false;
       return;
     }
+
+    const hash = (location.hash || '').replace(/^#/, '');
+    if (hash) {
+      const scrollToHash = () => {
+        const target = document.getElementById(hash);
+        if (!target) {
+          return false;
+        }
+        target.scrollIntoView({ behavior });
+        return true;
+      };
+
+      if (!scrollToHash()) {
+        requestAnimationFrame(() => {
+          if (!scrollToHash()) {
+            window.scrollTo({ top: 0, left: 0, behavior });
+          }
+        });
+      }
+      return;
+    }
+
     window.scrollTo({ top: 0, left: 0, behavior });
     const topAnchor = document.getElementById('top');
     if (topAnchor && typeof topAnchor.focus === 'function') {
