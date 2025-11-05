@@ -133,6 +133,16 @@ function ensureArray(value) {
   return value;
 }
 
+function buildDraftFromAppointment(appointment) {
+  return {
+    status: appointment.status || 'pending',
+    scheduled_start: toDateTimeLocal(appointment.scheduled_start),
+    duration_minutes: appointment.duration_minutes ?? '',
+    assigned_admin_id: appointment.assigned_admin?.id ? String(appointment.assigned_admin.id) : '',
+    client_description: appointment.client_description || ''
+  };
+}
+
 function IconCalendar(props) {
   return (
     <svg
@@ -246,12 +256,26 @@ function IconClock(props) {
   );
 }
 
-const CRUD_MODE_OPTIONS = [
-  { value: 'create', label: 'Create', icon: IconPlus },
-  { value: 'read', label: 'Read', icon: IconEye },
-  { value: 'update', label: 'Update', icon: IconPencil },
-  { value: 'delete', label: 'Delete', icon: IconTrash }
-];
+function ActionIconButton({ icon: Icon, label, onClick, tone = 'default', active = false }) {
+  const toneClasses =
+    tone === 'danger'
+      ? 'text-red-500 hover:bg-red-50 hover:text-red-600 dark:text-red-400 dark:hover:bg-red-950/50'
+      : 'text-gray-500 hover:bg-gray-100 hover:text-gray-900 dark:text-gray-400 dark:hover:bg-gray-900';
+  const activeClasses = active
+    ? 'bg-gray-100 text-gray-900 dark:bg-gray-800/70 dark:text-gray-100'
+    : 'bg-transparent';
+
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-label={label}
+      className={`inline-flex h-10 w-10 items-center justify-center rounded-full transition ${toneClasses} ${activeClasses} focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-gray-900 dark:focus-visible:outline-gray-100`}
+    >
+      <Icon className="h-4 w-4" />
+    </button>
+  );
+}
 
 export default function AdminCalendar() {
   const {
@@ -271,20 +295,15 @@ export default function AdminCalendar() {
   const [hoursDraft, setHoursDraft] = useState(normaliseOperatingHours(schedule.operating_hours));
   const [daysOffDraft, setDaysOffDraft] = useState(ensureArray(schedule.days_off));
   const [newDayOff, setNewDayOff] = useState('');
-  const [mode, setMode] = useState('read');
+  const [showCreateForm, setShowCreateForm] = useState(false);
+  const [editingAppointmentId, setEditingAppointmentId] = useState(null);
   const [confirmation, setConfirmation] = useState(null);
   const [confirmBusy, setConfirmBusy] = useState(false);
 
   useEffect(() => {
     const drafts = {};
     appointments.forEach((appointment) => {
-      drafts[appointment.id] = {
-        status: appointment.status || 'pending',
-        scheduled_start: toDateTimeLocal(appointment.scheduled_start),
-        duration_minutes: appointment.duration_minutes ?? '',
-        assigned_admin_id: appointment.assigned_admin?.id ? String(appointment.assigned_admin.id) : '',
-        client_description: appointment.client_description || ''
-      };
+      drafts[appointment.id] = buildDraftFromAppointment(appointment);
     });
     setAppointmentDrafts(drafts);
   }, [appointments]);
@@ -411,8 +430,14 @@ export default function AdminCalendar() {
         setNewAppointmentDraft(NEW_APPOINTMENT_TEMPLATE);
       } else if (confirmation.type === 'update') {
         await updateAppointment(confirmation.appointmentId, confirmation.payload);
+        if (editingAppointmentId === confirmation.appointmentId) {
+          setEditingAppointmentId(null);
+        }
       } else if (confirmation.type === 'delete') {
         await deleteAppointment(confirmation.appointmentId);
+        if (editingAppointmentId === confirmation.appointmentId) {
+          setEditingAppointmentId(null);
+        }
       } else if (confirmation.type === 'schedule') {
         await updateSchedule(confirmation.payload);
       }
@@ -449,6 +474,33 @@ export default function AdminCalendar() {
 
   const handleRemoveDayOff = (day) => {
     setDaysOffDraft((prev) => prev.filter((entry) => entry !== day));
+  };
+
+  const resetAppointmentDraft = (appointment) => {
+    setAppointmentDrafts((prev) => ({
+      ...prev,
+      [appointment.id]: buildDraftFromAppointment(appointment)
+    }));
+  };
+
+  const handleEditClick = (appointment) => {
+    if (editingAppointmentId === appointment.id) {
+      resetAppointmentDraft(appointment);
+      setEditingAppointmentId(null);
+      return;
+    }
+    if (editingAppointmentId !== null && editingAppointmentId !== appointment.id) {
+      const previous = appointments.find((entry) => entry.id === editingAppointmentId);
+      if (previous) {
+        resetAppointmentDraft(previous);
+      }
+    }
+    setEditingAppointmentId(appointment.id);
+  };
+
+  const handleCancelEdit = (appointment) => {
+    resetAppointmentDraft(appointment);
+    setEditingAppointmentId(null);
   };
 
   const renderEmptyState = (message) => (
@@ -634,20 +686,22 @@ export default function AdminCalendar() {
     </form>
   );
 
-  const renderReadPanel = () => {
+  const renderAppointmentList = () => {
     if (!sortedAppointments.length) {
       return renderEmptyState('No appointments scheduled yet.');
     }
 
     return (
-      <ol className="space-y-3">
+      <ol className="space-y-4">
         {sortedAppointments.map((appointment) => {
+          const draft = appointmentDrafts[appointment.id] || buildDraftFromAppointment(appointment);
           const scheduledDate = appointment.scheduled_start ? new Date(appointment.scheduled_start) : null;
           const formattedDate = scheduledDate
             ? scheduledDate.toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' })
             : 'Awaiting schedule';
           const clientName = appointment.client?.display_name || appointment.guest_name || 'Guest client';
-          const contact = appointment.client?.email || appointment.guest_email || appointment.guest_phone || 'No contact info';
+          const contact =
+            appointment.client?.email || appointment.guest_email || appointment.guest_phone || 'No contact info';
           const reference = appointment.reference_code || `#${appointment.id}`;
           const assigned =
             appointment.assigned_admin?.name ||
@@ -656,263 +710,188 @@ export default function AdminCalendar() {
             'Unassigned';
           const isDayOff =
             scheduledDate && daysOffDraft.includes(scheduledDate.toISOString().slice(0, 10));
-
-          return (
-            <li
-              key={appointment.id}
-            >
-              <button
-                type="button"
-                onClick={() => navigate(`${appointment.id}`)}
-                className="group flex w-full flex-wrap items-center gap-4 rounded-3xl border border-gray-200 bg-gray-50 p-4 text-left shadow-sm transition hover:border-gray-300 hover:bg-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-gray-900 dark:border-gray-800 dark:bg-gray-900 dark:hover:border-gray-700 dark:hover:bg-gray-950 dark:focus-visible:outline-gray-100"
-              >
-                <span className="flex h-12 w-12 items-center justify-center rounded-2xl bg-white text-gray-700 shadow-sm transition group-hover:scale-[1.02] dark:bg-gray-950 dark:text-gray-200">
-                  <IconCalendar className="h-6 w-6" />
-                </span>
-                <div className="min-w-[200px] flex-1">
-                  <div className="flex flex-wrap items-center justify-between gap-2">
-                    <p className="text-sm font-semibold text-gray-900 transition group-hover:text-gray-700 dark:text-gray-100 dark:group-hover:text-gray-200">
-                      {clientName}
-                    </p>
-                    <span className="inline-flex items-center gap-2 rounded-full bg-white px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.3em] text-gray-600 shadow-sm dark:bg-gray-950 dark:text-gray-300">
-                      {appointment.status || 'pending'}
-                      {isDayOff ? (
-                        <span className="ml-2 rounded-full bg-red-500 px-2 py-[2px] text-[10px] font-semibold uppercase tracking-[0.3em] text-white">
-                          Day off
-                        </span>
-                      ) : null}
-                    </span>
-                  </div>
-                  <p className="text-xs text-gray-500 dark:text-gray-400">{formattedDate}</p>
-                  <p className="text-xs text-gray-500 dark:text-gray-400">
-                    Ref {reference} · Assigned to {assigned}
-                  </p>
-                  <p className="text-xs text-gray-500 dark:text-gray-400">{contact}</p>
-                </div>
-                <span className="inline-flex items-center gap-2 text-xs uppercase tracking-[0.3em] text-gray-500 transition group-hover:text-gray-900 dark:text-gray-400 dark:group-hover:text-gray-100">
-                  <IconEye className="h-4 w-4" />
-                  <span className="hidden sm:inline">Open</span>
-                </span>
-              </button>
-            </li>
-          );
-        })}
-      </ol>
-    );
-  };
-
-  const renderUpdatePanel = () => {
-    if (!sortedAppointments.length) {
-      return renderEmptyState('Nothing to update yet. Create an appointment to begin.');
-    }
-
-    return (
-      <div className="space-y-4">
-        {sortedAppointments.map((appointment) => {
-          const draft = appointmentDrafts[appointment.id] || {
-            status: appointment.status || 'pending',
-            scheduled_start: '',
-            duration_minutes: '',
-            assigned_admin_id: '',
-            client_description: appointment.client_description || ''
-          };
-          const scheduledDate = appointment.scheduled_start ? new Date(appointment.scheduled_start) : null;
           const baseId = `appointment-${appointment.id}`;
           const statusId = `${baseId}-status`;
           const startId = `${baseId}-start`;
           const durationId = `${baseId}-duration`;
           const adminId = `${baseId}-assigned-admin`;
           const notesId = `${baseId}-notes`;
+          const isEditing = editingAppointmentId === appointment.id;
 
           return (
-            <div
-              key={appointment.id}
-              className="space-y-4 rounded-3xl border border-gray-200 bg-white p-5 shadow-sm dark:border-gray-800 dark:bg-gray-950"
-            >
-              <div className="flex flex-wrap items-center justify-between gap-3">
-                <div>
-                  <p className="text-xs uppercase tracking-[0.3em] text-gray-500 dark:text-gray-400">
-                    Ref {appointment.reference_code || appointment.id}
-                  </p>
-                  <p className="text-sm font-semibold text-gray-900 dark:text-gray-100">
-                    {appointment.client?.display_name || appointment.guest_name || 'Guest client'}
-                  </p>
-                  <p className="text-xs text-gray-500 dark:text-gray-400">
-                    {scheduledDate
-                      ? scheduledDate.toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' })
-                      : 'Awaiting schedule'}
-                  </p>
+            <li key={appointment.id}>
+              <div className="space-y-4 rounded-3xl border border-gray-200 bg-white p-5 shadow-sm dark:border-gray-800 dark:bg-gray-950">
+                <div className="flex flex-wrap items-start justify-between gap-4">
+                  <div className="flex items-center gap-3">
+                    <span className="flex h-12 w-12 items-center justify-center rounded-2xl bg-gray-900 text-white dark:bg-gray-100 dark:text-gray-900">
+                      <IconCalendar className="h-6 w-6" />
+                    </span>
+                    <div className="space-y-1">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <p className="text-sm font-semibold text-gray-900 dark:text-gray-100">{clientName}</p>
+                        <span className="inline-flex items-center gap-2 rounded-full bg-white px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.3em] text-gray-600 shadow-sm dark:bg-gray-950 dark:text-gray-300">
+                          {appointment.status || 'pending'}
+                          {isDayOff ? (
+                            <span className="rounded-full bg-red-500 px-2 py-[2px] text-[10px] font-semibold uppercase tracking-[0.3em] text-white">
+                              Day off
+                            </span>
+                          ) : null}
+                        </span>
+                      </div>
+                      <p className="text-xs text-gray-500 dark:text-gray-400">{formattedDate}</p>
+                      <p className="text-xs text-gray-500 dark:text-gray-400">{contact}</p>
+                      <p className="text-xs text-gray-500 dark:text-gray-400">Ref {reference}</p>
+                      <p className="text-xs text-gray-500 dark:text-gray-400">Assigned to {assigned}</p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      onClick={() => navigate(`${appointment.id}`)}
+                      aria-label={`View appointment ${reference} details`}
+                      className="px-3 py-2 sm:px-4 sm:py-2"
+                    >
+                      <IconEye className="h-4 w-4" />
+                      <span className="hidden text-xs uppercase tracking-[0.3em] sm:inline">Details</span>
+                    </Button>
+                    <ActionIconButton
+                      icon={IconPencil}
+                      label={isEditing ? 'Close editor' : 'Edit appointment'}
+                      onClick={() => handleEditClick(appointment)}
+                      active={isEditing}
+                    />
+                    <ActionIconButton
+                      icon={IconTrash}
+                      label={`Delete appointment ${reference}`}
+                      onClick={() => requestAppointmentDelete(appointment)}
+                      tone="danger"
+                    />
+                  </div>
                 </div>
-                <Button type="button" variant="ghost" onClick={() => navigate(`${appointment.id}`)}>
-                  <IconEye className="h-4 w-4" />
-                  <span className="hidden text-xs uppercase tracking-[0.3em] sm:inline">Details</span>
-                </Button>
+                {isEditing ? (
+                  <div className="space-y-4 border-t border-gray-200 pt-4 dark:border-gray-800">
+                    <div className="grid gap-4 md:grid-cols-2">
+                      <div className="space-y-2">
+                        <label
+                          htmlFor={statusId}
+                          className="text-xs uppercase tracking-[0.3em] text-gray-500 dark:text-gray-400"
+                        >
+                          Status
+                        </label>
+                        <input
+                          id={statusId}
+                          type="text"
+                          value={draft.status ?? ''}
+                          onChange={(event) => handleAppointmentDraftChange(appointment.id, 'status', event.target.value)}
+                          className="w-full rounded-2xl border border-gray-200 bg-white px-3 py-2 text-sm text-gray-900 focus:border-gray-900 focus:outline-none focus:ring-0 dark:border-gray-700 dark:bg-gray-950 dark:text-gray-100 dark:focus:border-gray-400"
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <label
+                          htmlFor={startId}
+                          className="text-xs uppercase tracking-[0.3em] text-gray-500 dark:text-gray-400"
+                        >
+                          Start
+                        </label>
+                        <input
+                          id={startId}
+                          type="datetime-local"
+                          value={draft.scheduled_start ?? ''}
+                          onChange={(event) =>
+                            handleAppointmentDraftChange(appointment.id, 'scheduled_start', event.target.value)
+                          }
+                          className="w-full rounded-2xl border border-gray-200 bg-white px-3 py-2 text-sm text-gray-900 focus:border-gray-900 focus:outline-none focus:ring-0 dark:border-gray-700 dark:bg-gray-950 dark:text-gray-100 dark:focus:border-gray-400"
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <label
+                          htmlFor={durationId}
+                          className="text-xs uppercase tracking-[0.3em] text-gray-500 dark:text-gray-400"
+                        >
+                          Duration (min)
+                        </label>
+                        <input
+                          id={durationId}
+                          type="number"
+                          min="0"
+                          step="15"
+                          value={draft.duration_minutes ?? ''}
+                          onChange={(event) =>
+                            handleAppointmentDraftChange(appointment.id, 'duration_minutes', event.target.value)
+                          }
+                          className="w-full rounded-2xl border border-gray-200 bg-white px-3 py-2 text-sm text-gray-900 focus:border-gray-900 focus:outline-none focus:ring-0 dark:border-gray-700 dark:bg-gray-950 dark:text-gray-100 dark:focus:border-gray-400"
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <label
+                          htmlFor={adminId}
+                          className="text-xs uppercase tracking-[0.3em] text-gray-500 dark:text-gray-400"
+                        >
+                          Assigned admin
+                        </label>
+                        <select
+                          id={adminId}
+                          value={draft.assigned_admin_id ?? ''}
+                          onChange={(event) =>
+                            handleAppointmentDraftChange(appointment.id, 'assigned_admin_id', event.target.value)
+                          }
+                          className="w-full rounded-2xl border border-gray-200 bg-white px-3 py-2 text-sm text-gray-900 focus:border-gray-900 focus:outline-none focus:ring-0 dark:border-gray-700 dark:bg-gray-950 dark:text-gray-100 dark:focus:border-gray-400"
+                        >
+                          <option value="">Unassigned</option>
+                          {adminOptions.map((option) => (
+                            <option key={option.value} value={option.value}>
+                              {option.label}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                    </div>
+                    <div className="space-y-2">
+                      <label
+                        htmlFor={notesId}
+                        className="text-xs uppercase tracking-[0.3em] text-gray-500 dark:text-gray-400"
+                      >
+                        Notes
+                      </label>
+                      <textarea
+                        id={notesId}
+                        rows={3}
+                        value={draft.client_description ?? ''}
+                        onChange={(event) =>
+                          handleAppointmentDraftChange(appointment.id, 'client_description', event.target.value)
+                        }
+                        className="w-full rounded-2xl border border-gray-200 bg-white px-3 py-2 text-sm text-gray-900 focus:border-gray-900 focus:outline-none focus:ring-0 dark:border-gray-700 dark:bg-gray-950 dark:text-gray-100 dark:focus:border-gray-400"
+                      />
+                    </div>
+                    <div className="flex flex-wrap items-center justify-between gap-3">
+                      <p className="text-xs text-gray-500 dark:text-gray-400">
+                        Last update{' '}
+                        {appointment.updated_at
+                          ? new Date(appointment.updated_at).toLocaleString([], {
+                              dateStyle: 'medium',
+                              timeStyle: 'short'
+                            })
+                          : 'n/a'}
+                      </p>
+                      <div className="flex items-center gap-2">
+                        <Button type="button" onClick={() => requestAppointmentUpdate(appointment.id)}>
+                          <IconPencil className="h-4 w-4" />
+                          Save changes
+                        </Button>
+                        <Button type="button" variant="ghost" onClick={() => handleCancelEdit(appointment)}>
+                          Cancel
+                        </Button>
+                      </div>
+                    </div>
+                  </div>
+                ) : null}
               </div>
-              <div className="grid gap-4 md:grid-cols-2">
-                <div className="space-y-2">
-                  <label
-                    htmlFor={statusId}
-                    className="text-xs uppercase tracking-[0.3em] text-gray-500 dark:text-gray-400"
-                  >
-                    Status
-                  </label>
-                  <input
-                    id={statusId}
-                    type="text"
-                    value={draft.status}
-                    onChange={(event) => handleAppointmentDraftChange(appointment.id, 'status', event.target.value)}
-                    className="w-full rounded-2xl border border-gray-200 bg-white px-3 py-2 text-sm text-gray-900 focus:border-gray-900 focus:outline-none focus:ring-0 dark:border-gray-700 dark:bg-gray-950 dark:text-gray-100 dark:focus:border-gray-400"
-                  />
-                </div>
-                <div className="space-y-2">
-                  <label
-                    htmlFor={startId}
-                    className="text-xs uppercase tracking-[0.3em] text-gray-500 dark:text-gray-400"
-                  >
-                    Start
-                  </label>
-                  <input
-                    id={startId}
-                    type="datetime-local"
-                    value={draft.scheduled_start}
-                    onChange={(event) =>
-                      handleAppointmentDraftChange(appointment.id, 'scheduled_start', event.target.value)
-                    }
-                    className="w-full rounded-2xl border border-gray-200 bg-white px-3 py-2 text-sm text-gray-900 focus:border-gray-900 focus:outline-none focus:ring-0 dark:border-gray-700 dark:bg-gray-950 dark:text-gray-100 dark:focus:border-gray-400"
-                  />
-                </div>
-                <div className="space-y-2">
-                  <label
-                    htmlFor={durationId}
-                    className="text-xs uppercase tracking-[0.3em] text-gray-500 dark:text-gray-400"
-                  >
-                    Duration (min)
-                  </label>
-                  <input
-                    id={durationId}
-                    type="number"
-                    min="0"
-                    step="15"
-                    value={draft.duration_minutes}
-                    onChange={(event) =>
-                      handleAppointmentDraftChange(appointment.id, 'duration_minutes', event.target.value)
-                    }
-                    className="w-full rounded-2xl border border-gray-200 bg-white px-3 py-2 text-sm text-gray-900 focus:border-gray-900 focus:outline-none focus:ring-0 dark:border-gray-700 dark:bg-gray-950 dark:text-gray-100 dark:focus:border-gray-400"
-                  />
-                </div>
-                <div className="space-y-2">
-                  <label
-                    htmlFor={adminId}
-                    className="text-xs uppercase tracking-[0.3em] text-gray-500 dark:text-gray-400"
-                  >
-                    Assigned admin
-                  </label>
-                  <select
-                    id={adminId}
-                    value={draft.assigned_admin_id}
-                    onChange={(event) =>
-                      handleAppointmentDraftChange(appointment.id, 'assigned_admin_id', event.target.value)
-                    }
-                    className="w-full rounded-2xl border border-gray-200 bg-white px-3 py-2 text-sm text-gray-900 focus:border-gray-900 focus:outline-none focus:ring-0 dark:border-gray-700 dark:bg-gray-950 dark:text-gray-100 dark:focus:border-gray-400"
-                  >
-                    <option value="">Unassigned</option>
-                    {adminOptions.map((option) => (
-                      <option key={option.value} value={option.value}>
-                        {option.label}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-              </div>
-              <div className="space-y-2">
-                <label
-                  htmlFor={notesId}
-                  className="text-xs uppercase tracking-[0.3em] text-gray-500 dark:text-gray-400"
-                >
-                  Notes
-                </label>
-                <textarea
-                  id={notesId}
-                  rows={3}
-                  value={draft.client_description}
-                  onChange={(event) =>
-                    handleAppointmentDraftChange(appointment.id, 'client_description', event.target.value)
-                  }
-                  className="w-full rounded-2xl border border-gray-200 bg-white px-3 py-2 text-sm text-gray-900 focus:border-gray-900 focus:outline-none focus:ring-0 dark:border-gray-700 dark:bg-gray-950 dark:text-gray-100 dark:focus:border-gray-400"
-                />
-              </div>
-              <div className="flex flex-wrap items-center justify-between gap-3">
-                <p className="text-xs text-gray-500 dark:text-gray-400">
-                  Last update{' '}
-                  {appointment.updated_at
-                    ? new Date(appointment.updated_at).toLocaleString([], {
-                        dateStyle: 'medium',
-                        timeStyle: 'short'
-                      })
-                    : 'n/a'}
-                </p>
-                <Button type="button" onClick={() => requestAppointmentUpdate(appointment.id)}>
-                  <IconPencil className="h-4 w-4" />
-                  Save changes
-                </Button>
-              </div>
-            </div>
+            </li>
           );
         })}
-      </div>
+      </ol>
     );
-  };
-
-  const renderDeletePanel = () => {
-    if (!sortedAppointments.length) {
-      return renderEmptyState('You have no appointments to remove.');
-    }
-
-    return (
-      <div className="space-y-3">
-        {sortedAppointments.map((appointment) => {
-          const scheduledDate = appointment.scheduled_start ? new Date(appointment.scheduled_start) : null;
-          const formattedDate = scheduledDate
-            ? scheduledDate.toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' })
-            : 'Awaiting schedule';
-          const clientName = appointment.client?.display_name || appointment.guest_name || 'Guest client';
-
-          return (
-            <div
-              key={appointment.id}
-              className="flex flex-wrap items-center justify-between gap-3 rounded-3xl border border-gray-200 bg-white p-4 shadow-sm dark:border-gray-800 dark:bg-gray-950"
-            >
-              <div>
-                <p className="text-sm font-semibold text-gray-900 dark:text-gray-100">
-                  {clientName}
-                  <span className="ml-2 text-xs font-normal text-gray-500 dark:text-gray-400">
-                    Ref {appointment.reference_code || appointment.id}
-                  </span>
-                </p>
-                <p className="text-xs text-gray-500 dark:text-gray-400">{formattedDate}</p>
-              </div>
-              <Button type="button" variant="secondary" onClick={() => requestAppointmentDelete(appointment)}>
-                <IconTrash className="h-4 w-4" />
-                Delete
-              </Button>
-            </div>
-          );
-        })}
-      </div>
-    );
-  };
-
-  const renderModePanel = () => {
-    if (mode === 'create') {
-      return renderCreatePanel();
-    }
-    if (mode === 'update') {
-      return renderUpdatePanel();
-    }
-    if (mode === 'delete') {
-      return renderDeletePanel();
-    }
-    return renderReadPanel();
   };
 
   const appointmentCountLabel =
@@ -939,31 +918,29 @@ export default function AdminCalendar() {
               <p className="text-sm text-gray-600 dark:text-gray-300">{appointmentCountLabel}</p>
             </div>
           </div>
-          <div className="flex flex-wrap items-center gap-2 rounded-full border border-gray-200 p-1 dark:border-gray-700">
-            {CRUD_MODE_OPTIONS.map(({ value, label, icon: Icon }) => {
-              const isActive = mode === value;
-              return (
-                <button
-                  key={value}
-                  type="button"
-                  onClick={() => setMode(value)}
-                  aria-pressed={isActive}
-                  aria-label={`${label} mode`}
-                  className={`flex items-center gap-2 rounded-full px-4 py-2 text-xs font-semibold uppercase tracking-[0.2em] transition ${
-                    isActive
-                      ? 'bg-gray-900 text-white shadow-sm dark:bg-gray-100 dark:text-gray-900'
-                      : 'text-gray-500 hover:text-gray-900 dark:text-gray-400 dark:hover:text-gray-100'
-                  }`}
-                >
-                  <Icon className="h-4 w-4" />
-                  <span className="hidden sm:inline">{label}</span>
-                </button>
-              );
-            })}
+          <div className="flex flex-wrap items-center gap-2">
+            <Button
+              type="button"
+              onClick={() => setShowCreateForm((prev) => !prev)}
+              aria-expanded={showCreateForm}
+              aria-controls="admin-calendar-create"
+              variant={showCreateForm ? 'secondary' : 'primary'}
+            >
+              <IconPlus className="h-4 w-4" />
+              {showCreateForm ? 'Close form' : 'New appointment'}
+            </Button>
           </div>
         </div>
+        {showCreateForm ? (
+          <div
+            id="admin-calendar-create"
+            className="rounded-3xl border border-gray-100 bg-white p-6 shadow-sm dark:border-gray-800 dark:bg-gray-950"
+          >
+            {renderCreatePanel()}
+          </div>
+        ) : null}
         <div className="rounded-3xl border border-gray-100 bg-white p-6 shadow-sm dark:border-gray-800 dark:bg-gray-950">
-          {renderModePanel()}
+          {renderAppointmentList()}
         </div>
       </Card>
 
