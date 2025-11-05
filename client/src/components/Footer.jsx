@@ -12,7 +12,7 @@ export default function Footer() {
             href="https://sotodev.com/"
             target="_blank"
             rel="noopener noreferrer"
-            className="inline-flex items-center gap-2  text-gray-700 underline underline-offset-4 transition hover:text-black focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-gray-400 dark:text-gray-200 dark:hover:text-gray-100 dark:focus-visible:outline-gray-500"
+            className="inline-flex items-center gap-2 text-gray-700 underline underline-offset-4 transition hover:text-black focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-gray-400 dark:text-gray-200 dark:hover:text-gray-100 dark:focus-visible:outline-gray-500"
           >
             Powered by SotoDev, LLC
           </a>

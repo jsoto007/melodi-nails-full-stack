@@ -303,7 +303,7 @@ export default function ShareYourIdea() {
           date: dateIso,
           duration_minutes: String(minutes)
         });
-        const data = await apiGet(`/api/availability/slots?${params.toString()}`);
+        const data = await apiGet(`/api/availability?${params.toString()}`);
         const slots = Array.isArray(data?.slots) ? data.slots : [];
         setAvailableSlots(slots);
         setSlotsMeta({
