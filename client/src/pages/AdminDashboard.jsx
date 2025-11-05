@@ -1,5 +1,7 @@
-import { Navigate, Route, Routes } from 'react-router-dom';
+import { useEffect } from 'react';
+import { Navigate, Route, Routes, useLocation } from 'react-router-dom';
 import FadeIn from '../components/FadeIn.jsx';
+import NoticeBanner from '../components/NoticeBanner.jsx';
 import SectionTitle from '../components/SectionTitle.jsx';
 import AdminCalendar from './admin/AdminCalendar.jsx';
 import AdminGallery from './admin/AdminGallery.jsx';
@@ -7,38 +9,31 @@ import AdminSettings from './admin/AdminSettings.jsx';
 import AppointmentDetails from './admin/AppointmentDetails.jsx';
 import { AdminDashboardProvider, useAdminDashboard } from './admin/AdminDashboardContext.jsx';
 
-function FeedbackBanner({ feedback, onDismiss }) {
-  if (!feedback) {
-    return null;
-  }
-
-  const toneClasses =
-    feedback.tone === 'success'
-      ? 'border-green-500 bg-green-50 text-green-700 dark:border-green-600 dark:bg-green-950/50 dark:text-green-300'
-      : 'border-amber-500 bg-amber-50 text-amber-800 dark:border-amber-600 dark:bg-amber-950/50 dark:text-amber-300';
-
-  return (
-    <div
-      className={`flex items-center justify-between gap-4 rounded-2xl border px-4 py-3 text-sm ${toneClasses}`}
-      role="status"
-    >
-      <p>{feedback.message}</p>
-      <button
-        type="button"
-        onClick={onDismiss}
-        className="text-xs uppercase tracking-[0.3em] underline"
-      >
-        Dismiss
-      </button>
-    </div>
-  );
-}
-
 function AdminDashboardContent() {
+  const location = useLocation();
   const {
-    state: { currentAdmin, loading, error, feedback },
-    actions: { clearFeedback }
+    state: { currentAdmin, loading, error, notices },
+    actions: { dismissNotice, prefetchResources }
   } = useAdminDashboard();
+
+  useEffect(() => {
+    const path = location.pathname;
+    const resources = new Set(['dashboard']);
+    if (path.includes('/dashboard/admin/calendar')) {
+      resources.add('appointments');
+      resources.add('schedule');
+      resources.add('admins');
+    }
+    if (path.includes('/dashboard/admin/gallery')) {
+      resources.add('gallery');
+      resources.add('categories');
+    }
+    if (path.includes('/dashboard/admin/settings')) {
+      resources.add('admins');
+      resources.add('categories');
+    }
+    prefetchResources(Array.from(resources));
+  }, [location.pathname, prefetchResources]);
 
   if (loading) {
     return (
@@ -65,7 +60,19 @@ function AdminDashboardContent() {
           </div>
         </div>
 
-        {feedback ? <FeedbackBanner feedback={feedback} onDismiss={clearFeedback} /> : null}
+        {notices.length ? (
+          <div className="space-y-3">
+            {notices.map((notice) => (
+              <NoticeBanner
+                key={notice.id}
+                tone={notice.tone}
+                message={notice.message}
+                autoHideAfter={notice.autoHideAfter}
+                onDismiss={() => dismissNotice(notice.id)}
+              />
+            ))}
+          </div>
+        ) : null}
         {error ? (
           <div className="rounded-2xl border border-red-500 bg-red-50 px-4 py-3 text-sm text-red-700 dark:border-red-600 dark:bg-red-950/50 dark:text-red-300">
             {error}

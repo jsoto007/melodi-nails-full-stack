@@ -769,7 +769,7 @@ export default function ShareYourIdea() {
           </FadeIn>
         ) : null}
 
-        <FadeIn as="form" className="space-y-6" onSubmit={handleSubmit} immediate delayStep={0.08}>
+        <FadeIn as="form" className="space-y-6" onSubmit={handleSubmit} immediate delayStep={0.08} noValidate>
           <div className="grid gap-4 sm:grid-cols-2">
             <div>
               <label

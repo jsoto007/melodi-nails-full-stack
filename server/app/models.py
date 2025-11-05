@@ -270,7 +270,7 @@ class AppointmentAsset(TimestampMixin, db.Model):
         db.String(40),
         nullable=False,
     )  # e.g. id_front, id_back, inspiration_image, document, note
-    file_url = db.Column(db.String(512))
+    file_url = db.Column(db.Text)
     note_text = db.Column(db.Text)
     is_visible_to_client = db.Column(db.Boolean, default=True, nullable=False)
 

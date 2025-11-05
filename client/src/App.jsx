@@ -8,6 +8,10 @@ import AuthPage from './pages/AuthPage.jsx';
 import UserDashboard from './pages/UserDashboard.jsx';
 import AdminDashboard from './pages/AdminDashboard.jsx';
 import ShareYourIdea from './pages/ShareYourIdea.jsx';
+import BlogLayout from './pages/blog/BlogLayout.jsx';
+import BlogIndex from './pages/blog/BlogIndex.jsx';
+import TattooAftercare from './pages/blog/TattooAftercare.jsx';
+import TattooFaq from './pages/blog/TattooFaq.jsx';
 
 const STORAGE_KEY = 'theme';
 const THEMES = {
@@ -53,6 +57,11 @@ export default function App() {
         <Route path="/" element={<Landing />} />
         <Route path="/auth" element={<AuthPage />} />
         <Route path="/share-your-idea" element={<ShareYourIdea />} />
+        <Route path="/blog" element={<BlogLayout />}>
+          <Route index element={<BlogIndex />} />
+          <Route path="aftercare" element={<TattooAftercare />} />
+          <Route path="faq" element={<TattooFaq />} />
+        </Route>
         <Route path="/dashboard/user" element={<UserDashboard />} />
         <Route path="/dashboard/admin/*" element={<AdminDashboard />} />
         <Route path="*" element={<Navigate to="/" replace />} />

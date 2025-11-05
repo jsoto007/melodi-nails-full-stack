@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import Button from '../../components/Button.jsx';
 import Card from '../../components/Card.jsx';
@@ -51,6 +51,22 @@ function isImageUrl(url) {
   return /\.(png|jpe?g|gif|webp|svg|avif)$/i.test(sanitized);
 }
 
+function getErrorMessage(error, fallback = 'Something went wrong.') {
+  if (!error) {
+    return fallback;
+  }
+  if (typeof error === 'string') {
+    return error;
+  }
+  if (typeof error.message === 'string' && error.message.trim()) {
+    return error.message;
+  }
+  if (typeof error.error === 'string' && error.error.trim()) {
+    return error.error;
+  }
+  return fallback;
+}
+
 export default function AppointmentDetails() {
   const { appointmentId } = useParams();
   const appointmentNumericId = Number(appointmentId);
@@ -58,7 +74,7 @@ export default function AppointmentDetails() {
 
   const {
     state: { appointments, currentAdmin },
-    actions: { setFeedback, createAppointmentAsset, toggleAppointmentAssetVisibility, refreshAppointments }
+    actions: { setFeedback, createAppointmentAsset, toggleAppointmentAssetVisibility, refreshAppointments, uploadMedia }
   } = useAdminDashboard();
 
   const [appointment, setAppointment] = useState(() =>
@@ -68,6 +84,8 @@ export default function AppointmentDetails() {
   const [error, setError] = useState(null);
   const [assetDraft, setAssetDraft] = useState(INITIAL_ASSET_DRAFT);
   const [busyAssetId, setBusyAssetId] = useState(null);
+  const [uploadingImage, setUploadingImage] = useState(false);
+  const imageInputRef = useRef(null);
 
   const reloadAppointment = useCallback(async () => {
     if (!appointmentNumericId) {
@@ -97,6 +115,17 @@ export default function AppointmentDetails() {
   }, [appointments, appointmentNumericId]);
 
   const assetOptions = useMemo(() => ASSET_KIND_OPTIONS, []);
+  const imageAssets = useMemo(() => {
+    if (!appointment || !Array.isArray(appointment.assets)) {
+      return [];
+    }
+    return appointment.assets.filter((asset) => {
+      if (!asset?.file_url) {
+        return false;
+      }
+      return ['id_front', 'id_back', 'inspiration_image'].includes(asset.kind);
+    });
+  }, [appointment]);
 
   const handleAssetDraftChange = (field, value) => {
     setAssetDraft((prev) => ({
@@ -152,6 +181,37 @@ export default function AppointmentDetails() {
       setFeedback({ tone: 'offline', message: 'Unable to update asset visibility.' });
     } finally {
       setBusyAssetId(null);
+    }
+  };
+
+  const handleTriggerImageUpload = () => {
+    imageInputRef.current?.click();
+  };
+
+  const handleImageUpload = async (event) => {
+    const file = event.target.files?.[0];
+    event.target.value = '';
+    if (!appointment || !file) {
+      return;
+    }
+
+    setUploadingImage(true);
+    try {
+      const upload = await uploadMedia(file);
+      if (!upload?.url) {
+        throw new Error('Upload failed.');
+      }
+      await createAppointmentAsset(appointment.id, {
+        kind: 'inspiration_image',
+        file_url: upload.url,
+        note_text: null,
+        is_visible_to_client: true,
+        uploaded_by_admin_id: currentAdmin?.id
+      });
+    } catch (err) {
+      setFeedback({ tone: 'error', message: getErrorMessage(err, 'Unable to upload image.') });
+    } finally {
+      setUploadingImage(false);
     }
   };
 
@@ -336,6 +396,13 @@ export default function AppointmentDetails() {
         </Card>
 
         <Card className="space-y-4">
+          <input
+            ref={imageInputRef}
+            type="file"
+            accept="image/*"
+            className="sr-only"
+            onChange={handleImageUpload}
+          />
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div>
               <h3 className="text-sm font-semibold uppercase tracking-[0.3em] text-gray-500 dark:text-gray-400">
@@ -345,9 +412,43 @@ export default function AppointmentDetails() {
                 Upload admin notes or share reference material with the client.
               </p>
             </div>
-            <span className="text-xs uppercase tracking-[0.3em] text-gray-400 dark:text-gray-500">
-              {appointment.assets?.length || 0} attached
-            </span>
+            <div className="flex flex-col items-start gap-2 sm:flex-row sm:items-center sm:gap-4">
+              <Button type="button" variant="secondary" onClick={handleTriggerImageUpload} disabled={uploadingImage}>
+                {uploadingImage ? 'Uploading…' : 'Upload photo'}
+              </Button>
+              <span className="text-xs uppercase tracking-[0.3em] text-gray-400 dark:text-gray-500">
+                {appointment.assets?.length || 0} attached
+              </span>
+            </div>
+          </div>
+          <div className="space-y-3">
+            <h4 className="text-xs font-semibold uppercase tracking-[0.3em] text-gray-500 dark:text-gray-400">
+              Client photos
+            </h4>
+            {imageAssets.length ? (
+              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                {imageAssets.map((asset) => (
+                  <figure
+                    key={`preview-${asset.id}`}
+                    className="overflow-hidden rounded-xl border border-gray-200 bg-gray-100 dark:border-gray-800 dark:bg-gray-900"
+                  >
+                    <img
+                      src={resolveApiUrl(asset.file_url)}
+                      alt={`${asset.kind || 'Client asset'} preview`}
+                      className="h-40 w-full object-cover"
+                    />
+                    <figcaption className="flex items-center justify-between gap-2 px-3 py-2 text-[11px] uppercase tracking-[0.2em] text-gray-500 dark:text-gray-400">
+                      <span>{asset.kind ? asset.kind.replace(/_/g, ' ') : 'Asset'}</span>
+                      <span>{asset.uploaded_by_client ? 'Client' : 'Admin'}</span>
+                    </figcaption>
+                  </figure>
+                ))}
+              </div>
+            ) : (
+              <div className="rounded-xl border border-dashed border-gray-300 px-4 py-3 text-xs text-gray-500 dark:border-gray-700 dark:text-gray-400">
+                No client photos uploaded yet.
+              </div>
+            )}
           </div>
           <form onSubmit={handleAssetSubmit} className="grid gap-3 rounded-xl border border-gray-200 p-4 dark:border-gray-800 dark:bg-gray-950">
             <div className="grid gap-3 md:grid-cols-2">

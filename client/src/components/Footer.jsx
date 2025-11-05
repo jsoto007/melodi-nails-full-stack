@@ -17,14 +17,27 @@ export default function Footer() {
             Powered by SotoDev, LLC
           </a>
         </div>
-        <div className="flex flex-wrap items-center gap-6 uppercase tracking-[0.2em]">
-          <Link to="/share-your-idea" className="hover:text-black dark:hover:text-gray-100">
-            Aftercare
-          </Link>
-          <a href="#faq" className="hover:text-black dark:hover:text-gray-100">
+        <div className="flex flex-wrap items-start gap-8 text-sm">
+          <div className="space-y-2">
+            <Link
+              to="/blog"
+              className="block text-xs font-semibold uppercase tracking-[0.3em] text-gray-700 transition hover:text-black dark:text-gray-200 dark:hover:text-gray-100"
+            >
+              Blog
+            </Link>
+            <div className="flex flex-col gap-1 text-xs tracking-normal text-gray-500 dark:text-gray-400">
+              <Link to="/blog/aftercare" className="transition hover:text-black dark:hover:text-gray-100">
+                Tattoo Aftercare Guide
+              </Link>
+              <Link to="/blog/faq" className="transition hover:text-black dark:hover:text-gray-100">
+                Frequently Asked Questions
+              </Link>
+            </div>
+          </div>
+          <a href="#faq" className="uppercase tracking-[0.2em] transition hover:text-black dark:hover:text-gray-100">
             Policies
           </a>
-          <a href="#top" className="hover:text-black dark:hover:text-gray-100">
+          <a href="#top" className="uppercase tracking-[0.2em] transition hover:text-black dark:hover:text-gray-100">
             Back to top
           </a>
         </div>
