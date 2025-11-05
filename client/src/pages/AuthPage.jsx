@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import Button from '../components/Button.jsx';
 import Card from '../components/Card.jsx';
@@ -32,6 +32,11 @@ const LOGIN_FIELD_IDS = {
   password: 'login-password'
 };
 
+const AUTH_MODES = {
+  register: 'register',
+  login: 'login'
+};
+
 export default function AuthPage() {
   const navigate = useNavigate();
   const { refreshSession } = useAuth();
@@ -40,6 +45,28 @@ export default function AuthPage() {
   const [notice, setNotice] = useState(null);
   const [error, setError] = useState(null);
   const [submitting, setSubmitting] = useState(false);
+  const [mode, setMode] = useState(AUTH_MODES.login);
+  const registerFirstNameRef = useRef(null);
+  const loginEmailRef = useRef(null);
+
+  const isRegisterMode = mode === AUTH_MODES.register;
+
+  const handleModeChange = (nextMode) => {
+    if (nextMode === mode || submitting) {
+      return;
+    }
+    setMode(nextMode);
+    setNotice(null);
+    setError(null);
+  };
+
+  useEffect(() => {
+    if (isRegisterMode) {
+      registerFirstNameRef.current?.focus();
+    } else {
+      loginEmailRef.current?.focus();
+    }
+  }, [isRegisterMode]);
 
   const handleRegisterChange = (field) => (event) => {
     setRegisterForm((prev) => ({
@@ -141,143 +168,190 @@ export default function AuthPage() {
             {error}
           </div>
         ) : null}
-        <div className="grid gap-6 lg:grid-cols-2">
-          <Card className="space-y-4">
-            <h2 className="text-sm font-semibold uppercase tracking-[0.3em] text-gray-500 dark:text-gray-400">
-              Create an account
-            </h2>
-            <form className="space-y-4" onSubmit={handleRegisterSubmit}>
-              <div className="grid gap-4 sm:grid-cols-2">
+        <div className="mx-auto w-full max-w-2xl space-y-6">
+          <div className="flex justify-center">
+            <div className="inline-flex items-center rounded-full border border-gray-200 bg-gray-100 p-1 text-xs font-semibold uppercase tracking-[0.3em] dark:border-gray-800 dark:bg-gray-900">
+              <button
+                type="button"
+                onClick={() => handleModeChange(AUTH_MODES.login)}
+                disabled={submitting}
+                className={`rounded-full px-4 py-2 transition focus:outline-none focus-visible:ring-2 focus-visible:ring-gray-400 focus-visible:ring-offset-2 focus-visible:ring-offset-white dark:focus-visible:ring-gray-600 dark:focus-visible:ring-offset-black disabled:opacity-60 ${
+                  isRegisterMode
+                    ? 'text-gray-600 hover:text-black dark:text-gray-400 dark:hover:text-gray-100'
+                    : 'bg-black text-white shadow-soft dark:bg-gray-100 dark:text-black'
+                }`}
+                aria-pressed={!isRegisterMode}
+              >
+                Sign in
+              </button>
+              <button
+                type="button"
+                onClick={() => handleModeChange(AUTH_MODES.register)}
+                disabled={submitting}
+                className={`rounded-full px-4 py-2 transition focus:outline-none focus-visible:ring-2 focus-visible:ring-gray-400 focus-visible:ring-offset-2 focus-visible:ring-offset-white dark:focus-visible:ring-gray-600 dark:focus-visible:ring-offset-black disabled:opacity-60 ${
+                  isRegisterMode
+                    ? 'bg-black text-white shadow-soft dark:bg-gray-100 dark:text-black'
+                    : 'text-gray-600 hover:text-black dark:text-gray-400 dark:hover:text-gray-100'
+                }`}
+                aria-pressed={isRegisterMode}
+              >
+                Create account
+              </button>
+            </div>
+          </div>
+          <Card className="space-y-6">
+            <div className="space-y-2">
+              <h2 className="text-sm font-semibold uppercase tracking-[0.3em] text-gray-500 dark:text-gray-400">
+                {isRegisterMode ? 'Create an account' : 'Sign in'}
+              </h2>
+              <p className="text-xs uppercase tracking-[0.3em] text-gray-500 dark:text-gray-400">
+                {isRegisterMode
+                  ? 'Join the studio to manage bookings and share references.'
+                  : 'Admins use the same form. We will send you to the right dashboard after authentication.'}
+              </p>
+            </div>
+            {isRegisterMode ? (
+              <form className="space-y-4" onSubmit={handleRegisterSubmit}>
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <div>
+                    <label
+                      htmlFor={REGISTER_FIELD_IDS.firstName}
+                      className="text-xs uppercase tracking-[0.3em] text-gray-500 dark:text-gray-400"
+                    >
+                      First name
+                    </label>
+                    <input
+                      id={REGISTER_FIELD_IDS.firstName}
+                      ref={registerFirstNameRef}
+                      type="text"
+                      value={registerForm.first_name}
+                      onChange={handleRegisterChange('first_name')}
+                      className="mt-2 w-full rounded-xl border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 focus:border-gray-900 focus:outline-none focus:ring-0 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-100 dark:focus:border-gray-400"
+                      required
+                    />
+                  </div>
+                  <div>
+                    <label
+                      htmlFor={REGISTER_FIELD_IDS.lastName}
+                      className="text-xs uppercase tracking-[0.3em] text-gray-500 dark:text-gray-400"
+                    >
+                      Last name
+                    </label>
+                    <input
+                      id={REGISTER_FIELD_IDS.lastName}
+                      type="text"
+                      value={registerForm.last_name}
+                      onChange={handleRegisterChange('last_name')}
+                      className="mt-2 w-full rounded-xl border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 focus:border-gray-900 focus:outline-none focus:ring-0 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-100 dark:focus:border-gray-400"
+                      required
+                    />
+                  </div>
+                </div>
                 <div>
                   <label
-                    htmlFor={REGISTER_FIELD_IDS.firstName}
+                    htmlFor={REGISTER_FIELD_IDS.email}
                     className="text-xs uppercase tracking-[0.3em] text-gray-500 dark:text-gray-400"
                   >
-                    First name
+                    Email
                   </label>
                   <input
-                    id={REGISTER_FIELD_IDS.firstName}
-                    type="text"
-                    value={registerForm.first_name}
-                    onChange={handleRegisterChange('first_name')}
+                    id={REGISTER_FIELD_IDS.email}
+                    type="email"
+                    value={registerForm.email}
+                    onChange={handleRegisterChange('email')}
                     className="mt-2 w-full rounded-xl border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 focus:border-gray-900 focus:outline-none focus:ring-0 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-100 dark:focus:border-gray-400"
                     required
                   />
                 </div>
                 <div>
                   <label
-                    htmlFor={REGISTER_FIELD_IDS.lastName}
+                    htmlFor={REGISTER_FIELD_IDS.phone}
                     className="text-xs uppercase tracking-[0.3em] text-gray-500 dark:text-gray-400"
                   >
-                    Last name
+                    Phone
                   </label>
                   <input
-                    id={REGISTER_FIELD_IDS.lastName}
-                    type="text"
-                    value={registerForm.last_name}
-                    onChange={handleRegisterChange('last_name')}
+                    id={REGISTER_FIELD_IDS.phone}
+                    type="tel"
+                    value={registerForm.phone}
+                    onChange={handleRegisterChange('phone')}
+                    className="mt-2 w-full rounded-xl border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 focus:border-gray-900 focus:outline-none focus:ring-0 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-100 dark:focus:border-gray-400"
+                  />
+                </div>
+                <div>
+                  <label
+                    htmlFor={REGISTER_FIELD_IDS.password}
+                    className="text-xs uppercase tracking-[0.3em] text-gray-500 dark:text-gray-400"
+                  >
+                    Password
+                  </label>
+                  <input
+                    id={REGISTER_FIELD_IDS.password}
+                    type="password"
+                    value={registerForm.password}
+                    onChange={handleRegisterChange('password')}
+                    className="mt-2 w-full rounded-xl border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 focus:border-gray-900 focus:outline-none focus:ring-0 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-100 dark:focus:border-gray-400"
+                    required
+                    minLength={8}
+                  />
+                </div>
+                <Button type="submit" disabled={submitting}>
+                  {submitting ? 'Creating...' : 'Create account'}
+                </Button>
+              </form>
+            ) : (
+              <form className="space-y-4" onSubmit={handleLoginSubmit}>
+                <div>
+                  <label
+                    htmlFor={LOGIN_FIELD_IDS.email}
+                    className="text-xs uppercase tracking-[0.3em] text-gray-500 dark:text-gray-400"
+                  >
+                    Email
+                  </label>
+                  <input
+                    id={LOGIN_FIELD_IDS.email}
+                    ref={loginEmailRef}
+                    type="email"
+                    value={loginForm.email}
+                    onChange={handleLoginChange('email')}
                     className="mt-2 w-full rounded-xl border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 focus:border-gray-900 focus:outline-none focus:ring-0 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-100 dark:focus:border-gray-400"
                     required
                   />
                 </div>
-              </div>
-              <div>
-                <label
-                  htmlFor={REGISTER_FIELD_IDS.email}
-                  className="text-xs uppercase tracking-[0.3em] text-gray-500 dark:text-gray-400"
-                >
-                  Email
-                </label>
-                <input
-                  id={REGISTER_FIELD_IDS.email}
-                  type="email"
-                  value={registerForm.email}
-                  onChange={handleRegisterChange('email')}
-                  className="mt-2 w-full rounded-xl border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 focus:border-gray-900 focus:outline-none focus:ring-0 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-100 dark:focus:border-gray-400"
-                  required
-                />
-              </div>
-              <div>
-                <label
-                  htmlFor={REGISTER_FIELD_IDS.phone}
-                  className="text-xs uppercase tracking-[0.3em] text-gray-500 dark:text-gray-400"
-                >
-                  Phone
-                </label>
-                <input
-                  id={REGISTER_FIELD_IDS.phone}
-                  type="tel"
-                  value={registerForm.phone}
-                  onChange={handleRegisterChange('phone')}
-                  className="mt-2 w-full rounded-xl border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 focus:border-gray-900 focus:outline-none focus:ring-0 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-100 dark:focus:border-gray-400"
-                />
-              </div>
-              <div>
-                <label
-                  htmlFor={REGISTER_FIELD_IDS.password}
-                  className="text-xs uppercase tracking-[0.3em] text-gray-500 dark:text-gray-400"
-                >
-                  Password
-                </label>
-                <input
-                  id={REGISTER_FIELD_IDS.password}
-                  type="password"
-                  value={registerForm.password}
-                  onChange={handleRegisterChange('password')}
-                  className="mt-2 w-full rounded-xl border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 focus:border-gray-900 focus:outline-none focus:ring-0 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-100 dark:focus:border-gray-400"
-                  required
-                  minLength={8}
-                />
-              </div>
-              <Button type="submit" disabled={submitting}>
-                {submitting ? 'Creating...' : 'Create account'}
-              </Button>
-            </form>
-          </Card>
-          <Card className="space-y-4">
-            <h2 className="text-sm font-semibold uppercase tracking-[0.3em] text-gray-500 dark:text-gray-400">
-              Sign in
-            </h2>
-            <form className="space-y-4" onSubmit={handleLoginSubmit}>
-              <div>
-                <label
-                  htmlFor={LOGIN_FIELD_IDS.email}
-                  className="text-xs uppercase tracking-[0.3em] text-gray-500 dark:text-gray-400"
-                >
-                  Email
-                </label>
-                <input
-                  id={LOGIN_FIELD_IDS.email}
-                  type="email"
-                  value={loginForm.email}
-                  onChange={handleLoginChange('email')}
-                  className="mt-2 w-full rounded-xl border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 focus:border-gray-900 focus:outline-none focus:ring-0 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-100 dark:focus:border-gray-400"
-                  required
-                />
-              </div>
-              <div>
-                <label
-                  htmlFor={LOGIN_FIELD_IDS.password}
-                  className="text-xs uppercase tracking-[0.3em] text-gray-500 dark:text-gray-400"
-                >
-                  Password
-                </label>
-                <input
-                  id={LOGIN_FIELD_IDS.password}
-                  type="password"
-                  value={loginForm.password}
-                  onChange={handleLoginChange('password')}
-                  className="mt-2 w-full rounded-xl border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 focus:border-gray-900 focus:outline-none focus:ring-0 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-100 dark:focus:border-gray-400"
-                  required
-                />
-              </div>
-              <Button type="submit" disabled={submitting}>
-                {submitting ? 'Signing in...' : 'Sign in'}
-              </Button>
-            </form>
-            <p className="text-xs uppercase tracking-[0.3em] text-gray-500 dark:text-gray-400">
-              Admins use the same form. We will redirect you to the correct dashboard after authentication.
-            </p>
+                <div>
+                  <label
+                    htmlFor={LOGIN_FIELD_IDS.password}
+                    className="text-xs uppercase tracking-[0.3em] text-gray-500 dark:text-gray-400"
+                  >
+                    Password
+                  </label>
+                  <input
+                    id={LOGIN_FIELD_IDS.password}
+                    type="password"
+                    value={loginForm.password}
+                    onChange={handleLoginChange('password')}
+                    className="mt-2 w-full rounded-xl border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 focus:border-gray-900 focus:outline-none focus:ring-0 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-100 dark:focus:border-gray-400"
+                    required
+                  />
+                </div>
+                <Button type="submit" disabled={submitting}>
+                  {submitting ? 'Signing in...' : 'Sign in'}
+                </Button>
+              </form>
+            )}
+            <div className="flex flex-wrap items-center justify-between gap-4">
+              <p className="text-xs uppercase tracking-[0.3em] text-gray-500 dark:text-gray-400">
+                {isRegisterMode ? 'Already have an account?' : 'Need a studio account?'}
+              </p>
+              <button
+                type="button"
+                onClick={() => handleModeChange(isRegisterMode ? AUTH_MODES.login : AUTH_MODES.register)}
+                disabled={submitting}
+                className="text-xs font-semibold uppercase tracking-[0.3em] text-gray-900 underline-offset-4 transition hover:underline disabled:opacity-60 dark:text-gray-100"
+              >
+                {isRegisterMode ? 'Switch to sign in' : 'Switch to create account'}
+              </button>
+            </div>
           </Card>
         </div>
       </div>
