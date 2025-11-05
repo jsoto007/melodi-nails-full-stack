@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { Navigate, Route, Routes } from 'react-router-dom';
 import Header from './components/Header.jsx';
 import Footer from './components/Footer.jsx';
+import ScrollRestoration from './components/ScrollRestoration.jsx';
 import Landing from './pages/Landing.jsx';
 import AuthPage from './pages/AuthPage.jsx';
 import UserDashboard from './pages/UserDashboard.jsx';
@@ -43,10 +44,11 @@ export default function App() {
 
   return (
     <div className="min-h-screen bg-white text-gray-900 transition-colors duration-300 dark:bg-black dark:text-gray-100">
-      <div id="top" className="sr-only">
+      <div id="top" className="sr-only" tabIndex="-1" aria-label="Top of page">
         Top
       </div>
       <Header theme={theme} onToggleTheme={toggleTheme} />
+      <ScrollRestoration />
       <Routes>
         <Route path="/" element={<Landing />} />
         <Route path="/auth" element={<AuthPage />} />

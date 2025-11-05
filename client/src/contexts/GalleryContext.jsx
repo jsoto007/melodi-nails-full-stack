@@ -1,51 +1,20 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
-import localGallery from '../data/galleries.json';
 import { apiGet } from '../lib/api.js';
 
 function slugify(name) {
   return name.toLowerCase().replace(/\s+/g, '-');
 }
 
-function toTitleCase(slug) {
-  return slug
-    .split('-')
-    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
-    .join(' ');
-}
-
-function groupByCategory(data) {
-  return data.reduce((acc, item) => {
-    const slug = item.category || slugify(item.category_name || item.category || 'uncategorized');
-    acc[slug] = acc[slug] ? acc[slug].concat(item) : [item];
-    return acc;
-  }, {});
-}
-
 const GalleryContext = createContext(null);
 
 export function GalleryProvider({ children }) {
-  const fallback = useMemo(() => {
-    const grouped = groupByCategory(localGallery);
-    const categories = Object.keys(grouped).map((slug) => ({
-      id: null,
-      slug,
-      name: toTitleCase(slug),
-      isFallback: true
-    }));
-    return { grouped, categories };
-  }, []);
-
-  const [categories, setCategories] = useState(fallback.categories);
-  const [activeSlug, setActiveSlug] = useState(fallback.categories[0]?.slug ?? '');
-  const [galleryBySlug, setGalleryBySlug] = useState(fallback.grouped);
+  const [categories, setCategories] = useState([]);
+  const [activeSlug, setActiveSlug] = useState('');
+  const [galleryBySlug, setGalleryBySlug] = useState({});
   const [messagesBySlug, setMessagesBySlug] = useState({});
-  const [statusBySlug, setStatusBySlug] = useState(() =>
-    fallback.categories.reduce((acc, category) => {
-      acc[category.slug] = { loading: false, loaded: Boolean(fallback.grouped[category.slug]?.length) };
-      return acc;
-    }, {})
-  );
+  const [statusBySlug, setStatusBySlug] = useState({});
   const [initializing, setInitializing] = useState(true);
+  const [globalMessage, setGlobalMessage] = useState(null);
 
   const statusRef = useRef(statusBySlug);
   useEffect(() => {
@@ -57,25 +26,16 @@ export function GalleryProvider({ children }) {
     activeSlugRef.current = activeSlug;
   }, [activeSlug]);
 
-  const ensureFallbackMessages = useCallback(() => {
+  const clearCategoryMessage = useCallback((slug) => {
     setMessagesBySlug((prev) => {
+      if (!prev[slug]) {
+        return prev;
+      }
       const next = { ...prev };
-      fallback.categories.forEach((category) => {
-        if (!next[category.slug]) {
-          next[category.slug] = 'Offline mode - showing studio highlights.';
-        }
-      });
+      delete next[slug];
       return next;
     });
-    setStatusBySlug((prev) => {
-      const next = { ...prev };
-      fallback.categories.forEach((category) => {
-        const current = next[category.slug] ?? {};
-        next[category.slug] = { ...current, loading: false, loaded: true };
-      });
-      return next;
-    });
-  }, [fallback]);
+  }, []);
 
   const fetchCategoryItems = useCallback(
     async (category, { signal, force = false } = {}) => {
@@ -96,8 +56,9 @@ export function GalleryProvider({ children }) {
 
       setStatusBySlug((prev) => ({
         ...prev,
-        [slug]: { ...(prev[slug] ?? {}), loading: true }
+        [slug]: { ...(prev[slug] ?? {}), loading: true, error: false }
       }));
+      clearCategoryMessage(slug);
 
       try {
         const queryParam = category.id ? `category_id=${category.id}` : `category=${slug}`;
@@ -109,6 +70,7 @@ export function GalleryProvider({ children }) {
           }));
           return;
         }
+
         const normalized = Array.isArray(data)
           ? data.map((item) => ({
               id: item.id,
@@ -122,15 +84,20 @@ export function GalleryProvider({ children }) {
 
         setGalleryBySlug((prev) => ({
           ...prev,
-          [slug]: normalized.length ? normalized : fallback.grouped[slug] || []
+          [slug]: normalized
         }));
-        setMessagesBySlug((prev) => ({
-          ...prev,
-          [slug]: normalized.length ? null : 'Showing studio highlights.'
-        }));
+        setMessagesBySlug((prev) => {
+          const next = { ...prev };
+          if (normalized.length) {
+            delete next[slug];
+          } else {
+            next[slug] = 'No artwork published yet.';
+          }
+          return next;
+        });
         setStatusBySlug((prev) => ({
           ...prev,
-          [slug]: { loading: false, loaded: true }
+          [slug]: { loading: false, loaded: true, error: false }
         }));
       } catch (error) {
         if (signal?.aborted || error.name === 'AbortError') {
@@ -140,21 +107,18 @@ export function GalleryProvider({ children }) {
           }));
           return;
         }
-        setGalleryBySlug((prev) => ({
-          ...prev,
-          [slug]: fallback.grouped[slug] || []
-        }));
+
         setMessagesBySlug((prev) => ({
           ...prev,
-          [slug]: 'Offline mode - showing studio highlights.'
+          [slug]: 'Unable to load this gallery right now.'
         }));
         setStatusBySlug((prev) => ({
           ...prev,
-          [slug]: { loading: false, loaded: true }
+          [slug]: { loading: false, loaded: false, error: true }
         }));
       }
     },
-    [fallback]
+    [clearCategoryMessage]
   );
 
   useEffect(() => {
@@ -163,16 +127,38 @@ export function GalleryProvider({ children }) {
       const next = { ...prev };
       categories.forEach((category) => {
         if (!next[category.slug]) {
-          next[category.slug] = {
-            loading: false,
-            loaded: Boolean(galleryBySlug[category.slug]?.length)
-          };
+          next[category.slug] = { loading: false, loaded: false, error: false };
           changed = true;
         }
       });
       return changed ? next : prev;
     });
-  }, [categories, galleryBySlug]);
+  }, [categories]);
+
+  useEffect(() => {
+    setGalleryBySlug((prev) => {
+      let changed = false;
+      const next = { ...prev };
+      categories.forEach((category) => {
+        if (!next[category.slug]) {
+          next[category.slug] = [];
+          changed = true;
+        }
+      });
+      return changed ? next : prev;
+    });
+  }, [categories]);
+
+  useEffect(() => {
+    if (!categories.length) {
+      setActiveSlug('');
+      return;
+    }
+    const currentActive = activeSlugRef.current;
+    if (!categories.some((category) => category.slug === currentActive)) {
+      setActiveSlug(categories[0].slug);
+    }
+  }, [categories]);
 
   useEffect(() => {
     let ignore = false;
@@ -185,32 +171,24 @@ export function GalleryProvider({ children }) {
         if (ignore) {
           return;
         }
+
         if (Array.isArray(data) && data.length) {
           const nextCategories = data.map((category) => {
             const slug = slugify(category.name);
             return {
               id: category.id,
               slug,
-              name: category.name,
-              isFallback: false
+              name: category.name
             };
           });
 
           setCategories(nextCategories);
-          setGalleryBySlug((prev) => {
-            const next = { ...prev };
-            nextCategories.forEach((category) => {
-              if (!next[category.slug]) {
-                next[category.slug] = fallback.grouped[category.slug] || [];
-              }
-            });
-            return next;
-          });
+          setGlobalMessage(null);
 
           const currentActive = activeSlugRef.current;
           const nextActive = nextCategories.find((category) => category.slug === currentActive)
             ? currentActive
-            : nextCategories[0]?.slug ?? currentActive;
+            : nextCategories[0]?.slug ?? '';
           setActiveSlug(nextActive);
 
           await Promise.all(
@@ -219,11 +197,12 @@ export function GalleryProvider({ children }) {
             )
           );
         } else {
-          ensureFallbackMessages();
+          setCategories([]);
+          setGlobalMessage('No gallery categories available yet.');
         }
       } catch (error) {
         if (!ignore && error.name !== 'AbortError') {
-          ensureFallbackMessages();
+          setGlobalMessage('Unable to load gallery right now.');
         }
       } finally {
         if (!ignore) {
@@ -238,7 +217,7 @@ export function GalleryProvider({ children }) {
       ignore = true;
       controller.abort();
     };
-  }, [ensureFallbackMessages, fetchCategoryItems]);
+  }, [fetchCategoryItems]);
 
   const selectCategory = useCallback(
     (slug) => {
@@ -263,9 +242,19 @@ export function GalleryProvider({ children }) {
       statusBySlug,
       activeSlug,
       initializing,
+      globalMessage,
       selectCategory
     }),
-    [categories, galleryBySlug, messagesBySlug, statusBySlug, activeSlug, initializing, selectCategory]
+    [
+      categories,
+      galleryBySlug,
+      messagesBySlug,
+      statusBySlug,
+      activeSlug,
+      initializing,
+      globalMessage,
+      selectCategory
+    ]
   );
 
   return <GalleryContext.Provider value={value}>{children}</GalleryContext.Provider>;
