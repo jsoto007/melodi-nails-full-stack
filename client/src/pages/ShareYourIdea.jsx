@@ -74,6 +74,35 @@ const SIZE_OPTIONS = [
 
 const BOOKING_RECEIPT_KEY = 'black-ink:last-booking';
 
+const FIELD_LABELS = {
+  first_name: 'your first name',
+  last_name: 'your last name',
+  email: 'contact email',
+  selected_date: 'date selection',
+  tattoo_placement: 'placement selection',
+  tattoo_size: 'size selection',
+  description: 'inspiration details',
+  id_front: 'government ID',
+  id_back: 'government ID',
+  scheduled_start: 'date & time',
+  password: 'account password',
+  files: 'upload section'
+};
+
+const VALIDATION_ORDER = [
+  'first_name',
+  'last_name',
+  'email',
+  'tattoo_placement',
+  'tattoo_size',
+  'selected_date',
+  'description',
+  'id_front',
+  'id_back',
+  'scheduled_start',
+  'password'
+];
+
 function createInitialForm() {
   return {
     first_name: '',
@@ -255,6 +284,16 @@ export default function ShareYourIdea() {
   const paymentsRef = useRef(null);
   const cardInstanceRef = useRef(null);
   const cardContainerRef = useRef(null);
+  const firstNameRef = useRef(null);
+  const lastNameRef = useRef(null);
+  const emailRef = useRef(null);
+  const placementRef = useRef(null);
+  const sizeRef = useRef(null);
+  const descriptionRef = useRef(null);
+  const inspirationRef = useRef(null);
+  const identityRef = useRef(null);
+  const scheduleRef = useRef(null);
+  const passwordRef = useRef(null);
 
   const minimumDuration = availabilityConfig?.minimumDurationMinutes ?? SLOT_INTERVAL_MINUTES;
 
@@ -841,6 +880,57 @@ export default function ShareYourIdea() {
     setDurationManuallySet(true);
   };
 
+  const scrollToField = useCallback(
+    (fieldKey) => {
+      const targetMap = {
+        first_name: firstNameRef,
+        last_name: lastNameRef,
+        email: emailRef,
+        selected_date: scheduleRef,
+        tattoo_placement: placementRef,
+        tattoo_size: sizeRef,
+        description: descriptionRef,
+        files: inspirationRef,
+        id_front: identityRef,
+        id_back: identityRef,
+        scheduled_start: scheduleRef,
+        password: passwordRef
+      };
+      const targetRef = targetMap[fieldKey];
+      const node = targetRef?.current;
+      if (!node) {
+        return;
+      }
+      if (typeof node.scrollIntoView === 'function') {
+        node.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }
+      const focusableSelector = 'input, textarea, select, button, [tabindex]';
+      const focusTarget =
+        typeof node.matches === 'function' && node.matches(focusableSelector)
+          ? node
+          : node.querySelector?.(focusableSelector);
+      if (focusTarget && typeof focusTarget.focus === 'function') {
+        try {
+          focusTarget.focus({ preventScroll: true });
+        } catch {
+          focusTarget.focus();
+        }
+      }
+    },
+    [
+      descriptionRef,
+      emailRef,
+      identityRef,
+      inspirationRef,
+      passwordRef,
+      placementRef,
+      scheduleRef,
+      sizeRef,
+      firstNameRef,
+      lastNameRef
+    ]
+  );
+
   const validate = useCallback(() => {
     const validationErrors = {};
     if (!form.first_name.trim()) {
@@ -863,6 +953,9 @@ export default function ShareYourIdea() {
     if (!form.description.trim() && !files.inspiration.length) {
       validationErrors.description = 'Add inspiration details';
     }
+    if (!selectedDate) {
+      validationErrors.selected_date = 'Select a date';
+    }
     if (!form.placement) {
       validationErrors.tattoo_placement = 'Select placement';
     }
@@ -876,8 +969,23 @@ export default function ShareYourIdea() {
       validationErrors.password = 'Min. 8 characters';
     }
     setErrors(validationErrors);
-    return Object.keys(validationErrors).length === 0;
-  }, [form, files, selectedSlot, shouldSkipIdentityUpload]);
+    const hasErrors = Object.keys(validationErrors).length > 0;
+    if (hasErrors) {
+      const firstErrorKey = VALIDATION_ORDER.find((key) => validationErrors[key]);
+      if (firstErrorKey) {
+        const label = FIELD_LABELS[firstErrorKey] || 'required section';
+        setNotice(`Looks like ${label} still needs info. Please update it to continue.`);
+        setNoticeTone('offline');
+        scrollToField(firstErrorKey);
+      } else {
+        setNotice('Please review the highlighted fields before submitting.');
+        setNoticeTone('offline');
+      }
+      return false;
+    }
+    setNotice(null);
+    return true;
+  }, [form, files, selectedSlot, shouldSkipIdentityUpload, scrollToField, setNotice, setNoticeTone]);
 
   const handleSubmit = async (event) => {
     event.preventDefault();
@@ -1071,6 +1179,7 @@ export default function ShareYourIdea() {
                 value={form.first_name}
                 onChange={handleChange('first_name')}
                 autoComplete="given-name"
+                ref={firstNameRef}
                 className="mt-2 w-full rounded-xl border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 transition focus:border-gray-900 focus:outline-none focus:ring-0 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-100 dark:focus:border-gray-400"
                 required
               />
@@ -1094,6 +1203,7 @@ export default function ShareYourIdea() {
                 value={form.last_name}
                 onChange={handleChange('last_name')}
                 autoComplete="family-name"
+                ref={lastNameRef}
                 className="mt-2 w-full rounded-xl border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 transition focus:border-gray-900 focus:outline-none focus:ring-0 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-100 dark:focus:border-gray-400"
                 required
               />
@@ -1119,6 +1229,7 @@ export default function ShareYourIdea() {
                 value={form.email}
                 onChange={handleChange('email')}
                 autoComplete="email"
+                ref={emailRef}
                 className="mt-2 w-full rounded-xl border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 transition focus:border-gray-900 focus:outline-none focus:ring-0 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-100 dark:focus:border-gray-400"
                 required
               />
@@ -1148,7 +1259,7 @@ export default function ShareYourIdea() {
             </div>
           </div>
           <div className="grid gap-4 sm:grid-cols-2">
-            <div>
+            <div ref={placementRef}>
               <label
                 htmlFor="booking-placement"
                 className="text-xs font-semibold uppercase tracking-[0.3em] text-gray-500 dark:text-gray-400"
@@ -1192,7 +1303,7 @@ export default function ShareYourIdea() {
                 </p>
               ) : null}
             </div>
-            <div>
+            <div ref={sizeRef}>
               <label
                 htmlFor="booking-size"
                 className="text-xs font-semibold uppercase tracking-[0.3em] text-gray-500 dark:text-gray-400"
@@ -1299,7 +1410,7 @@ export default function ShareYourIdea() {
             </div>
           </div>
 
-          <div className="space-y-4 rounded-2xl border border-gray-200 p-4 dark:border-gray-800 dark:bg-gray-950">
+          <div ref={scheduleRef} className="space-y-4 rounded-2xl border border-gray-200 p-4 dark:border-gray-800 dark:bg-gray-950">
             <div className="flex flex-col gap-2 sm:flex-row sm:items-baseline sm:justify-between">
               <p className="text-xs font-semibold uppercase tracking-[0.3em] text-gray-500 dark:text-gray-400">
                 Schedule your session
@@ -1344,6 +1455,9 @@ export default function ShareYourIdea() {
               <div className="grid grid-cols-7 gap-2">{calendarDays.map(renderCalendarDay)}</div>
               {availabilityError ? (
                 <p className="text-xs uppercase tracking-[0.3em] text-rose-500 dark:text-rose-400">{availabilityError}</p>
+              ) : null}
+              {errors.selected_date ? (
+                <p className="text-xs uppercase tracking-[0.2em] text-rose-500 dark:text-rose-400">{errors.selected_date}</p>
               ) : null}
             </div>
             <div className="space-y-3">
@@ -1394,114 +1508,116 @@ export default function ShareYourIdea() {
             </div>
           </div>
 
-          {shouldSkipIdentityUpload ? (
-            <Card className="space-y-3">
-              <p className="text-sm text-gray-600 dark:text-gray-300">
-                Your government ID is already verified and stored securely. Upload a fresh copy only if your ID has
-                changed.
-              </p>
-              <div className="flex flex-wrap gap-3">
-                <Button type="button" variant="secondary" onClick={() => setForceIdentityUpdate(true)}>
-                  Upload updated ID
-                </Button>
-              </div>
-            </Card>
-          ) : (
-            <div className="space-y-4">
-              {hasStoredIdentity ? (
-                <button
-                  type="button"
-                  onClick={() => setForceIdentityUpdate(false)}
-                  className="text-xs font-semibold uppercase tracking-[0.3em] text-gray-500 underline-offset-4 hover:underline dark:text-gray-400"
-                >
-                  Use ID already on file
-                </button>
-              ) : null}
-              <div className="grid gap-4 sm:grid-cols-2">
-                <div>
-                  <label
-                    htmlFor="booking-id-front"
-                    className="text-xs font-semibold uppercase tracking-[0.3em] text-gray-500 dark:text-gray-400"
+          <div ref={identityRef}>
+            {shouldSkipIdentityUpload ? (
+              <Card className="space-y-3">
+                <p className="text-sm text-gray-600 dark:text-gray-300">
+                  Your government ID is already verified and stored securely. Upload a fresh copy only if your ID has
+                  changed.
+                </p>
+                <div className="flex flex-wrap gap-3">
+                  <Button type="button" variant="secondary" onClick={() => setForceIdentityUpdate(true)}>
+                    Upload updated ID
+                  </Button>
+                </div>
+              </Card>
+            ) : (
+              <div className="space-y-4">
+                {hasStoredIdentity ? (
+                  <button
+                    type="button"
+                    onClick={() => setForceIdentityUpdate(false)}
+                    className="text-xs font-semibold uppercase tracking-[0.3em] text-gray-500 underline-offset-4 hover:underline dark:text-gray-400"
                   >
-                  Government ID (front) *
-                </label>
-                <input
-                  id="booking-id-front"
-                  name="id_front"
-                  type="file"
-                  accept="image/png,image/jpeg,image/jpg,image/heic,image/heif,image/webp"
-                  onChange={handleFileChange('idFront')}
-                  className="sr-only"
-                  aria-describedby="booking-id-front-help"
-                  required
-                />
-                <div className="mt-2 flex flex-wrap items-center gap-3">
-                  <Button as="label" htmlFor="booking-id-front">
-                    Upload front ID
-                  </Button>
-                  <p id="booking-id-front-help" className="text-xs text-gray-500 dark:text-gray-400">
-                    {files.idFront
-                      ? `${files.idFront.name} · ${formatFileSize(files.idFront.size)}`
-                      : 'Accepted: PNG, JPG, HEIC, WebP.'}
-                  </p>
+                    Use ID already on file
+                  </button>
+                ) : null}
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <div>
+                    <label
+                      htmlFor="booking-id-front"
+                      className="text-xs font-semibold uppercase tracking-[0.3em] text-gray-500 dark:text-gray-400"
+                    >
+                      Government ID (front) *
+                    </label>
+                    <input
+                      id="booking-id-front"
+                      name="id_front"
+                      type="file"
+                      accept="image/png,image/jpeg,image/jpg,image/heic,image/heif,image/webp"
+                      onChange={handleFileChange('idFront')}
+                      className="sr-only"
+                      aria-describedby="booking-id-front-help"
+                      required
+                    />
+                    <div className="mt-2 flex flex-wrap items-center gap-3">
+                      <Button as="label" htmlFor="booking-id-front">
+                        Upload front ID
+                      </Button>
+                      <p id="booking-id-front-help" className="text-xs text-gray-500 dark:text-gray-400">
+                        {files.idFront
+                          ? `${files.idFront.name} · ${formatFileSize(files.idFront.size)}`
+                          : 'Accepted: PNG, JPG, HEIC, WebP.'}
+                      </p>
+                    </div>
+                    {files.idFront ? (
+                      <img
+                        src={files.idFront.previewUrl}
+                        alt="Government ID front preview"
+                        className="mt-3 h-28 w-44 rounded-xl border border-gray-200 object-cover object-center dark:border-gray-700"
+                      />
+                    ) : null}
+                    {errors.id_front ? (
+                      <p className="mt-1 text-xs uppercase tracking-[0.2em] text-gray-500 dark:text-gray-400">
+                        {errors.id_front}
+                      </p>
+                    ) : null}
+                  </div>
+                  <div>
+                    <label
+                      htmlFor="booking-id-back"
+                      className="text-xs font-semibold uppercase tracking-[0.3em] text-gray-500 dark:text-gray-400"
+                    >
+                      Government ID (back) *
+                    </label>
+                    <input
+                      id="booking-id-back"
+                      name="id_back"
+                      type="file"
+                      accept="image/png,image/jpeg,image/jpg,image/heic,image/heif,image/webp"
+                      onChange={handleFileChange('idBack')}
+                      className="sr-only"
+                      aria-describedby="booking-id-back-help"
+                      required
+                    />
+                    <div className="mt-2 flex flex-wrap items-center gap-3">
+                      <Button as="label" htmlFor="booking-id-back">
+                        Upload back ID
+                      </Button>
+                      <p id="booking-id-back-help" className="text-xs text-gray-500 dark:text-gray-400">
+                        {files.idBack
+                          ? `${files.idBack.name} · ${formatFileSize(files.idBack.size)}`
+                          : 'Ensure details are readable.'}
+                      </p>
+                    </div>
+                    {files.idBack ? (
+                      <img
+                        src={files.idBack.previewUrl}
+                        alt="Government ID back preview"
+                        className="mt-3 h-28 w-44 rounded-xl border border-gray-200 object-cover object-center dark:border-gray-700"
+                      />
+                    ) : null}
+                    {errors.id_back ? (
+                      <p className="mt-1 text-xs uppercase tracking-[0.2em] text-gray-500 dark:text-gray-400">
+                        {errors.id_back}
+                      </p>
+                    ) : null}
+                  </div>
                 </div>
-                {files.idFront ? (
-                  <img
-                    src={files.idFront.previewUrl}
-                    alt="Government ID front preview"
-                    className="mt-3 h-28 w-44 rounded-xl border border-gray-200 object-cover object-center dark:border-gray-700"
-                  />
-                ) : null}
-                {errors.id_front ? (
-                  <p className="mt-1 text-xs uppercase tracking-[0.2em] text-gray-500 dark:text-gray-400">
-                    {errors.id_front}
-                  </p>
-                ) : null}
               </div>
-              <div>
-                <label
-                  htmlFor="booking-id-back"
-                  className="text-xs font-semibold uppercase tracking-[0.3em] text-gray-500 dark:text-gray-400"
-                >
-                  Government ID (back) *
-                </label>
-                <input
-                  id="booking-id-back"
-                  name="id_back"
-                  type="file"
-                  accept="image/png,image/jpeg,image/jpg,image/heic,image/heif,image/webp"
-                  onChange={handleFileChange('idBack')}
-                  className="sr-only"
-                  aria-describedby="booking-id-back-help"
-                  required
-                />
-                <div className="mt-2 flex flex-wrap items-center gap-3">
-                  <Button as="label" htmlFor="booking-id-back">
-                    Upload back ID
-                  </Button>
-                  <p id="booking-id-back-help" className="text-xs text-gray-500 dark:text-gray-400">
-                    {files.idBack
-                      ? `${files.idBack.name} · ${formatFileSize(files.idBack.size)}`
-                      : 'Ensure details are readable.'}
-                  </p>
-                </div>
-                {files.idBack ? (
-                  <img
-                    src={files.idBack.previewUrl}
-                    alt="Government ID back preview"
-                    className="mt-3 h-28 w-44 rounded-xl border border-gray-200 object-cover object-center dark:border-gray-700"
-                  />
-                ) : null}
-                {errors.id_back ? (
-                  <p className="mt-1 text-xs uppercase tracking-[0.2em] text-gray-500 dark:text-gray-400">
-                    {errors.id_back}
-                  </p>
-                ) : null}
-              </div>
-              </div>
-            </div>
-          )}
-          <div>
+            )}
+          </div>
+          <div ref={inspirationRef}>
             <label
               htmlFor="booking-inspiration"
               className="text-xs font-semibold uppercase tracking-[0.3em] text-gray-500 dark:text-gray-400"
@@ -1566,6 +1682,7 @@ export default function ShareYourIdea() {
               autoComplete="off"
               autoCorrect="on"
               spellCheck
+              ref={descriptionRef}
               className="mt-2 w-full rounded-xl border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 transition focus:border-gray-900 focus:outline-none focus:ring-0 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-100 dark:focus:border-gray-400"
               placeholder="Share themes, lettering, or any details that help us understand your idea."
               required={!files.inspiration.length}
@@ -1598,7 +1715,7 @@ export default function ShareYourIdea() {
                 Create a client account for future bookings
               </label>
               {form.create_account ? (
-                <div>
+                <div ref={passwordRef}>
                   <label
                     htmlFor="booking-password"
                     className="text-xs font-semibold uppercase tracking-[0.3em] text-gray-500 dark:text-gray-400"
