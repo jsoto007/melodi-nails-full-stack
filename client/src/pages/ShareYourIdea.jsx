@@ -763,8 +763,8 @@ export default function ShareYourIdea() {
   };
 
   return (
-    <main className="bg-white py-16 text-gray-900 dark:bg-black dark:text-gray-100">
-      <div className="mx-auto flex max-w-6xl flex-col gap-10 px-6">
+    <main className="bg-white py-10 text-gray-900 dark:bg-black dark:text-gray-100">
+      <div className="mx-auto flex max-w-6xl flex-col gap-10 px-4">
         <FadeIn className="flex flex-col gap-6" delayStep={0.1}>
           <div className="flex flex-wrap items-start justify-between gap-4">
             <SectionTitle
@@ -776,22 +776,6 @@ export default function ShareYourIdea() {
               Back to home
             </Button>
           </div>
-          <Card className="flex flex-col gap-6 lg:flex-row lg:items-center lg:justify-between">
-            <div className="space-y-3">
-              <p className="text-sm text-gray-600 dark:text-gray-300">
-                Booking requests include secure document intake so we can prep custom design time and confirm age
-                requirements before meeting. Files stay encrypted and only our studio can view them unless you toggle
-                otherwise.
-              </p>
-              <ul className="space-y-1">{requirementList}</ul>
-            </div>
-            <div className="rounded-2xl border border-dashed border-gray-300 p-4 text-xs uppercase tracking-[0.2em] text-gray-500 dark:border-gray-700 dark:text-gray-400">
-              Need help? Email{' '}
-              <a href="mailto:hello@blackworknyc.com" className="underline hover:text-gray-900 dark:hover:text-gray-100">
-                hello@blackworknyc.com
-              </a>
-            </div>
-          </Card>
         </FadeIn>
 
         {notice ? (
@@ -1353,6 +1337,22 @@ export default function ShareYourIdea() {
               Cancel
             </Button>
           </div>
+          <Card className="flex flex-col gap-6 mt-10 lg:flex-row lg:items-center lg:justify-between">
+            <div className="space-y-3">
+              <p className="text-sm text-gray-600 dark:text-gray-300">
+                Booking requests include secure document intake so we can prep custom design time and confirm age
+                requirements before meeting. Files stay encrypted and only our studio can view them unless you toggle
+                otherwise.
+              </p>
+              <ul className="space-y-1">{requirementList}</ul>
+            </div>
+            <div className="rounded-2xl border border-dashed border-gray-300 p-4 text-xs uppercase tracking-[0.2em] text-gray-500 dark:border-gray-700 dark:text-gray-400">
+              Need help? Email{' '}
+              <a href="mailto:blackworknyc@gmail.com" className="underline hover:text-gray-900 dark:hover:text-gray-100">
+                blackworknyc@gmail.com
+              </a>
+            </div>
+          </Card>
         </FadeIn>
       </div>
     </main>
