@@ -228,6 +228,19 @@ function storeBookingReceipt(appointment) {
   }
 }
 
+const WALLET_METHODS = [
+  {
+    id: 'applePay',
+    label: 'Apple Pay',
+    factory: (payments) => payments.applePay?.()
+  },
+  {
+    id: 'googlePay',
+    label: 'Google Pay',
+    factory: (payments) => payments.googlePay?.()
+  }
+];
+
 function validateFile(file) {
   if (!file) {
     return 'File missing.';
@@ -284,6 +297,9 @@ export default function ShareYourIdea() {
   const paymentsRef = useRef(null);
   const cardInstanceRef = useRef(null);
   const cardContainerRef = useRef(null);
+  const walletInstancesRef = useRef({});
+  const [availableWallets, setAvailableWallets] = useState([]);
+  const [walletProcessing, setWalletProcessing] = useState(null);
   const firstNameRef = useRef(null);
   const lastNameRef = useRef(null);
   const emailRef = useRef(null);
@@ -478,9 +494,15 @@ export default function ShareYourIdea() {
       }
       cardInstanceRef.current = null;
       paymentsRef.current = null;
+      walletInstancesRef.current = {};
+      setAvailableWallets([]);
+      setWalletProcessing(null);
       return;
     }
     setPaymentStatus('loading');
+    walletInstancesRef.current = {};
+    setAvailableWallets([]);
+    setWalletProcessing(null);
     let cancelled = false;
     const sdkUrl =
       paymentConfig.environment === 'production'
@@ -533,6 +555,34 @@ export default function ShareYourIdea() {
         }
         paymentsRef.current = payments;
         cardInstanceRef.current = card;
+        const walletCandidates = [];
+        for (const method of WALLET_METHODS) {
+          let walletInstance;
+          try {
+            walletInstance = await method.factory(payments);
+            if (!walletInstance) {
+              continue;
+            }
+            const availability = await walletInstance.canMakePayment?.();
+            const canUse =
+              typeof availability === 'boolean'
+                ? availability
+                : Boolean(availability?.canMakePayment ?? availability?.supported ?? availability);
+            if (canUse) {
+              walletInstancesRef.current[method.id] = walletInstance;
+              walletCandidates.push({ id: method.id, label: method.label });
+            } else {
+              walletInstance.destroy?.();
+            }
+          } catch {
+            walletInstance?.destroy?.();
+          }
+        }
+        if (!cancelled) {
+          setAvailableWallets(walletCandidates);
+        } else {
+          walletCandidates.forEach((wallet) => walletInstancesRef.current[wallet.id]?.destroy?.());
+        }
         setPaymentStatus('ready');
         setPaymentError(null);
       } catch (error) {
@@ -550,6 +600,10 @@ export default function ShareYourIdea() {
       }
       cardInstanceRef.current = null;
       paymentsRef.current = null;
+      Object.values(walletInstancesRef.current).forEach((wallet) => wallet?.destroy?.());
+      walletInstancesRef.current = {};
+      setAvailableWallets([]);
+      setWalletProcessing(null);
     };
   }, [paymentConfig]);
 
@@ -987,57 +1041,18 @@ export default function ShareYourIdea() {
     return true;
   }, [form, files, selectedSlot, shouldSkipIdentityUpload, scrollToField, setNotice, setNoticeTone]);
 
-  const handleSubmit = async (event) => {
-    event.preventDefault();
-    if (!validate()) {
-      return;
-    }
+  const handleFileReadError = useCallback(() => {
+    setNotice('Unable to read the selected files. Please try again.');
+    setNoticeTone('offline');
+  }, [setNotice, setNoticeTone]);
 
-    setSubmitting(true);
+  const prepareBookingPayload = useCallback(async () => {
     const contactName = `${form.first_name.trim()} ${form.last_name.trim()}`.replace(/\s+/g, ' ').trim();
-    let idFrontDataUrl = null;
-    let idBackDataUrl = null;
-    let inspirationDataUrls = [];
-    try {
-      [idFrontDataUrl, idBackDataUrl, inspirationDataUrls] = await Promise.all([
-        shouldSkipIdentityUpload ? Promise.resolve(null) : files.idFront?.file ? readFileAsDataUrl(files.idFront.file) : Promise.resolve(null),
-        shouldSkipIdentityUpload ? Promise.resolve(null) : files.idBack?.file ? readFileAsDataUrl(files.idBack.file) : Promise.resolve(null),
-        Promise.all(files.inspiration.map((entry) => readFileAsDataUrl(entry.file)))
-      ]);
-    } catch (error) {
-      setNotice('Unable to read the selected files. Please try again.');
-      setNoticeTone('offline');
-      setSubmitting(false);
-      return;
-    }
-
-    const squareFields = {};
-    if (paymentConfig?.enabled) {
-      setPaymentError(null);
-      try {
-        if (!cardInstanceRef.current) {
-          throw new Error('Payment form is still loading. Please wait a moment.');
-        }
-        const tokenResult = await cardInstanceRef.current.tokenize();
-        if (tokenResult.status !== 'OK') {
-          throw new Error(tokenResult.errors?.[0]?.message || 'Unable to verify your card.');
-        }
-        squareFields.square_source_id = tokenResult.token;
-        squareFields.square_idempotency_key =
-          typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
-            ? crypto.randomUUID()
-            : `${Date.now()}-${Math.random()}`;
-        const verificationToken = tokenResult.details?.verificationToken ?? tokenResult.verificationToken;
-        if (verificationToken) {
-          squareFields.square_verification_token = verificationToken;
-        }
-      } catch (error) {
-        setPaymentError(error.message || 'Unable to verify your card. Please try again.');
-        setSubmitting(false);
-        return;
-      }
-    }
-
+    const [idFrontDataUrl, idBackDataUrl, inspirationDataUrls] = await Promise.all([
+      shouldSkipIdentityUpload ? Promise.resolve(null) : files.idFront?.file ? readFileAsDataUrl(files.idFront.file) : Promise.resolve(null),
+      shouldSkipIdentityUpload ? Promise.resolve(null) : files.idBack?.file ? readFileAsDataUrl(files.idBack.file) : Promise.resolve(null),
+      Promise.all(files.inspiration.map((entry) => readFileAsDataUrl(entry.file)))
+    ]);
     const payload = {
       first_name: form.first_name.trim(),
       last_name: form.last_name.trim(),
@@ -1055,7 +1070,6 @@ export default function ShareYourIdea() {
       id_back_url: shouldSkipIdentityUpload ? null : idBackDataUrl,
       inspiration_urls: inspirationDataUrls.filter(Boolean)
     };
-
     if (form.create_account) {
       payload.password = form.password;
     }
@@ -1065,14 +1079,84 @@ export default function ShareYourIdea() {
     if (shouldSkipIdentityUpload) {
       payload.reuse_identity_on_file = true;
     }
-    Object.assign(payload, squareFields);
+    return payload;
+  }, [
+    form,
+    files,
+    selectedSlot,
+    durationMinutes,
+    shouldSkipIdentityUpload,
+    signedInAccountId
+  ]);
 
-    try {
+  const buildSquareFieldsFromToken = useCallback((tokenResult) => {
+    if (!tokenResult?.token) {
+      throw new Error('Unable to verify the payment method.');
+    }
+    const fields = {
+      square_source_id: tokenResult.token,
+      square_idempotency_key:
+        typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
+          ? crypto.randomUUID()
+          : `${Date.now()}-${Math.random()}`
+    };
+    const verificationToken = tokenResult.details?.verificationToken ?? tokenResult.verificationToken;
+    if (verificationToken) {
+      fields.square_verification_token = verificationToken;
+    }
+    return fields;
+  }, []);
+
+  const completeBooking = useCallback(
+    async (payload) => {
       const response = await apiPost('/api/appointments', payload);
       storeBookingReceipt(response);
       setNotice(null);
       resetBookingState();
       navigate('/booking/confirmation');
+    },
+    [navigate, resetBookingState]
+  );
+
+  const handleSubmit = async (event) => {
+    event.preventDefault();
+    if (!validate()) {
+      return;
+    }
+
+    setSubmitting(true);
+    let payload;
+    try {
+      payload = await prepareBookingPayload();
+    } catch (error) {
+      handleFileReadError();
+      setSubmitting(false);
+      return;
+    }
+
+    const squareFields = {};
+    if (paymentConfig?.enabled) {
+      setPaymentError(null);
+      try {
+        if (!cardInstanceRef.current) {
+          throw new Error('Payment form is still loading. Please wait a moment.');
+        }
+        const tokenResult = await cardInstanceRef.current.tokenize();
+        if (tokenResult.status !== 'OK') {
+          throw new Error(tokenResult.errors?.[0]?.message || 'Unable to verify your card.');
+        }
+        Object.assign(squareFields, buildSquareFieldsFromToken(tokenResult));
+      } catch (error) {
+        setPaymentError(error.message || 'Unable to verify your card. Please try again.');
+        setSubmitting(false);
+        return;
+      }
+    }
+
+    Object.assign(payload, squareFields);
+
+    try {
+      await completeBooking(payload);
     } catch (error) {
       setNotice('Request saved locally. We will follow up once connected.');
       setNoticeTone('offline');
@@ -1080,6 +1164,54 @@ export default function ShareYourIdea() {
       setSubmitting(false);
     }
   };
+
+  const handleWalletPayment = useCallback(
+    async (walletId) => {
+      if (!validate()) {
+        return;
+      }
+      const walletInstance = walletInstancesRef.current[walletId];
+      if (!walletInstance) {
+        setPaymentError('This payment method is unavailable right now.');
+        return;
+      }
+
+      setSubmitting(true);
+      setPaymentError(null);
+      setWalletProcessing(walletId);
+
+      let payload;
+      try {
+        payload = await prepareBookingPayload();
+      } catch (error) {
+        handleFileReadError();
+        setWalletProcessing(null);
+        setSubmitting(false);
+        return;
+      }
+
+      try {
+        const tokenResult = await walletInstance.tokenize();
+        if (tokenResult.status !== 'OK') {
+          throw new Error(tokenResult.errors?.[0]?.message || 'Unable to verify your payment.');
+        }
+        Object.assign(payload, buildSquareFieldsFromToken(tokenResult));
+        await completeBooking(payload);
+      } catch (error) {
+        setPaymentError(error.message || 'Unable to verify your payment. Please try again.');
+      } finally {
+        setWalletProcessing(null);
+        setSubmitting(false);
+      }
+    },
+    [
+      validate,
+      prepareBookingPayload,
+      handleFileReadError,
+      buildSquareFieldsFromToken,
+      completeBooking
+    ]
+  );
 
   const renderCalendarDay = (entry) => {
     const { date, inCurrentMonth } = entry;
@@ -1761,6 +1893,31 @@ export default function ShareYourIdea() {
                 <p className="text-xs text-gray-500 dark:text-gray-400">
                   Securely processed by Square. We only charge the deposit after you confirm this booking.
                 </p>
+                {availableWallets.length > 0 ? (
+                  <div className="mt-3 space-y-2">
+                    <p className="text-xs uppercase tracking-[0.2em] text-gray-500 dark:text-gray-400">
+                      Or choose another payment method
+                    </p>
+                    <div className="flex flex-wrap gap-2">
+                      {availableWallets.map((wallet) => (
+                        <button
+                          key={wallet.id}
+                          type="button"
+                          className="flex items-center justify-center gap-2 rounded-xl border border-gray-300 bg-white px-4 py-2 text-sm font-semibold text-gray-900 transition hover:border-gray-900 disabled:cursor-not-allowed disabled:opacity-50 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-100 dark:hover:border-gray-400"
+                          onClick={() => handleWalletPayment(wallet.id)}
+                          disabled={submitting || walletProcessing !== null}
+                        >
+                          {wallet.label}
+                        </button>
+                      ))}
+                    </div>
+                    {walletProcessing ? (
+                      <p className="text-xs uppercase tracking-[0.2em] text-gray-500 dark:text-gray-400">
+                        Processing payment…
+                      </p>
+                    ) : null}
+                  </div>
+                ) : null}
               </>
             ) : paymentConfig?.demo_mode ? (
               <p className="text-sm text-gray-600 dark:text-gray-300">
