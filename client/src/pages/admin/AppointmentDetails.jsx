@@ -21,6 +21,24 @@ const ASSET_FIELD_IDS = {
   note: 'appointment-asset-note'
 };
 
+const STATUS_OPTIONS = [
+  { value: 'pending', label: 'Pending' },
+  { value: 'completed', label: 'Completed' },
+  { value: 'cancelled', label: 'Cancelled' }
+];
+
+const APPOINTMENT_STATUS_FIELD_ID = 'appointment-status-select';
+
+function formatStatusLabel(value) {
+  if (!value) {
+    return '';
+  }
+  return value
+    .split(/[_\s]+/)
+    .map((segment) => (segment ? segment[0].toUpperCase() + segment.slice(1) : ''))
+    .join(' ');
+}
+
 function formatDateTime(value) {
   if (!value) {
     return 'Not scheduled';
@@ -74,7 +92,14 @@ export default function AppointmentDetails() {
 
   const {
     state: { appointments, currentAdmin },
-    actions: { setFeedback, createAppointmentAsset, toggleAppointmentAssetVisibility, refreshAppointments, uploadMedia }
+    actions: {
+      setFeedback,
+      createAppointmentAsset,
+      toggleAppointmentAssetVisibility,
+      refreshAppointments,
+      uploadMedia,
+      updateAppointment
+    }
   } = useAdminDashboard();
 
   const [appointment, setAppointment] = useState(() =>
@@ -85,6 +110,8 @@ export default function AppointmentDetails() {
   const [assetDraft, setAssetDraft] = useState(INITIAL_ASSET_DRAFT);
   const [busyAssetId, setBusyAssetId] = useState(null);
   const [uploadingImage, setUploadingImage] = useState(false);
+  const [statusUpdating, setStatusUpdating] = useState(false);
+  const [statusUpdateError, setStatusUpdateError] = useState(null);
   const imageInputRef = useRef(null);
 
   const reloadAppointment = useCallback(async () => {
@@ -126,6 +153,14 @@ export default function AppointmentDetails() {
       return ['id_front', 'id_back', 'inspiration_image'].includes(asset.kind);
     });
   }, [appointment]);
+  const appointmentStatusOptions = useMemo(() => {
+    const options = [...STATUS_OPTIONS];
+    const currentStatus = appointment?.status;
+    if (currentStatus && !options.some((entry) => entry.value === currentStatus)) {
+      options.push({ value: currentStatus, label: formatStatusLabel(currentStatus) });
+    }
+    return options;
+  }, [appointment?.status]);
 
   const handleAssetDraftChange = (field, value) => {
     setAssetDraft((prev) => ({
@@ -215,6 +250,26 @@ export default function AppointmentDetails() {
     }
   };
 
+  const handleStatusChange = async (event) => {
+    if (!appointment) {
+      return;
+    }
+    const newStatus = event.target.value;
+    if (!newStatus || newStatus === appointment.status) {
+      return;
+    }
+    setStatusUpdateError(null);
+    setStatusUpdating(true);
+    try {
+      await updateAppointment(appointment.id, { status: newStatus });
+      await reloadAppointment();
+    } catch (err) {
+      setStatusUpdateError(getErrorMessage(err, 'Unable to update status.'));
+    } finally {
+      setStatusUpdating(false);
+    }
+  };
+
   if (!appointmentNumericId || Number.isNaN(appointmentNumericId)) {
     return (
       <main className="bg-gray-50 py-16 text-gray-900 dark:bg-gray-950 dark:text-gray-100">
@@ -292,10 +347,33 @@ export default function AppointmentDetails() {
             Appointment overview
           </h3>
           <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-            <div>
-              <p className="text-xs uppercase tracking-[0.3em] text-gray-500 dark:text-gray-400">Status</p>
-              <p className="text-sm text-gray-800 dark:text-gray-200">{appointment.status}</p>
-            </div>
+          <div>
+            <label
+              htmlFor={APPOINTMENT_STATUS_FIELD_ID}
+              className="text-xs uppercase tracking-[0.3em] text-gray-500 dark:text-gray-400"
+            >
+              Status
+            </label>
+            <select
+              id={APPOINTMENT_STATUS_FIELD_ID}
+              value={appointment.status || STATUS_OPTIONS[0].value}
+              onChange={handleStatusChange}
+              disabled={statusUpdating}
+              className="mt-1 w-full rounded-2xl border border-gray-200 bg-white px-3 py-2 text-sm text-gray-900 focus:border-gray-900 focus:outline-none focus:ring-0 dark:border-gray-700 dark:bg-gray-950 dark:text-gray-100 dark:focus:border-gray-400"
+            >
+              {appointmentStatusOptions.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+            {statusUpdating ? (
+              <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">Saving status...</p>
+            ) : null}
+            {statusUpdateError ? (
+              <p className="mt-1 text-xs text-red-500 dark:text-red-400">{statusUpdateError}</p>
+            ) : null}
+          </div>
             <div>
               <p className="text-xs uppercase tracking-[0.3em] text-gray-500 dark:text-gray-400">Scheduled start</p>
               <p className="text-sm text-gray-800 dark:text-gray-200">{formatDateTime(appointment.scheduled_start)}</p>

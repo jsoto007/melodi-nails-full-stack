@@ -2739,6 +2739,7 @@ def admin_update_appointment(appointment_id):
     new_placement = appointment.tattoo_placement
     new_size = appointment.tattoo_size
     new_notes = appointment.placement_notes
+    should_validate_slot = 'scheduled_start' in payload or 'duration_minutes' in payload
 
     if "status" in payload:
         status = (payload.get("status") or "").strip()
@@ -2813,7 +2814,7 @@ def admin_update_appointment(appointment_id):
             except (TypeError, ValueError):
                 return jsonify({"error": "Suggested duration must be an integer."}), 400
 
-    if new_start and new_duration:
+    if should_validate_slot and new_start and new_duration:
         available_slots, _window = build_available_slots(
             new_start.date(),
             new_duration,

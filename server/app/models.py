@@ -397,7 +397,7 @@ class SystemSetting(TimestampMixin, db.Model):
 
     id = db.Column(db.Integer, primary_key=True)
     key = db.Column(db.String(120), unique=True, nullable=False)
-    value = db.Column(db.String(255), nullable=False)
+    value = db.Column(db.Text, nullable=False)
     description = db.Column(db.Text)
     is_editable = db.Column(db.Boolean, default=True, nullable=False)
 
