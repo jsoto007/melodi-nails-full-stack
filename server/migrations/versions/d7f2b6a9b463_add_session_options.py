@@ -17,7 +17,7 @@ def upgrade():
         sa.Column("name", sa.String(length=120)),
         sa.Column("duration_minutes", sa.Integer(), nullable=False),
         sa.Column("price_cents", sa.Integer(), nullable=False),
-        sa.Column("is_active", sa.Boolean(), nullable=False, server_default=sa.text("1")),
+        sa.Column("is_active", sa.Boolean(), nullable=False, server_default=sa.text("TRUE")),
         sa.Column("created_at", sa.DateTime(), nullable=False),
         sa.Column("updated_at", sa.DateTime(), nullable=False),
     )

@@ -662,11 +662,8 @@ def serialize_appointment(appointment):
     client = appointment.client
     assigned_admin = appointment.assigned_admin
     session_option_data = serialize_session_option(appointment.session_option) if appointment.session_option else None
-    session_price_cents = (
-        session_option_data["price_cents"]
-        if session_option_data and isinstance(session_option_data.get("price_cents"), int)
-        else calculate_session_price_cents(appointment.duration_minutes)
-    )
+    pricing_duration_minutes = appointment.suggested_duration_minutes or appointment.duration_minutes
+    session_price_cents = calculate_session_price_cents(pricing_duration_minutes)
     return {
         "id": appointment.id,
         "reference_code": appointment.reference_code,
@@ -3062,8 +3059,9 @@ def create_appointment():
     contact_email_value = resolved_contact_email or email or (client_account.email if client_account else None)
     contact_phone_value = resolved_contact_phone or phone or (client_account.phone if client_account else None)
 
+    recommended_duration_minutes = suggested_duration or duration_minutes
     booking_fee_percent = load_booking_fee_percent()
-    session_price_cents = session_option.price_cents if session_option else calculate_session_price_cents(duration_minutes)
+    session_price_cents = calculate_session_price_cents(recommended_duration_minutes)
     pay_full_amount = parse_bool(payload.get("pay_full_amount"), default=False)
     charge_amount = session_price_cents if pay_full_amount else calculate_booking_fee_amount(session_price_cents, booking_fee_percent)
 

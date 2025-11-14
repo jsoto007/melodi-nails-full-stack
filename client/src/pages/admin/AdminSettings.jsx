@@ -97,6 +97,15 @@ export default function AdminSettings() {
   }, [pricing?.booking_fee_percent]);
 
   const sessionOptions = pricing?.session_options ?? [];
+  const pricingCurrency = pricing?.currency ?? 'USD';
+  const pricingFormatter = useMemo(
+    () =>
+      new Intl.NumberFormat('en-US', {
+        style: 'currency',
+        currency: pricingCurrency
+      }),
+    [pricingCurrency]
+  );
 
   const hourlyRateCurrency = pricing?.currency ?? 'USD';
   const hourlyRateFormatter = useMemo(

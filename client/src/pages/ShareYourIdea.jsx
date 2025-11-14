@@ -297,7 +297,7 @@ export default function ShareYourIdea() {
   const [durationMinutes, setDurationMinutes] = useState(SLOT_INTERVAL_MINUTES);
   const [durationManuallySet, setDurationManuallySet] = useState(false);
   const [forceIdentityUpdate, setForceIdentityUpdate] = useState(false);
-  const [pricingEstimate, setPricingEstimate] = useState(null);
+  const [recommendedPricing, setRecommendedPricing] = useState(null);
   const [pricingLoading, setPricingLoading] = useState(false);
   const [pricingError, setPricingError] = useState(null);
   const [sessionOptions, setSessionOptions] = useState([]);
@@ -360,6 +360,9 @@ export default function ShareYourIdea() {
   const signedInAccountId = isAuthenticated && account?.id ? account.id : null;
   const selectedSessionOption =
     sessionOptions.find((option) => option.id === selectedSessionOptionId) ?? null;
+  const recommendedSessionOption =
+    sessionOptions.find((option) => option.duration_minutes === suggestedMinutes) ?? null;
+  const recommendedCurrency = recommendedPricing?.currency ?? paymentConfig?.currency ?? 'USD';
   useEffect(() => {
     if (!selectedSessionOption) {
       return;
@@ -380,7 +383,7 @@ export default function ShareYourIdea() {
     paymentConfig?.booking_fee_percent ?? 20,
     paymentConfig?.minimum_booking_fee_percent ?? 20
   );
-  const sessionPriceCents = selectedSessionOption?.price_cents ?? pricingEstimate?.total_cents ?? 0;
+  const sessionPriceCents = recommendedPricing?.total_cents ?? 0;
   const depositAmountCents = payFullAmount
     ? sessionPriceCents
     : calculateBookingFeeAmount(sessionPriceCents, bookingFeePercent);
@@ -392,19 +395,20 @@ export default function ShareYourIdea() {
     return formatter.format(depositAmountCents / 100);
   }, [depositAmountCents, depositCurrency]);
 
-  const pricingCurrency = pricingEstimate?.currency ?? 'USD';
   const pricingFormatter = useMemo(
     () =>
       new Intl.NumberFormat('en-US', {
         style: 'currency',
-        currency: pricingCurrency
+        currency: recommendedCurrency
       }),
-    [pricingCurrency]
+    [recommendedCurrency]
   );
   const estimatedTotalLabel =
-    pricingEstimate?.total_cents != null ? pricingFormatter.format(pricingEstimate.total_cents / 100) : null;
+    recommendedPricing?.total_cents != null ? pricingFormatter.format(recommendedPricing.total_cents / 100) : null;
   const serverHourlyRateLabel =
-    pricingEstimate?.hourly_rate_cents != null ? pricingFormatter.format(pricingEstimate.hourly_rate_cents / 100) : null;
+    recommendedPricing?.hourly_rate_cents != null
+      ? pricingFormatter.format(recommendedPricing.hourly_rate_cents / 100)
+      : null;
   const paymentsUnavailable = paymentConfigLoaded && !paymentConfig?.enabled && !paymentConfig?.demo_mode;
   const submitDisabled =
     submitting || (paymentConfig?.enabled ? paymentStatus !== 'ready' : false) || paymentsUnavailable;
@@ -749,42 +753,43 @@ export default function ShareYourIdea() {
   }, [durationMinutes]);
 
   useEffect(() => {
-    if (selectedSessionOption) {
-      setPricingEstimate({
-        duration_minutes: selectedSessionOption.duration_minutes,
-        total_cents: selectedSessionOption.price_cents,
+    if (!suggestedMinutes) {
+      setRecommendedPricing(null);
+      setPricingError(null);
+      setPricingLoading(false);
+      return;
+    }
+    if (recommendedSessionOption) {
+      setRecommendedPricing({
+        duration_minutes: recommendedSessionOption.duration_minutes,
+        total_cents: recommendedSessionOption.price_cents,
         hourly_rate_cents: null,
-        currency: paymentConfig?.currency ?? 'USD'
+        currency: recommendedCurrency
       });
       setPricingError(null);
       setPricingLoading(false);
       return;
     }
-    if (!durationMinutes) {
-      setPricingEstimate(null);
+    const cached = pricingCacheRef.current[suggestedMinutes];
+    if (cached) {
+      setRecommendedPricing(cached);
       setPricingError(null);
       setPricingLoading(false);
-      return;
-    }
-    const cached = pricingCacheRef.current[durationMinutes];
-    if (cached) {
-      setPricingEstimate(cached);
-      setPricingError(null);
       return;
     }
     const controller = new AbortController();
     setPricingLoading(true);
     setPricingError(null);
-    apiGet(`/api/pricing/estimate?duration_minutes=${durationMinutes}`, { signal: controller.signal })
+    apiGet(`/api/pricing/estimate?duration_minutes=${suggestedMinutes}`, { signal: controller.signal })
       .then((result) => {
-        pricingCacheRef.current[durationMinutes] = result;
-        setPricingEstimate(result);
+        pricingCacheRef.current[suggestedMinutes] = result;
+        setRecommendedPricing(result);
       })
       .catch((error) => {
         if (error.name === 'AbortError') {
           return;
         }
-        setPricingEstimate(null);
+        setRecommendedPricing(null);
         setPricingError('Unable to load pricing.');
       })
       .finally(() => {
@@ -793,7 +798,7 @@ export default function ShareYourIdea() {
     return () => {
       controller.abort();
     };
-  }, [durationMinutes, selectedSessionOption, paymentConfig?.currency]);
+  }, [suggestedMinutes, recommendedSessionOption, recommendedCurrency]);
 
   useEffect(() => {
     if (!isAuthenticated || !account) {
