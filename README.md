@@ -71,6 +71,10 @@ The dev server proxies `/api/*` to `http://127.0.0.1:5000`, keeping credentialed
 | `SQUARE_DEPOSIT_AMOUNT_CENTS` | `server/.env` | Booking deposit amount in cents (default `10000`, i.e. $100). |
 | `SQUARE_DEPOSIT_CURRENCY` | `server/.env` | Currency code for deposits (default `USD`). |
 | `SQUARE_FAKE_PAYMENTS` | `server/.env` | Set to `true` to bypass real payments in development. |
+| `MAILGUN_DOMAIN` | `server/.env` | Mailgun domain used for outgoing confirmation & activation emails. |
+| `MAILGUN_API_KEY` | `server/.env` | Private Mailgun API key for delivering messages. |
+| `MAILGUN_FROM` | `server/.env` | Sender address for automated emails (e.g. `Black Ink Tattoo <noreply@mg.blackink.com>`). |
+| `CLIENT_BASE_URL` | `server/.env` | Frontend root URL used when generating activation links (default `http://localhost:5173`). |
 
 ### Payments & uploads
 

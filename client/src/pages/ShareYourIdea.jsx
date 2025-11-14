@@ -206,6 +206,14 @@ function formatDurationLabel(minutes) {
   return hours === 1 ? '1 hour' : `${hours} hours`;
 }
 
+function calculateBookingFeeAmount(totalCents, percent) {
+  if (!totalCents) {
+    return 0;
+  }
+  const fee = Math.ceil((totalCents * percent) / 100);
+  return Math.min(totalCents, Math.max(fee, 1));
+}
+
 function formatFileSize(bytes) {
   if (!Number.isFinite(bytes)) {
     return '';
@@ -292,6 +300,10 @@ export default function ShareYourIdea() {
   const [pricingEstimate, setPricingEstimate] = useState(null);
   const [pricingLoading, setPricingLoading] = useState(false);
   const [pricingError, setPricingError] = useState(null);
+  const [sessionOptions, setSessionOptions] = useState([]);
+  const [selectedSessionOptionId, setSelectedSessionOptionId] = useState(null);
+  const [sessionOptionsError, setSessionOptionsError] = useState(null);
+  const [payFullAmount, setPayFullAmount] = useState(false);
 
   const [paymentConfig, setPaymentConfig] = useState(null);
   const [paymentConfigLoaded, setPaymentConfigLoaded] = useState(false);
@@ -329,7 +341,7 @@ export default function ShareYourIdea() {
 
   const calendarDays = useMemo(() => buildCalendarDays(calendarMonth), [calendarMonth]);
 
-  const durationOptions = useMemo(() => {
+  const legacyDurationOptions = useMemo(() => {
     const options = new Set();
     const interval = availabilityConfig?.slotIntervalMinutes ?? SLOT_INTERVAL_MINUTES;
     const upperBound = interval * 6; // show up to ~6 blocks by default
@@ -346,9 +358,32 @@ export default function ShareYourIdea() {
   const hasStoredIdentity = Boolean(isAuthenticated && account?.has_identity_documents);
   const shouldSkipIdentityUpload = hasStoredIdentity && !forceIdentityUpdate;
   const signedInAccountId = isAuthenticated && account?.id ? account.id : null;
+  const selectedSessionOption =
+    sessionOptions.find((option) => option.id === selectedSessionOptionId) ?? null;
+  useEffect(() => {
+    if (!selectedSessionOption) {
+      return;
+    }
+    setDurationMinutes((previous) =>
+      previous === selectedSessionOption.duration_minutes ? previous : selectedSessionOption.duration_minutes
+    );
+  }, [selectedSessionOption]);
 
-  const depositAmountCents = paymentConfig?.deposit_amount_cents ?? 0;
+  useEffect(() => {
+    if (selectedSessionOption) {
+      setPayFullAmount(false);
+    }
+  }, [selectedSessionOption]);
+
   const depositCurrency = paymentConfig?.currency ?? 'USD';
+  const bookingFeePercent = Math.max(
+    paymentConfig?.booking_fee_percent ?? 20,
+    paymentConfig?.minimum_booking_fee_percent ?? 20
+  );
+  const sessionPriceCents = selectedSessionOption?.price_cents ?? pricingEstimate?.total_cents ?? 0;
+  const depositAmountCents = payFullAmount
+    ? sessionPriceCents
+    : calculateBookingFeeAmount(sessionPriceCents, bookingFeePercent);
   const depositAmountLabel = useMemo(() => {
     if (!depositAmountCents) {
       return null;
@@ -376,7 +411,9 @@ export default function ShareYourIdea() {
   const submitLabel = submitting
     ? 'Processing...'
     : paymentConfig?.enabled
-    ? `Pay ${depositAmountLabel || 'deposit'} & book`
+    ? payFullAmount
+      ? `Pay ${depositAmountLabel || 'total amount'} & book`
+      : `Pay ${depositAmountLabel || 'deposit'} & book`
     : 'Submit booking';
 
   const loadAvailabilityConfig = useCallback(async () => {
@@ -501,6 +538,37 @@ export default function ShareYourIdea() {
     })();
     return () => {
       isMounted = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    let isMounted = true;
+    const controller = new AbortController();
+    apiGet('/api/pricing/session-options', { signal: controller.signal })
+      .then((data) => {
+        if (!isMounted) {
+          return;
+        }
+        const options = Array.isArray(data) ? data.filter((option) => option.is_active !== false) : [];
+        setSessionOptions(options);
+        setSessionOptionsError(null);
+        setSelectedSessionOptionId((previous) => {
+          if (previous && options.some((opt) => opt.id === previous)) {
+            return previous;
+          }
+          return options[0]?.id ?? null;
+        });
+      })
+      .catch(() => {
+        if (!isMounted) {
+          return;
+        }
+        setSessionOptions([]);
+        setSessionOptionsError('Unable to load session pricing right now.');
+      });
+    return () => {
+      isMounted = false;
+      controller.abort();
     };
   }, []);
 
@@ -681,6 +749,17 @@ export default function ShareYourIdea() {
   }, [durationMinutes]);
 
   useEffect(() => {
+    if (selectedSessionOption) {
+      setPricingEstimate({
+        duration_minutes: selectedSessionOption.duration_minutes,
+        total_cents: selectedSessionOption.price_cents,
+        hourly_rate_cents: null,
+        currency: paymentConfig?.currency ?? 'USD'
+      });
+      setPricingError(null);
+      setPricingLoading(false);
+      return;
+    }
     if (!durationMinutes) {
       setPricingEstimate(null);
       setPricingError(null);
@@ -714,7 +793,7 @@ export default function ShareYourIdea() {
     return () => {
       controller.abort();
     };
-  }, [durationMinutes]);
+  }, [durationMinutes, selectedSessionOption, paymentConfig?.currency]);
 
   useEffect(() => {
     if (!isAuthenticated || !account) {
@@ -986,6 +1065,8 @@ export default function ShareYourIdea() {
   const handleDurationSelect = (minutes) => {
     setDurationMinutes(minutes);
     setDurationManuallySet(true);
+    setSelectedSessionOptionId(null);
+    setPayFullAmount(false);
   };
 
   const scrollToField = useCallback(
@@ -1124,6 +1205,10 @@ export default function ShareYourIdea() {
       id_back_url: shouldSkipIdentityUpload ? null : idBackDataUrl,
       inspiration_urls: inspirationDataUrls.filter(Boolean)
     };
+    if (selectedSessionOption) {
+      payload.session_option_id = selectedSessionOption.id;
+    }
+    payload.pay_full_amount = payFullAmount;
     if (form.create_account) {
       payload.password = form.password;
     }
@@ -1140,6 +1225,8 @@ export default function ShareYourIdea() {
     selectedSlot,
     durationMinutes,
     shouldSkipIdentityUpload,
+    selectedSessionOption,
+    payFullAmount,
     signedInAccountId
   ]);
 
@@ -1578,46 +1665,85 @@ export default function ShareYourIdea() {
           <div>
             <div className="flex items-baseline justify-between gap-3">
               <p className="text-xs font-semibold uppercase tracking-[0.3em] text-gray-500 dark:text-gray-400">
-                Suggested session length
+                Session length
               </p>
               <span className="text-xs uppercase tracking-[0.2em] text-gray-400 dark:text-gray-500">
-                {formatDurationLabel(suggestedMinutes)}
+                Recommended {formatDurationLabel(suggestedMinutes)}
               </span>
             </div>
             <div className="mt-3 grid gap-2 sm:grid-cols-3">
-              {durationOptions.map((minutes) => {
-                const isActive = durationMinutes === minutes;
-                const isRecommended = minutes === suggestedMinutes;
-                return (
-                  <button
-                    key={minutes}
-                    type="button"
-                    onClick={() => handleDurationSelect(minutes)}
-                    className={classNames(
-                      'flex w-full items-center justify-between gap-2 rounded-xl border px-3 py-2 text-sm font-medium transition',
-                      isActive
-                        ? 'border-gray-900 bg-gray-900 text-white shadow-sm dark:border-gray-100 dark:bg-gray-100 dark:text-gray-900'
-                        : 'border-gray-300 bg-white text-gray-700 hover:border-gray-900 hover:text-gray-900 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-300 dark:hover:border-gray-400 dark:hover:text-gray-100'
-                    )}
-                    aria-pressed={isActive}
-                  >
-                    <span className="whitespace-nowrap">{formatDurationLabel(minutes)}</span>
-                    {isRecommended ? (
-                      <span
-                        className={classNames(
-                          'rounded-full border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.2em]',
-                          isActive
-                            ? 'border-white text-white dark:border-gray-900 dark:text-gray-900'
-                            : 'border-gray-400 text-gray-500 dark:border-gray-500 dark:text-gray-300'
-                        )}
-                      >
-                        Recommended
+              {sessionOptions.length ? (
+                sessionOptions.map((option) => {
+                  const isActive = selectedSessionOptionId === option.id;
+                  return (
+                    <button
+                      key={option.id}
+                      type="button"
+                      onClick={() => {
+                        handleDurationSelect(option.duration_minutes);
+                        setSelectedSessionOptionId(option.id);
+                      }}
+                      className={classNames(
+                        'flex flex-col justify-between gap-2 rounded-xl border px-3 py-3 text-sm font-medium transition',
+                        isActive
+                          ? 'border-gray-900 bg-gray-900 text-white shadow-sm dark:border-gray-100 dark:bg-gray-100 dark:text-gray-900'
+                          : 'border-gray-300 bg-white text-gray-700 hover:border-gray-900 hover:text-gray-900 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-300 dark:hover:border-gray-400 dark:hover:text-gray-100'
+                      )}
+                    >
+                      <div>
+                        <p className="text-sm font-semibold">
+                          {option.name || `${formatDurationLabel(option.duration_minutes)} session`}
+                        </p>
+                        <p className="text-xs uppercase tracking-[0.2em] text-gray-500 dark:text-gray-400">
+                          {pricingFormatter.format((option.price_cents ?? 0) / 100)}
+                        </p>
+                      </div>
+                      <span className="text-[11px] uppercase tracking-[0.2em] text-gray-400 dark:text-gray-500">
+                        {formatDurationLabel(option.duration_minutes)}
                       </span>
-                    ) : null}
-                  </button>
-                );
-              })}
+                    </button>
+                  );
+                })
+              ) : (
+                legacyDurationOptions.map((minutes) => {
+                  const isActive = durationMinutes === minutes && !selectedSessionOptionId;
+                  const isRecommended = minutes === suggestedMinutes;
+                  return (
+                    <button
+                      key={minutes}
+                      type="button"
+                      onClick={() => handleDurationSelect(minutes)}
+                      className={classNames(
+                        'flex w-full items-center justify-between gap-2 rounded-xl border px-3 py-2 text-sm font-medium transition',
+                        isActive
+                          ? 'border-gray-900 bg-gray-900 text-white shadow-sm dark:border-gray-100 dark:bg-gray-100 dark:text-gray-900'
+                          : 'border-gray-300 bg-white text-gray-700 hover:border-gray-900 hover:text-gray-900 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-300 dark:hover:border-gray-400 dark:hover:text-gray-100'
+                      )}
+                      aria-pressed={isActive}
+                    >
+                      <span className="whitespace-nowrap">{formatDurationLabel(minutes)}</span>
+                      {isRecommended ? (
+                        <span
+                          className={classNames(
+                            'rounded-full border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.2em]',
+                            isActive
+                              ? 'border-white text-white dark:border-gray-900 dark:text-gray-900'
+                              : 'border-gray-400 text-gray-500 dark:border-gray-500 dark:text-gray-300'
+                          )}
+                        >
+                          Recommended
+                        </span>
+                      ) : null}
+                    </button>
+                  );
+                })
+              )}
             </div>
+            {sessionOptionsError ? (
+              <p className="mt-2 text-xs uppercase tracking-[0.2em] text-rose-500 dark:text-rose-400">
+                {sessionOptionsError}
+              </p>
+            ) : null}
             <div className="mt-4 rounded-2xl border border-gray-200 bg-white/80 p-3 text-sm text-gray-900 shadow-sm dark:border-gray-800 dark:bg-gray-950 dark:text-gray-100">
               <p className="text-[11px] font-semibold uppercase tracking-[0.3em] text-gray-500 dark:text-gray-400">
                 Estimated session cost
@@ -1984,10 +2110,24 @@ export default function ShareYourIdea() {
             <p className="text-xs uppercase tracking-[0.2em] text-gray-500 dark:text-gray-400">{errors.files}</p>
           ) : null}
 
-          <div className="space-y-2 rounded-2xl border border-dashed border-gray-300 p-4 dark:border-gray-700">
+          <div className="space-y-3 rounded-2xl border border-dashed border-gray-300 p-4 dark:border-gray-700">
             <p className="text-xs font-semibold uppercase tracking-[0.3em] text-gray-500 dark:text-gray-400">
               Booking deposit {depositAmountLabel ? `(${depositAmountLabel})` : ''}
             </p>
+            <p className="text-[11px] uppercase tracking-[0.25em] text-gray-500 dark:text-gray-400">
+              Standard booking fee is {bookingFeePercent}% of the session total.{' '}
+              {sessionPriceCents ? `Session total ${pricingFormatter.format(sessionPriceCents / 100)}.` : ''}
+            </p>
+            <label className="flex items-center gap-2 text-xs uppercase tracking-[0.25em] text-gray-500 dark:text-gray-400">
+              <input
+                type="checkbox"
+                checked={payFullAmount}
+                onChange={(event) => setPayFullAmount(event.target.checked)}
+                disabled={!sessionPriceCents}
+                className="h-4 w-4 rounded border border-gray-400 text-gray-900 focus:ring-gray-900 dark:border-gray-600 dark:bg-gray-900 dark:focus:ring-gray-400"
+              />
+              Charge the full session amount now (instead of the deposit)
+            </label>
             {paymentConfig?.enabled ? (
               <>
                 <div

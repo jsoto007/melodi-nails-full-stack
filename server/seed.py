@@ -9,6 +9,7 @@ from app.models import (
     AppointmentAsset,
     ClientAccount,
     GalleryItem,
+    SessionOption,
     SystemSetting,
     TattooAppointment,
     TattooCategory,
@@ -36,6 +37,9 @@ DEMO_USER = {
     "phone": "+1-555-0199",
     "password": "demo1234",
 }
+
+BOOKING_FEE_SETTING_KEY = "booking_fee_percent"
+DEFAULT_BOOKING_FEE_PERCENT = 20
 
 
 def ensure_admin_account(config):
@@ -295,8 +299,27 @@ def ensure_settings():
                 value="20000",
                 description="Hourly rate charged for tattoo sessions (in cents).",
             ),
+            SystemSetting(
+                key=BOOKING_FEE_SETTING_KEY,
+                value=str(DEFAULT_BOOKING_FEE_PERCENT),
+                description="Default booking fee percentage collected during reservations.",
+            ),
         ]
     )
+    return True
+
+
+def ensure_session_options():
+    if SessionOption.query.count() > 0:
+        return False
+
+    options = [
+        {"name": "One-hour session", "duration_minutes": 60, "price_cents": 10000},
+        {"name": "Two-hour session", "duration_minutes": 120, "price_cents": 17500},
+        {"name": "Three-hour session", "duration_minutes": 180, "price_cents": 24000},
+    ]
+    for entry in options:
+        db.session.add(SessionOption(**entry))
     return True
 
 
@@ -317,6 +340,7 @@ def seed_demo_data():
     created_any |= ensure_notifications(user)
     created_any |= ensure_admin_activity([owner_admin, manager_admin])
     created_any |= ensure_settings()
+    created_any |= ensure_session_options()
 
     if created_any:
         db.session.commit()

@@ -45,6 +45,10 @@ export default function AuthPage() {
   const [notice, setNotice] = useState(null);
   const [error, setError] = useState(null);
   const [submitting, setSubmitting] = useState(false);
+  const [activationEmail, setActivationEmail] = useState('');
+  const [activationError, setActivationError] = useState(null);
+  const [activationStatus, setActivationStatus] = useState(null);
+  const [activationSubmitting, setActivationSubmitting] = useState(false);
   const [mode, setMode] = useState(AUTH_MODES.login);
   const registerFirstNameRef = useRef(null);
   const loginEmailRef = useRef(null);
@@ -110,13 +114,41 @@ export default function AuthPage() {
       await refreshSession();
       navigate(redirect, { replace: true });
     } catch (err) {
-      if (err.status === 400) {
+      const serverMessage = err?.body?.errors?.[0]?.message;
+      if (serverMessage) {
+        const suggestion = serverMessage.includes('already exists')
+          ? ' If you booked as a guest you can request an activation link below.'
+          : '';
+        setError(`${serverMessage}${suggestion}`);
+      } else if (err.status === 400) {
         setError('Please review the highlighted fields and try again.');
       } else {
         setError('Unable to create your account right now.');
       }
     } finally {
       setSubmitting(false);
+    }
+  };
+
+  const handleActivationRequest = async (event) => {
+    event.preventDefault();
+    const payloadEmail = (activationEmail || '').trim().toLowerCase();
+    if (!payloadEmail) {
+      setActivationError('Enter the email you used for your guest booking.');
+      return;
+    }
+    setActivationSubmitting(true);
+    setActivationError(null);
+    setActivationStatus(null);
+    try {
+      await apiPost('/api/auth/activation-request', { email: payloadEmail });
+      setActivationStatus('Check your inbox for the activation link.');
+      setActivationEmail('');
+    } catch (err) {
+      const message = err.body?.error || 'Unable to send activation link right now.';
+      setActivationError(message);
+    } finally {
+      setActivationSubmitting(false);
     }
   };
 
@@ -361,6 +393,52 @@ export default function AuthPage() {
             </Link>
           </p>
         ) : null}
+      </Card>
+      <Card className="space-y-4">
+        <div className="space-y-2">
+          <h2 className="text-sm font-semibold uppercase tracking-[0.3em] text-gray-500 dark:text-gray-400">
+            Activate an existing guest account
+          </h2>
+          <p className="text-xs uppercase tracking-[0.3em] text-gray-500 dark:text-gray-400">
+            We will email a secure link so you can choose a password and start using the portal.
+          </p>
+        </div>
+        <form className="space-y-3" onSubmit={handleActivationRequest}>
+          <div>
+            <label className="text-xs uppercase tracking-[0.3em] text-gray-500 dark:text-gray-400">
+              Email
+            </label>
+            <input
+              type="email"
+              value={activationEmail}
+              onChange={(event) => {
+                setActivationEmail(event.target.value);
+                setActivationError(null);
+                setActivationStatus(null);
+              }}
+              placeholder="you@example.com"
+              className="mt-2 w-full rounded-xl border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 focus:border-gray-900 focus:outline-none focus:ring-0 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-100 dark:focus:border-gray-400"
+              required
+            />
+          </div>
+          <Button type="submit" disabled={activationSubmitting}>
+            {activationSubmitting ? 'Sending...' : 'Email activation link'}
+          </Button>
+        </form>
+        {activationStatus ? (
+          <p className="text-xs uppercase tracking-[0.25em] text-emerald-600 dark:text-emerald-400">
+            {activationStatus}
+          </p>
+        ) : null}
+        {activationError ? (
+          <p className="text-xs uppercase tracking-[0.25em] text-rose-500 dark:text-rose-400">{activationError}</p>
+        ) : null}
+        <p className="text-[0.6rem] uppercase tracking-[0.35em] text-gray-500 dark:text-gray-400">
+          Already have a token?{' '}
+          <Link to="/activate-account" className="font-semibold text-gray-900 underline dark:text-gray-100">
+            Activate your account
+          </Link>
+        </p>
       </Card>
         </div>
       </div>

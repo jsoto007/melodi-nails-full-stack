@@ -122,6 +122,11 @@ def configure_app(app: Flask) -> SQLAlchemy:
     else:
         app.config["SQUARE_FAKE_PAYMENTS"] = fake_flag.strip().lower() in {"1", "true", "yes", "y"}
 
+    app.config["MAILGUN_DOMAIN"] = os.getenv("MAILGUN_DOMAIN")
+    app.config["MAILGUN_API_KEY"] = os.getenv("MAILGUN_API_KEY")
+    app.config["MAILGUN_FROM"] = os.getenv("MAILGUN_FROM")
+    app.config["CLIENT_BASE_URL"] = os.getenv("CLIENT_BASE_URL")
+
     db.init_app(app)
 
     return db

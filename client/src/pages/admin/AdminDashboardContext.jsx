@@ -127,7 +127,12 @@ export function AdminDashboardProvider({ children }) {
   const [analytics, setAnalytics] = useState({ appointments_by_status: {}, gallery_items_by_category: {} });
   const [settings, setSettings] = useState([]);
   const [schedule, setSchedule] = useState({ operating_hours: [], days_off: [] });
-  const [pricing, setPricing] = useState({ hourly_rate_cents: null, currency: 'USD' });
+  const [pricing, setPricing] = useState({
+    hourly_rate_cents: null,
+    currency: 'USD',
+    booking_fee_percent: null,
+    session_options: [],
+  });
 
   const [notices, setNotices] = useState([]);
   const noticeIdRef = useRef(0);
@@ -289,7 +294,9 @@ export function AdminDashboardProvider({ children }) {
     const response = await apiGet('/api/pricing/hourly-rate');
     setPricing({
       hourly_rate_cents: response?.hourly_rate_cents ?? null,
-      currency: response?.currency ?? 'USD'
+      currency: response?.currency ?? 'USD',
+      booking_fee_percent: response?.booking_fee_percent ?? null,
+      session_options: Array.isArray(response?.session_options) ? response.session_options : [],
     });
     markFetched('pricing');
     return response;
@@ -311,6 +318,76 @@ export function AdminDashboardProvider({ children }) {
       }
     },
     [refreshHourlyRate, refreshDashboardMetrics, showNotice]
+  );
+
+  const createSessionOption = useCallback(
+    async (payload) => {
+      try {
+        const response = await apiPost('/api/admin/pricing/session-options', payload);
+        showNotice({ tone: 'success', message: 'Session option created.' });
+        markFetched('pricing');
+        refreshHourlyRate().catch(() => {});
+        return response;
+      } catch (err) {
+        showNotice({ tone: 'error', message: getErrorMessage(err, 'Unable to save session option.') });
+        throw err;
+      }
+    },
+    [refreshHourlyRate, showNotice, markFetched]
+  );
+
+  const updateSessionOption = useCallback(
+    async (sessionOptionId, payload) => {
+      try {
+        const response = await apiPatch(`/api/admin/pricing/session-options/${sessionOptionId}`, payload);
+        showNotice({ tone: 'success', message: 'Session option updated.' });
+        markFetched('pricing');
+        refreshHourlyRate().catch(() => {});
+        return response;
+      } catch (err) {
+        showNotice({ tone: 'error', message: getErrorMessage(err, 'Unable to update session option.') });
+        throw err;
+      }
+    },
+    [refreshHourlyRate, showNotice, markFetched]
+  );
+
+  const deleteSessionOption = useCallback(
+    async (sessionOptionId) => {
+      try {
+        const response = await apiDelete(`/api/admin/pricing/session-options/${sessionOptionId}`);
+        showNotice({ tone: 'success', message: 'Session option removed.' });
+        markFetched('pricing');
+        refreshHourlyRate().catch(() => {});
+        return response;
+      } catch (err) {
+        showNotice({ tone: 'error', message: getErrorMessage(err, 'Unable to remove session option.') });
+        throw err;
+      }
+    },
+    [refreshHourlyRate, showNotice, markFetched]
+  );
+
+  const updateBookingFee = useCallback(
+    async (percent) => {
+      try {
+        const response = await apiPut('/api/admin/pricing/booking-fee', {
+          booking_fee_percent: percent
+        });
+        setPricing((prev) => ({
+          ...prev,
+          booking_fee_percent: response?.booking_fee_percent ?? percent
+        }));
+        showNotice({ tone: 'success', message: 'Booking fee updated.' });
+        markFetched('pricing');
+        refreshHourlyRate().catch(() => {});
+        return response;
+      } catch (err) {
+        showNotice({ tone: 'error', message: getErrorMessage(err, 'Unable to update booking fee.') });
+        throw err;
+      }
+    },
+    [refreshHourlyRate, showNotice, markFetched]
   );
 
   const loadMoreGalleryItems = useCallback(async () => {
@@ -869,6 +946,10 @@ export function AdminDashboardProvider({ children }) {
         refreshSchedule,
         refreshHourlyRate,
         updateHourlyRate,
+        createSessionOption,
+        updateSessionOption,
+        deleteSessionOption,
+        updateBookingFee,
         loadMoreAppointments,
         loadMoreGalleryItems,
         logout,
@@ -922,6 +1003,10 @@ export function AdminDashboardProvider({ children }) {
       refreshSchedule,
       refreshHourlyRate,
       updateHourlyRate,
+      createSessionOption,
+      updateSessionOption,
+      deleteSessionOption,
+      updateBookingFee,
       loadMoreAppointments,
       loadMoreGalleryItems,
       logout,

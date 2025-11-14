@@ -1,3 +1,4 @@
+import hashlib
 import hmac
 import json
 import math
@@ -24,6 +25,7 @@ from .models import (
     AppointmentAsset,
     AppointmentPayment,
     ClientAccount,
+    AccountActivationToken,
     ClientDocument,
     Consultation,
     GalleryItem,
@@ -35,6 +37,7 @@ from .models import (
     TattooCategory,
     Testimonial,
     UserNotification,
+    SessionOption,
 )
 
 api_bp = Blueprint("api", __name__)
@@ -61,6 +64,9 @@ DEFAULT_OPERATING_HOURS = [
 
 HOURLY_RATE_SETTING_KEY = "studio_hourly_rate_cents"
 DEFAULT_HOURLY_RATE_CENTS = 20000
+BOOKING_FEE_SETTING_KEY = "booking_fee_percent"
+DEFAULT_BOOKING_FEE_PERCENT = 20
+MINIMUM_BOOKING_FEE_PERCENT = 20
 
 ALLOWED_IMAGE_EXTENSIONS = {"jpg", "jpeg", "png", "gif", "webp", "heic", "heif"}
 ALLOWED_UPLOAD_EXTENSIONS = ALLOWED_IMAGE_EXTENSIONS | {"pdf", "txt", "doc", "docx"}
@@ -70,6 +76,8 @@ INDEX_TO_DAY = {index: day for day, index in DAY_TO_INDEX.items()}
 NON_BLOCKING_APPOINTMENT_STATUSES = {"cancelled", "cancelled_by_client", "declined", "no_show"}
 DEFAULT_SLOT_INTERVAL_MINUTES = 60
 MINIMUM_APPOINTMENT_DURATION_MINUTES = 60
+
+ACTIVATION_TOKEN_TTL = timedelta(hours=24)
 
 PLACEMENT_BASE_MINUTES = {
     "finger": 60,
@@ -222,17 +230,19 @@ def _square_currency() -> str:
 def charge_square_payment(
     *,
     source_id: str,
+    amount_cents: int,
     idempotency_key: str | None,
     verification_token: str | None,
     buyer_email: str | None,
     note: str | None,
 ) -> dict:
+    charge_amount = max(1, int(amount_cents or _square_deposit_amount()))
     if current_app.config.get("SQUARE_FAKE_PAYMENTS"):
         return {
             "payment": {
                 "id": f"demo-{secrets.token_hex(6)}",
                 "status": "COMPLETED",
-                "amount_money": {"amount": _square_deposit_amount(), "currency": _square_currency()},
+                "amount_money": {"amount": charge_amount, "currency": _square_currency()},
                 "receipt_url": None,
                 "note": note,
             }
@@ -248,7 +258,7 @@ def charge_square_payment(
         "idempotency_key": idempotency_key or secrets.token_hex(12),
         "source_id": source_id,
         "location_id": location_id,
-        "amount_money": {"amount": _square_deposit_amount(), "currency": _square_currency()},
+        "amount_money": {"amount": charge_amount, "currency": _square_currency()},
         "autocomplete": True,
         "note": note or "Tattoo appointment deposit",
     }
@@ -507,6 +517,125 @@ def serialize_setting(setting):
     }
 
 
+def serialize_session_option(option):
+    if not option:
+        return None
+    return {
+        "id": option.id,
+        "name": option.name,
+        "duration_minutes": option.duration_minutes,
+        "price_cents": option.price_cents,
+        "is_active": bool(option.is_active),
+        "created_at": option.created_at.isoformat() if option.created_at else None,
+        "updated_at": option.updated_at.isoformat() if option.updated_at else None,
+    }
+
+
+def load_active_session_options():
+    return (
+        SessionOption.query.filter(SessionOption.is_active.is_(True))
+        .order_by(SessionOption.duration_minutes.asc())
+        .all()
+    )
+
+
+def calculate_booking_fee_amount(total_cents: int, percent: int) -> int:
+    if total_cents <= 0:
+        return 0
+    percent_value = max(percent, MINIMUM_BOOKING_FEE_PERCENT)
+    fee = math.ceil(total_cents * percent_value / 100.0)
+    return min(total_cents, max(fee, 1))
+
+
+def load_booking_fee_percent() -> int:
+    raw_value = load_json_setting(BOOKING_FEE_SETTING_KEY, DEFAULT_BOOKING_FEE_PERCENT)
+    try:
+        value = int(raw_value)
+    except (TypeError, ValueError):
+        value = DEFAULT_BOOKING_FEE_PERCENT
+    return max(value, MINIMUM_BOOKING_FEE_PERCENT)
+
+
+def _hash_activation_token(token: str) -> str:
+    return hashlib.sha256(token.encode("utf-8")).hexdigest()
+
+
+def _build_activation_link(token: str) -> str:
+    base_url = current_app.config.get("CLIENT_BASE_URL")
+    if not base_url:
+        base_url = (request.url_root or "").rstrip("/")
+    return f"{base_url.rstrip('/')}/activate-account?token={token}"
+
+
+def _create_activation_token(client: ClientAccount) -> str:
+    token = secrets.token_urlsafe(32)
+    record = AccountActivationToken(
+        client_account=client,
+        token_hash=_hash_activation_token(token),
+        expires_at=datetime.utcnow() + ACTIVATION_TOKEN_TTL,
+    )
+    db.session.add(record)
+    return token
+
+
+def _consume_activation_token(token: str):
+    if not token:
+        return None
+    token_hash = _hash_activation_token(token)
+    record = (
+        AccountActivationToken.query.options(joinedload(AccountActivationToken.client_account))
+        .filter_by(token_hash=token_hash, used_at=None)
+        .first()
+    )
+    if not record or record.expires_at < datetime.utcnow():
+        return None
+    return record
+
+
+def _send_activation_email(client: ClientAccount, token: str) -> bool:
+    domain = current_app.config.get("MAILGUN_DOMAIN")
+    api_key = current_app.config.get("MAILGUN_API_KEY")
+    if not domain or not api_key:
+        current_app.logger.warning("Mailgun configuration missing; cannot send activation email.")
+        return False
+    from_address = current_app.config.get("MAILGUN_FROM") or f"no-reply@{domain}"
+    link = _build_activation_link(token)
+    subject = "Activate your BLACK INK TATTOO account"
+    text = (
+        f"Hi {client.display_name or 'guest'},\n\n"
+        "Thanks for booking with BLACK INK TATTOO. Use the link below to finish creating your portal account "
+        "and choose a password so you can manage bookings and inspiration.\n\n"
+        f"{link}\n\n"
+        "This link expires in 24 hours. If you did not request this, you can ignore this message."
+    )
+    html = (
+        f"<p>Hi {client.display_name or 'guest'},</p>"
+        "<p>Thanks for booking with BLACK INK TATTOO. Use the link below to finish creating your portal account "
+        "and choose a password so you can manage bookings and inspiration.</p>"
+        f"<p><a href=\"{link}\">Activate my account</a></p>"
+        "<p>This link expires in 24 hours. If you did not request this, you can ignore this message.</p>"
+    )
+    try:
+        response = requests.post(
+            f"https://api.mailgun.net/v3/{domain}/messages",
+            auth=("api", api_key),
+            data={
+                "from": from_address,
+                "to": client.email,
+                "subject": subject,
+                "text": text,
+                "html": html,
+            },
+            timeout=10,
+        )
+    except requests.RequestException as exc:
+        current_app.logger.error("Unable to send activation email: %s", exc)
+        return False
+    if not response.ok:
+        current_app.logger.error("Mailgun activation request failed: %s", response.text)
+    return response.ok
+
+
 def load_hourly_rate_cents() -> int:
     raw_rate = load_json_setting(HOURLY_RATE_SETTING_KEY, DEFAULT_HOURLY_RATE_CENTS)
     try:
@@ -521,6 +650,9 @@ def load_hourly_rate_cents() -> int:
 def calculate_session_price_cents(duration_minutes: int | None) -> int:
     if not duration_minutes or duration_minutes <= 0:
         return 0
+    option = SessionOption.query.filter_by(duration_minutes=duration_minutes, is_active=True).first()
+    if option:
+        return option.price_cents
     rate = load_hourly_rate_cents()
     total = math.ceil(rate * duration_minutes / 60.0)
     return max(0, total)
@@ -529,6 +661,12 @@ def calculate_session_price_cents(duration_minutes: int | None) -> int:
 def serialize_appointment(appointment):
     client = appointment.client
     assigned_admin = appointment.assigned_admin
+    session_option_data = serialize_session_option(appointment.session_option) if appointment.session_option else None
+    session_price_cents = (
+        session_option_data["price_cents"]
+        if session_option_data and isinstance(session_option_data.get("price_cents"), int)
+        else calculate_session_price_cents(appointment.duration_minutes)
+    )
     return {
         "id": appointment.id,
         "reference_code": appointment.reference_code,
@@ -556,6 +694,8 @@ def serialize_appointment(appointment):
             "size": appointment.tattoo_size,
             "notes": appointment.placement_notes,
         },
+        "session_option": session_option_data,
+        "session_price_cents": session_price_cents,
         "client": {
             "id": client.id,
             "display_name": client.display_name,
@@ -593,8 +733,9 @@ def serialize_appointment(appointment):
         ],
         "pricing": {
             "hourly_rate_cents": load_hourly_rate_cents(),
-            "total_cents": calculate_session_price_cents(appointment.duration_minutes),
+            "total_cents": session_price_cents,
             "currency": _square_currency(),
+            "booking_fee_percent": load_booking_fee_percent(),
         },
         "has_identity_documents": appointment.has_identity_documents(),
         "payments": [
@@ -1201,6 +1342,76 @@ def register_account():
     ), 201
 
 
+@api_bp.route("/api/auth/activation-request", methods=["POST"])
+@limiter.limit("5 per minute")
+def activation_request():
+    payload = request.get_json(silent=True) or {}
+    email = (payload.get("email") or "").strip().lower()
+    if not email:
+        return jsonify({"error": "Email is required."}), 400
+
+    client = ClientAccount.query.filter(func.lower(ClientAccount.email) == email).first()
+    if not client or not client.is_guest:
+        return jsonify({"status": "ok"}), 200
+
+    token = _create_activation_token(client)
+    if not _send_activation_email(client, token):
+        db.session.rollback()
+        return jsonify({"error": "Unable to send activation email right now."}), 500
+
+    try:
+        db.session.commit()
+    except SQLAlchemyError:
+        db.session.rollback()
+        return jsonify({"error": "Unable to save activation request."}), 500
+
+    return jsonify({"status": "sent"}), 200
+
+
+@api_bp.route("/api/auth/activate", methods=["POST"])
+@limiter.limit("5 per minute")
+def activate_account():
+    payload = request.get_json(silent=True) or {}
+    token = (payload.get("token") or "").strip()
+    password = payload.get("password") or ""
+    if not token or not password:
+        return jsonify({"error": "Token and password are required."}), 400
+    if len(password) < 8:
+        return jsonify({"error": "Password must be at least 8 characters."}), 400
+
+    token_record = _consume_activation_token(token)
+    if not token_record:
+        return jsonify({"error": "Invalid or expired activation token."}), 400
+
+    client = token_record.client_account
+    if not client:
+        return jsonify({"error": "Invalid activation token."}), 400
+
+    client.set_password(password)
+    client.is_guest = False
+    client.role = client.role or "user"
+    client.last_login_at = datetime.utcnow()
+    token_record.used_at = datetime.utcnow()
+
+    try:
+        db.session.commit()
+    except SQLAlchemyError:
+        db.session.rollback()
+        return jsonify({"error": "Unable to activate account right now."}), 500
+
+    set_session("user", client.id)
+    csrf_token = get_csrf_token()
+
+    return jsonify(
+        {
+            "role": "user",
+            "redirect_to": "/portal/dashboard",
+            "profile": serialize_user_profile(client),
+            "csrf_token": csrf_token,
+        }
+    )
+
+
 @api_bp.route("/api/auth/login", methods=["POST"])
 @limiter.limit("10 per minute")
 def auth_login():
@@ -1358,7 +1569,9 @@ def payment_configuration():
                 "application_id": current_app.config.get("SQUARE_APPLICATION_ID") if enabled else None,
                 "location_id": current_app.config.get("SQUARE_LOCATION_ID") if enabled else None,
                 "environment": current_app.config.get("SQUARE_ENVIRONMENT") or "sandbox",
-                "deposit_amount_cents": _square_deposit_amount(),
+                "booking_fee_percent": load_booking_fee_percent(),
+                "minimum_booking_fee_percent": MINIMUM_BOOKING_FEE_PERCENT,
+                "supports_full_payment": True,
                 "currency": _square_currency(),
             }
         }
@@ -1371,26 +1584,54 @@ def pricing_hourly_rate():
         {
             "hourly_rate_cents": load_hourly_rate_cents(),
             "currency": _square_currency(),
+            "booking_fee_percent": load_booking_fee_percent(),
+            "session_options": [serialize_session_option(option) for option in load_active_session_options()],
         }
     )
 
 
+@api_bp.route("/api/pricing/session-options", methods=["GET"])
+def pricing_session_options():
+    options = load_active_session_options()
+    return jsonify([serialize_session_option(option) for option in options])
+
+
 @api_bp.route("/api/pricing/estimate", methods=["GET"])
 def pricing_estimate():
+    session_option_id = request.args.get("session_option_id")
+    session_option = None
+    if session_option_id is not None:
+        try:
+            option_id = int(session_option_id)
+        except (TypeError, ValueError):
+            return jsonify({"error": "session_option_id must be a whole number."}), 400
+        session_option = SessionOption.query.filter_by(id=option_id, is_active=True).first()
+        if not session_option:
+            return jsonify({"error": "Session option not found."}), 404
+
     duration_param = request.args.get("duration_minutes")
-    if duration_param is None:
-        return jsonify({"error": "duration_minutes is required."}), 400
-    try:
-        duration_minutes = int(duration_param)
-    except (TypeError, ValueError):
-        return jsonify({"error": "duration_minutes must be a number."}), 400
-    if duration_minutes <= 0:
-        return jsonify({"error": "duration_minutes must be greater than zero."}), 400
+    total_cents = 0
+    duration_minutes = None
+    if session_option:
+        duration_minutes = session_option.duration_minutes
+        total_cents = session_option.price_cents
+    else:
+        if duration_param is None:
+            return jsonify({"error": "duration_minutes is required."}), 400
+        try:
+            duration_minutes = int(duration_param)
+        except (TypeError, ValueError):
+            return jsonify({"error": "duration_minutes must be a number."}), 400
+        if duration_minutes <= 0:
+            return jsonify({"error": "duration_minutes must be greater than zero."}), 400
+        total_cents = calculate_session_price_cents(duration_minutes)
+
     return jsonify(
         {
             "duration_minutes": duration_minutes,
-            "total_cents": calculate_session_price_cents(duration_minutes),
+            "total_cents": total_cents,
             "hourly_rate_cents": load_hourly_rate_cents(),
+            "session_option": serialize_session_option(session_option) if session_option else None,
             "currency": _square_currency(),
         }
     )
@@ -1887,6 +2128,165 @@ def admin_update_hourly_rate():
             "currency": _square_currency(),
         }
     )
+
+
+@api_bp.route("/api/admin/pricing/session-options", methods=["GET"])
+@admin_required
+def admin_list_session_options():
+    options = SessionOption.query.order_by(SessionOption.duration_minutes.asc()).all()
+    return jsonify([serialize_session_option(option) for option in options])
+
+
+@api_bp.route("/api/admin/pricing/session-options", methods=["POST"])
+@admin_required
+def admin_create_session_option():
+    payload = request.get_json(silent=True) or {}
+    name = (payload.get("name") or "").strip() or None
+    duration_raw = payload.get("duration_minutes")
+    price_raw = payload.get("price_cents")
+    is_active = parse_bool(payload.get("is_active"), default=True)
+
+    errors = []
+    try:
+        duration_minutes = int(duration_raw)
+    except (TypeError, ValueError):
+        errors.append("duration_minutes must be a whole number.")
+        duration_minutes = None
+    try:
+        price_cents = int(price_raw)
+    except (TypeError, ValueError):
+        errors.append("price_cents must be a whole number.")
+        price_cents = None
+    if duration_minutes is None or duration_minutes <= 0:
+        errors.append("duration_minutes must be greater than zero.")
+    if price_cents is None or price_cents <= 0:
+        errors.append("price_cents must be greater than zero.")
+
+    if errors:
+        return jsonify({"errors": errors}), 400
+
+    option = SessionOption(
+        name=name,
+        duration_minutes=duration_minutes,
+        price_cents=price_cents,
+        is_active=is_active,
+    )
+    db.session.add(option)
+    admin: AdminAccount = g.current_admin
+    try:
+        log_admin_activity(
+            admin,
+            "session_option_create",
+            details=f"Created session option {duration_minutes}m at {price_cents} cents.",
+            ip_address=request.remote_addr,
+        )
+        db.session.commit()
+    except SQLAlchemyError:
+        db.session.rollback()
+        return jsonify({"error": "Unable to create session option."}), 500
+
+    return jsonify(serialize_session_option(option)), 201
+
+
+@api_bp.route("/api/admin/pricing/session-options/<int:option_id>", methods=["PATCH"])
+@admin_required
+def admin_update_session_option(option_id):
+    option = SessionOption.query.get_or_404(option_id)
+    payload = request.get_json(silent=True) or {}
+    name = payload.get("name")
+    duration_raw = payload.get("duration_minutes")
+    price_raw = payload.get("price_cents")
+    is_active = payload.get("is_active")
+
+    if name is not None:
+        option.name = name.strip() or None
+    if duration_raw is not None:
+        try:
+            duration_minutes = int(duration_raw)
+        except (TypeError, ValueError):
+            return jsonify({"error": "duration_minutes must be a whole number."}), 400
+        if duration_minutes <= 0:
+            return jsonify({"error": "duration_minutes must be greater than zero."}), 400
+        option.duration_minutes = duration_minutes
+    if price_raw is not None:
+        try:
+            price_cents = int(price_raw)
+        except (TypeError, ValueError):
+            return jsonify({"error": "price_cents must be a whole number."}), 400
+        if price_cents <= 0:
+            return jsonify({"error": "price_cents must be greater than zero."}), 400
+        option.price_cents = price_cents
+    if is_active is not None:
+        option.is_active = bool(is_active)
+
+    admin: AdminAccount = g.current_admin
+    try:
+        log_admin_activity(
+            admin,
+            "session_option_update",
+            details=f"Updated session option {option.id}.",
+            ip_address=request.remote_addr,
+        )
+        db.session.commit()
+    except SQLAlchemyError:
+        db.session.rollback()
+        return jsonify({"error": "Unable to update session option."}), 500
+
+    return jsonify(serialize_session_option(option))
+
+
+@api_bp.route("/api/admin/pricing/session-options/<int:option_id>", methods=["DELETE"])
+@admin_required
+def admin_delete_session_option(option_id):
+    option = SessionOption.query.get_or_404(option_id)
+    db.session.delete(option)
+    admin: AdminAccount = g.current_admin
+    try:
+        log_admin_activity(
+            admin,
+            "session_option_delete",
+            details=f"Deleted session option {option.id}.",
+            ip_address=request.remote_addr,
+        )
+        db.session.commit()
+    except SQLAlchemyError:
+        db.session.rollback()
+        return jsonify({"error": "Unable to delete session option."}), 500
+
+    return jsonify({"status": "deleted"})
+
+
+@api_bp.route("/api/admin/pricing/booking-fee", methods=["PUT"])
+@admin_required
+def admin_update_booking_fee():
+    payload = request.get_json(silent=True) or {}
+    raw_value = payload.get("booking_fee_percent")
+    try:
+        percent = int(raw_value)
+    except (TypeError, ValueError):
+        return jsonify({"error": "booking_fee_percent must be a whole number."}), 400
+    if percent < MINIMUM_BOOKING_FEE_PERCENT:
+        return jsonify({"error": f"booking_fee_percent must be at least {MINIMUM_BOOKING_FEE_PERCENT}%."}), 400
+
+    setting = upsert_json_setting(
+        BOOKING_FEE_SETTING_KEY,
+        percent,
+        description="Percentage of a session price collected when booking.",
+    )
+    admin: AdminAccount = g.current_admin
+    try:
+        log_admin_activity(
+            admin,
+            "booking_fee_update",
+            details=f"Updated booking fee to {percent}%.",
+            ip_address=request.remote_addr,
+        )
+        db.session.commit()
+    except SQLAlchemyError:
+        db.session.rollback()
+        return jsonify({"error": "Unable to update booking fee."}), 500
+
+    return jsonify({"booking_fee_percent": load_booking_fee_percent()})
 
 
 @api_bp.route("/api/admin/users", methods=["GET"])
@@ -2533,6 +2933,20 @@ def create_appointment():
         except (TypeError, ValueError):
             errors.append({"field": "duration_minutes", "message": "Duration must be an integer."})
 
+    session_option_id = payload.get("session_option_id")
+    session_option = None
+    if session_option_id is not None and session_option_id != "":
+        try:
+            session_option_id = int(session_option_id)
+        except (TypeError, ValueError):
+            errors.append({"field": "session_option_id", "message": "Session option must be a whole number."})
+        else:
+            option = SessionOption.query.get(session_option_id)
+            if not option or not option.is_active:
+                errors.append({"field": "session_option_id", "message": "Session option not found."})
+            else:
+                session_option = option
+
     if not tattoo_placement:
         errors.append({"field": "tattoo_placement", "message": "Placement is required."})
     if not tattoo_size:
@@ -2614,6 +3028,9 @@ def create_appointment():
     if duration_minutes is None:
         duration_minutes = suggested_duration
 
+    if session_option:
+        duration_minutes = session_option.duration_minutes
+
     if duration_minutes < MINIMUM_APPOINTMENT_DURATION_MINUTES:
         errors.append(
             {
@@ -2645,14 +3062,25 @@ def create_appointment():
     contact_email_value = resolved_contact_email or email or (client_account.email if client_account else None)
     contact_phone_value = resolved_contact_phone or phone or (client_account.phone if client_account else None)
 
+    booking_fee_percent = load_booking_fee_percent()
+    session_price_cents = session_option.price_cents if session_option else calculate_session_price_cents(duration_minutes)
+    pay_full_amount = parse_bool(payload.get("pay_full_amount"), default=False)
+    charge_amount = session_price_cents if pay_full_amount else calculate_booking_fee_amount(session_price_cents, booking_fee_percent)
+
     payment_result = None
+    payment_note = (
+        "Full session payment"
+        if pay_full_amount
+        else f"Booking fee ({booking_fee_percent}% deposit)"
+    )
     try:
         payment_result = charge_square_payment(
             source_id=square_source_id or ("demo-source" if payments_demo_mode else ""),
+            amount_cents=charge_amount,
             idempotency_key=square_idempotency_key,
             verification_token=square_verification_token,
             buyer_email=contact_email_value,
-            note=f"Booking deposit for {display_contact_name or contact_email_value or email or 'client'}",
+            note=payment_note,
         )
     except SquarePaymentError as exc:
         return jsonify({"error": str(exc)}), 402
@@ -2668,6 +3096,7 @@ def create_appointment():
         tattoo_size=tattoo_size or None,
         placement_notes=placement_notes or None,
         suggested_duration_minutes=suggested_duration,
+        session_option=session_option,
     )
 
     appointment.contact_name = display_contact_name
@@ -2746,10 +3175,10 @@ def create_appointment():
             provider="square",
             provider_payment_id=payment_payload.get("id") or f"demo-{secrets.token_hex(5)}",
             status=payment_payload.get("status") or "COMPLETED",
-            amount_cents=int(amount_details.get("amount") or _square_deposit_amount()),
+            amount_cents=int(amount_details.get("amount") or charge_amount),
             currency=amount_details.get("currency") or _square_currency(),
             receipt_url=payment_payload.get("receipt_url"),
-            note=payment_payload.get("note") or "Booking deposit",
+            note=payment_payload.get("note") or payment_note,
         )
     )
 

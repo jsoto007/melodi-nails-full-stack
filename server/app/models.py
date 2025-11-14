@@ -95,6 +95,12 @@ class ClientAccount(TimestampMixin, db.Model):
         cascade="all, delete-orphan",
         lazy="dynamic",
     )
+    activation_tokens = db.relationship(
+        "AccountActivationToken",
+        back_populates="client_account",
+        cascade="all, delete-orphan",
+        lazy="dynamic",
+    )
 
     def set_password(self, raw_password: str) -> None:
         self.password_hash = generate_password_hash(raw_password)
@@ -142,6 +148,22 @@ class ClientDocument(TimestampMixin, db.Model):
     notes = db.Column(db.Text)
 
     client = db.relationship("ClientAccount", back_populates="documents")
+
+
+class AccountActivationToken(TimestampMixin, db.Model):
+    __tablename__ = "account_activation_tokens"
+
+    id = db.Column(db.Integer, primary_key=True)
+    client_account_id = db.Column(
+        db.Integer,
+        db.ForeignKey("client_accounts.id"),
+        nullable=False,
+    )
+    token_hash = db.Column(db.String(128), unique=True, nullable=False)
+    expires_at = db.Column(db.DateTime, nullable=False)
+    used_at = db.Column(db.DateTime)
+
+    client_account = db.relationship("ClientAccount", back_populates="activation_tokens")
 
 
 class TattooCategory(TimestampMixin, db.Model):
@@ -239,6 +261,10 @@ class TattooAppointment(TimestampMixin, db.Model):
     tattoo_placement = db.Column(db.String(120))
     tattoo_size = db.Column(db.String(120))
     placement_notes = db.Column(db.Text)
+    session_option_id = db.Column(
+        db.Integer,
+        db.ForeignKey("session_options.id", ondelete="SET NULL"),
+    )
     assigned_admin_id = db.Column(
         db.Integer,
         db.ForeignKey("admin_accounts.id"),
@@ -262,6 +288,8 @@ class TattooAppointment(TimestampMixin, db.Model):
         cascade="all, delete-orphan",
         order_by="AppointmentPayment.created_at",
     )
+
+    session_option = db.relationship("SessionOption", passive_deletes=True)
 
     @property
     def scheduled_end(self):
@@ -357,6 +385,19 @@ class AppointmentPayment(TimestampMixin, db.Model):
     note = db.Column(db.String(255))
 
     appointment = db.relationship("TattooAppointment", back_populates="payments")
+
+
+class SessionOption(TimestampMixin, db.Model):
+    __tablename__ = "session_options"
+
+    id = db.Column(db.Integer, primary_key=True)
+    name = db.Column(db.String(120))
+    duration_minutes = db.Column(db.Integer, nullable=False)
+    price_cents = db.Column(db.Integer, nullable=False)
+    is_active = db.Column(db.Boolean, default=True, nullable=False)
+
+    def __repr__(self) -> str:
+        return f"<SessionOption {self.id}: {self.duration_minutes}min>"
 
 
 class UserNotification(TimestampMixin, db.Model):

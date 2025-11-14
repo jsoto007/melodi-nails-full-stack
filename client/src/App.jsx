@@ -4,6 +4,7 @@ import Header from './components/Header.jsx';
 import Footer from './components/Footer.jsx';
 import ScrollRestoration from './components/ScrollRestoration.jsx';
 import Landing from './pages/Landing.jsx';
+import ActivateAccount from './pages/ActivateAccount.jsx';
 import AuthPage from './pages/AuthPage.jsx';
 import AdminDashboard from './pages/AdminDashboard.jsx';
 import ClientPortalLayout from './pages/portal/ClientPortalLayout.jsx';
@@ -70,6 +71,7 @@ export default function App() {
         </Route>
         <Route path="/" element={<Landing />} />
         <Route path="/auth" element={<AuthPage />} />
+        <Route path="/activate-account" element={<ActivateAccount />} />
         <Route path="/share-your-idea" element={<ShareYourIdea />} />
         <Route path="/booking/confirmation" element={<BookingConfirmation />} />
         <Route path="/blog" element={<BlogLayout />}>
