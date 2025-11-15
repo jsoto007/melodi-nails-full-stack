@@ -1,4 +1,3 @@
-import { useEffect, useState } from 'react';
 import { Navigate, Route, Routes, useLocation } from 'react-router-dom';
 import Header from './components/Header.jsx';
 import Footer from './components/Footer.jsx';
@@ -18,39 +17,7 @@ import BlogIndex from './pages/blog/BlogIndex.jsx';
 import TattooAftercare from './pages/blog/TattooAftercare.jsx';
 import TattooFaq from './pages/blog/TattooFaq.jsx';
 
-const STORAGE_KEY = 'theme';
-const THEMES = {
-  light: 'light',
-  dark: 'dark'
-};
-
 export default function App() {
-  const [theme, setTheme] = useState(() => {
-    if (typeof window === 'undefined') {
-      return THEMES.light;
-    }
-    const stored = window.localStorage.getItem(STORAGE_KEY);
-    if (stored === THEMES.dark || stored === THEMES.light) {
-      return stored;
-    }
-    const prefersDark =
-      typeof window.matchMedia === 'function' && window.matchMedia('(prefers-color-scheme: dark)').matches;
-    return prefersDark ? THEMES.dark : THEMES.light;
-  });
-
-  useEffect(() => {
-    document.documentElement.classList.toggle('dark', theme === THEMES.dark);
-    try {
-      window.localStorage.setItem(STORAGE_KEY, theme);
-    } catch (error) {
-      // Local storage may be unavailable (e.g. private mode); ignore persistence errors.
-    }
-  }, [theme]);
-
-  const toggleTheme = () => {
-    setTheme((current) => (current === THEMES.dark ? THEMES.light : THEMES.dark));
-  };
-
   const location = useLocation();
   const isPortalRoute = location.pathname.startsWith('/portal');
 
@@ -59,10 +26,10 @@ export default function App() {
       <div id="top" className="sr-only" tabIndex="-1" aria-label="Top of page">
         Top
       </div>
-      {!isPortalRoute && <Header theme={theme} onToggleTheme={toggleTheme} />}
+      {!isPortalRoute && <Header />}
       <ScrollRestoration />
       <Routes>
-        <Route path="/portal/*" element={<ClientPortalLayout theme={theme} onToggleTheme={toggleTheme} />}>
+        <Route path="/portal/*" element={<ClientPortalLayout />}>
           <Route index element={<Navigate to="dashboard" replace />} />
           <Route path="dashboard" element={<ClientDashboardPage />} />
           <Route path="appointments" element={<ClientAppointmentsPage />} />
