@@ -1043,6 +1043,26 @@ def fetch_closure_dates():
     return parsed
 
 
+def serialize_closure(closure: StudioClosure | None):
+    if not closure:
+        return None
+    return {
+        "id": closure.id,
+        "date": closure.date.isoformat(),
+        "reason": closure.reason,
+    }
+
+
+def sync_closure_setting():
+    db.session.flush()
+    closure_dates = [entry.date.isoformat() for entry in StudioClosure.query.order_by(StudioClosure.date.asc()).all()]
+    upsert_json_setting(
+        "studio_days_off",
+        closure_dates,
+        description="Dates when the studio does not accept appointments."
+    )
+
+
 def calculate_suggested_duration_minutes(placement: str | None, size: str | None) -> int:
     placement_key = (placement or "").strip().lower()
     size_key = (size or "").strip().lower()
@@ -2040,7 +2060,8 @@ def admin_dashboard():
 def admin_get_schedule():
     operating_hours = fetch_working_hours_json()
     days_off = sorted({value.isoformat() for value in fetch_closure_dates()})
-    return jsonify({"operating_hours": operating_hours, "days_off": days_off})
+    closures = [serialize_closure(closure) for closure in StudioClosure.query.order_by(StudioClosure.date.asc()).all()]
+    return jsonify({"operating_hours": operating_hours, "days_off": days_off, "closures": closures})
 
 
 @api_bp.route("/api/admin/schedule", methods=["PUT"])
@@ -2179,7 +2200,116 @@ def admin_update_schedule():
         db.session.rollback()
         return jsonify({"error": "Unable to update schedule."}), 500
 
-    return jsonify({"operating_hours": normalised_hours, "days_off": normalised_days_off})
+    closures = [serialize_closure(closure) for closure in StudioClosure.query.order_by(StudioClosure.date.asc()).all()]
+    return jsonify(
+        {
+            "operating_hours": normalised_hours,
+            "days_off": normalised_days_off,
+            "closures": closures,
+        }
+    )
+
+
+@api_bp.route("/api/admin/schedule/closures", methods=["POST"])
+@admin_required
+def admin_create_closure():
+    payload = request.get_json(silent=True) or {}
+    date_raw = (payload.get("date") or "").strip()
+    if not date_raw:
+        return jsonify({"error": "Date is required."}), 400
+    try:
+        parsed_date = date.fromisoformat(date_raw)
+    except ValueError:
+        return jsonify({"error": "Invalid date format; use YYYY-MM-DD."}), 400
+    if StudioClosure.query.filter_by(date=parsed_date).first():
+        return jsonify({"error": "A closure already exists for that date."}), 409
+    reason = (payload.get("reason") or "").strip() or None
+    closure = StudioClosure(date=parsed_date, reason=reason)
+    db.session.add(closure)
+    try:
+        sync_closure_setting()
+        admin: AdminAccount = g.current_admin
+        log_admin_activity(
+            admin,
+            "closure_create",
+            details=f"Created closure on {parsed_date.isoformat()}"
+            + (f" with reason '{reason}'." if reason else "."),
+            ip_address=request.remote_addr,
+        )
+        db.session.commit()
+    except SQLAlchemyError:
+        db.session.rollback()
+        return jsonify({"error": "Unable to create closure."}), 500
+    return jsonify(serialize_closure(closure)), 201
+
+
+@api_bp.route("/api/admin/schedule/closures/<int:closure_id>", methods=["PATCH"])
+@admin_required
+def admin_update_closure(closure_id):
+    closure = StudioClosure.query.get_or_404(closure_id)
+    payload = request.get_json(silent=True) or {}
+    updated_fields = []
+    date_raw = payload.get("date")
+    if date_raw is not None:
+        normalized = date_raw.strip()
+        if not normalized:
+            return jsonify({"error": "Date cannot be empty."}), 400
+        try:
+            new_date = date.fromisoformat(normalized)
+        except ValueError:
+            return jsonify({"error": "Invalid date format; use YYYY-MM-DD."}), 400
+        if new_date != closure.date:
+            if (
+                StudioClosure.query.filter(
+                    StudioClosure.date == new_date,
+                    StudioClosure.id != closure.id
+                ).first()
+            ):
+                return jsonify({"error": "Another closure already exists for that date."}), 409
+            closure.date = new_date
+            updated_fields.append("date")
+    if "reason" in payload:
+        new_reason = (payload.get("reason") or "").strip() or None
+        if new_reason != closure.reason:
+            closure.reason = new_reason
+            updated_fields.append("reason")
+    if not updated_fields:
+        return jsonify(serialize_closure(closure))
+    try:
+        sync_closure_setting()
+        admin: AdminAccount = g.current_admin
+        log_admin_activity(
+            admin,
+            "closure_update",
+            details=f"Updated closure #{closure.id}.",
+            ip_address=request.remote_addr,
+        )
+        db.session.commit()
+    except SQLAlchemyError:
+        db.session.rollback()
+        return jsonify({"error": "Unable to update closure."}), 500
+    return jsonify(serialize_closure(closure))
+
+
+@api_bp.route("/api/admin/schedule/closures/<int:closure_id>", methods=["DELETE"])
+@admin_required
+def admin_delete_closure(closure_id):
+    closure = StudioClosure.query.get_or_404(closure_id)
+    db.session.delete(closure)
+    try:
+        sync_closure_setting()
+        admin: AdminAccount = g.current_admin
+        log_admin_activity(
+            admin,
+            "closure_delete",
+            details=f"Removed closure on {closure.date.isoformat()}.",
+            ip_address=request.remote_addr,
+        )
+        db.session.commit()
+    except SQLAlchemyError:
+        db.session.rollback()
+        return jsonify({"error": "Unable to delete closure."}), 500
+    return '', 204
 
 
 @api_bp.route("/api/admin/settings/hourly-rate", methods=["PUT"])

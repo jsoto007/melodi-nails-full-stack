@@ -30,8 +30,6 @@ const NEW_APPOINTMENT_FIELD_IDS = {
   description: 'new-appointment-description'
 };
 
-const NEW_DAY_OFF_ID = 'new-day-off-date';
-
 const WEEK_ORDER = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'];
 const WEEK_LABELS = {
   monday: 'Monday',
@@ -76,6 +74,23 @@ function fromDateTimeLocal(value) {
     return null;
   }
   return formatLocalDateTime(value);
+}
+
+function formatClosureDate(value) {
+  if (!value) {
+    return '';
+  }
+  const [year, month, day] = value.split('-').map((segment) => Number(segment));
+  if (![year, month, day].every(Number.isFinite)) {
+    return value;
+  }
+  const date = new Date(year, month - 1, day);
+  return date.toLocaleDateString([], {
+    weekday: 'long',
+    month: 'long',
+    day: 'numeric',
+    year: 'numeric'
+  });
 }
 
 function buildAppointmentUpdatePayload(draft) {
@@ -155,12 +170,14 @@ function normaliseOperatingHours(hours) {
   const incoming = new Map();
   ensureArray(hours).forEach((entry) => {
     if (entry?.day) {
+      const durationMinutes = ensureMinimumDurationMinutes(entry.minimum_duration_minutes);
       incoming.set(entry.day, {
         day: entry.day,
         is_open: Boolean(entry.is_open),
         open_time: entry.open_time || '10:00',
         close_time: entry.close_time || '18:00',
-        minimum_duration_minutes: ensureMinimumDurationMinutes(entry.minimum_duration_minutes),
+        minimum_duration_minutes: durationMinutes,
+        minimum_duration_hours_input: String(durationMinutes / 60),
       });
     }
   });
@@ -174,12 +191,14 @@ function normaliseOperatingHours(hours) {
         : day === 'sunday'
         ? { open_time: '10:00', close_time: '14:00', is_open: false }
         : { open_time: '10:00', close_time: '18:00', is_open: true };
+    const minutes = SLOT_INTERVAL_MINUTES;
     return {
       day,
       is_open: defaults.is_open ?? true,
       open_time: defaults.open_time,
       close_time: defaults.close_time,
-      minimum_duration_minutes: SLOT_INTERVAL_MINUTES,
+      minimum_duration_minutes: minutes,
+      minimum_duration_hours_input: String(minutes / 60),
     };
   });
 }
@@ -344,6 +363,9 @@ export default function AdminCalendar() {
       updateAppointment,
       deleteAppointment,
       updateSchedule,
+      createClosure,
+      updateClosure,
+      deleteClosure,
       loadMoreAppointments
     }
   } = useAdminDashboard();
@@ -352,8 +374,14 @@ export default function AdminCalendar() {
   const [appointmentDrafts, setAppointmentDrafts] = useState({});
   const [newAppointmentDraft, setNewAppointmentDraft] = useState(NEW_APPOINTMENT_TEMPLATE);
   const [hoursDraft, setHoursDraft] = useState(normaliseOperatingHours(schedule.operating_hours));
-  const [daysOffDraft, setDaysOffDraft] = useState(ensureArray(schedule.days_off));
-  const [newDayOff, setNewDayOff] = useState('');
+  const [closureDateInput, setClosureDateInput] = useState('');
+  const [closureReasonInput, setClosureReasonInput] = useState('');
+  const [closureFormError, setClosureFormError] = useState('');
+  const [editingClosureId, setEditingClosureId] = useState(null);
+  const [editingClosureDate, setEditingClosureDate] = useState('');
+  const [editingClosureReason, setEditingClosureReason] = useState('');
+  const [editingClosureError, setEditingClosureError] = useState('');
+  const [closureBusy, setClosureBusy] = useState(false);
   const [showCreateForm, setShowCreateForm] = useState(false);
   const [editingAppointmentId, setEditingAppointmentId] = useState(null);
   const [confirmation, setConfirmation] = useState(null);
@@ -371,9 +399,8 @@ export default function AdminCalendar() {
     setHoursDraft(normaliseOperatingHours(schedule.operating_hours));
   }, [schedule.operating_hours]);
 
-  useEffect(() => {
-    setDaysOffDraft(ensureArray(schedule.days_off).slice().sort());
-  }, [schedule.days_off]);
+  const closures = useMemo(() => ensureArray(schedule.closures), [schedule.closures]);
+  const closureDaysSet = useMemo(() => new Set(ensureArray(schedule.days_off)), [schedule.days_off]);
 
   const adminOptions = useMemo(
     () => admins.map((admin) => ({ value: String(admin.id), label: admin.name })),
@@ -418,6 +445,10 @@ export default function AdminCalendar() {
         }
         if (field === 'is_open') {
           return { ...entry, is_open: value };
+        }
+        if (field === 'minimum_duration_minutes') {
+          // Store the raw hours input as a string; we’ll normalize to minutes on save.
+          return { ...entry, minimum_duration_hours_input: value };
         }
         return { ...entry, [field]: value };
       })
@@ -490,14 +521,97 @@ export default function AdminCalendar() {
   };
 
   const requestScheduleUpdate = () => {
+    const normalizedOperatingHours = hoursDraft.map((entry) => {
+      const raw = entry.minimum_duration_hours_input;
+      const parsed = typeof raw === 'string' && raw.trim() !== '' ? Number(raw) : NaN;
+      // Convert hours to minutes; enforce a minimum of SLOT_INTERVAL_MINUTES.
+      const minutesSource = Number.isFinite(parsed) && parsed > 0 ? parsed * SLOT_INTERVAL_MINUTES : entry.minimum_duration_minutes;
+      const finalMinutes = ensureMinimumDurationMinutes(minutesSource);
+      return {
+        day: entry.day,
+        is_open: entry.is_open,
+        open_time: entry.open_time,
+        close_time: entry.close_time,
+        minimum_duration_minutes: finalMinutes
+      };
+    });
+
     setConfirmation({
       type: 'schedule',
       payload: {
-        operating_hours: hoursDraft,
-        days_off: daysOffDraft
+        operating_hours: normalizedOperatingHours,
+        days_off: ensureArray(schedule.days_off)
       },
       title: 'Update studio schedule',
       description: 'Save these operating hours and days off?'
+    });
+  };
+
+  const handleAddClosure = async () => {
+    if (!closureDateInput) {
+      setClosureFormError('Pick a date for this closure.');
+      return;
+    }
+    setClosureFormError('');
+    setClosureBusy(true);
+    try {
+      await createClosure({
+        date: closureDateInput,
+        reason: closureReasonInput.trim() || undefined
+      });
+      setClosureDateInput('');
+      setClosureReasonInput('');
+    } catch (error) {
+      setClosureFormError(error?.message || 'Unable to save closure.');
+    } finally {
+      setClosureBusy(false);
+    }
+  };
+
+  const handleStartEditClosure = (closure) => {
+    setEditingClosureId(closure.id);
+    setEditingClosureDate(closure.date);
+    setEditingClosureReason(closure.reason || '');
+    setEditingClosureError('');
+  };
+
+  const handleCancelEditClosure = () => {
+    setEditingClosureId(null);
+    setEditingClosureDate('');
+    setEditingClosureReason('');
+    setEditingClosureError('');
+  };
+
+  const handleSaveClosureEdit = async () => {
+    if (!editingClosureId) {
+      return;
+    }
+    if (!editingClosureDate) {
+      setEditingClosureError('Date is required.');
+      return;
+    }
+    setEditingClosureError('');
+    setClosureBusy(true);
+    try {
+      await updateClosure(editingClosureId, {
+        date: editingClosureDate,
+        reason: editingClosureReason.trim() || null
+      });
+      handleCancelEditClosure();
+    } catch (error) {
+      setEditingClosureError(error?.message || 'Unable to update closure.');
+    } finally {
+      setClosureBusy(false);
+    }
+  };
+
+  const requestClosureDelete = (closure) => {
+    setConfirmation({
+      type: 'closureDelete',
+      closureId: closure.id,
+      closureDate: closure.date,
+      title: 'Remove scheduled closure',
+      description: `Remove the closure on ${formatClosureDate(closure.date)}?`
     });
   };
 
@@ -523,6 +637,9 @@ export default function AdminCalendar() {
         await updateAppointment(activeConfirmation.appointmentId, activeConfirmation.payload);
       } else if (activeConfirmation.type === 'delete') {
         await deleteAppointment(activeConfirmation.appointmentId);
+      } else if (activeConfirmation.type === 'closureDelete') {
+        await deleteClosure(activeConfirmation.closureId);
+        handleCancelEditClosure();
       } else if (activeConfirmation.type === 'schedule') {
         await updateSchedule(activeConfirmation.payload);
       }
@@ -536,6 +653,8 @@ export default function AdminCalendar() {
             ? 'Unable to update appointment.'
             : activeConfirmation.type === 'delete'
             ? 'Unable to delete appointment.'
+            : activeConfirmation.type === 'closureDelete'
+            ? 'Unable to remove closure.'
             : 'Unable to update studio schedule.'
       });
       if (shouldCloseEditor && activeConfirmation.type === 'update') {
@@ -550,22 +669,6 @@ export default function AdminCalendar() {
     }
   };
 
-  const handleAddDayOff = () => {
-    if (!newDayOff) {
-      return;
-    }
-    setDaysOffDraft((prev) => {
-      if (prev.includes(newDayOff)) {
-        return prev;
-      }
-      return [...prev, newDayOff].sort();
-    });
-    setNewDayOff('');
-  };
-
-  const handleRemoveDayOff = (day) => {
-    setDaysOffDraft((prev) => prev.filter((entry) => entry !== day));
-  };
 
   const resetAppointmentDraft = (appointment) => {
     setAppointmentDrafts((prev) => ({
@@ -801,8 +904,8 @@ export default function AdminCalendar() {
             appointment.assigned_admin?.display_name ||
             appointment.assigned_admin?.email ||
             'Unassigned';
-          const isDayOff =
-            scheduledDate && daysOffDraft.includes(scheduledDate.toISOString().slice(0, 10));
+          const scheduledDateKey = scheduledDate ? scheduledDate.toISOString().slice(0, 10) : null;
+          const isDayOff = scheduledDateKey ? closureDaysSet.has(scheduledDateKey) : false;
           const baseId = `appointment-${appointment.id}`;
           const statusId = `${baseId}-status`;
           const startId = `${baseId}-start`;
@@ -1072,10 +1175,14 @@ export default function AdminCalendar() {
             </h3>
             <div className="space-y-3">
               {hoursDraft.map((entry) => {
-                const minimumHours = Math.max(
-                  entry.minimum_duration_minutes ?? SLOT_INTERVAL_MINUTES,
-                  SLOT_INTERVAL_MINUTES
-                ) / 60;
+                const minimumHoursValue =
+                  typeof entry.minimum_duration_hours_input === 'string'
+                    ? entry.minimum_duration_hours_input
+                    : entry.minimum_duration_minutes
+                    ? String(
+                        Math.max(entry.minimum_duration_minutes ?? SLOT_INTERVAL_MINUTES, SLOT_INTERVAL_MINUTES) / 60
+                      )
+                    : '';
                 return (
                   <div
                     key={entry.day}
@@ -1133,12 +1240,10 @@ export default function AdminCalendar() {
                         type="number"
                         min="1"
                         step="1"
-                        value={String(minimumHours)}
+                        value={minimumHoursValue}
                         onChange={(event) => {
-                          const parsedHours = Number(event.target.value);
-                          const normalizedHours = Number.isFinite(parsedHours) && parsedHours > 0 ? Math.ceil(parsedHours) : 1;
-                          const minutes = Math.max(SLOT_INTERVAL_MINUTES, normalizedHours * SLOT_INTERVAL_MINUTES);
-                          handleHoursDraftChange(entry.day, 'minimum_duration_minutes', minutes);
+                          // Allow the user to freely type or clear the field; we normalize on save.
+                          handleHoursDraftChange(entry.day, 'minimum_duration_minutes', event.target.value);
                         }}
                         disabled={!entry.is_open}
                         className="w-20 rounded-xl border border-gray-200 bg-white px-3 py-1 text-sm text-gray-900 focus:border-gray-900 focus:outline-none focus:ring-0 disabled:opacity-50 dark:border-gray-700 dark:bg-gray-950 dark:text-gray-100 dark:focus:border-gray-400"
@@ -1154,50 +1259,161 @@ export default function AdminCalendar() {
               Scheduled closures
             </h3>
             <div className="rounded-3xl border border-gray-100 bg-gray-50 p-5 dark:border-gray-800 dark:bg-gray-900">
-              <div className="flex flex-wrap items-end gap-3">
-                <div className="grow space-y-2">
+              <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto]">
+                <div className="space-y-2">
                   <label
-                    htmlFor={NEW_DAY_OFF_ID}
+                    htmlFor="closure-date"
                     className="text-xs uppercase tracking-[0.3em] text-gray-500 dark:text-gray-400"
                   >
                     Date
                   </label>
                   <input
-                    id={NEW_DAY_OFF_ID}
+                    id="closure-date"
                     type="date"
-                    value={newDayOff}
-                    onChange={(event) => setNewDayOff(event.target.value)}
+                    value={closureDateInput}
+                    onChange={(event) => setClosureDateInput(event.target.value)}
                     className="w-full rounded-2xl border border-gray-200 bg-white px-3 py-2 text-sm text-gray-900 focus:border-gray-900 focus:outline-none focus:ring-0 dark:border-gray-700 dark:bg-gray-950 dark:text-gray-100 dark:focus:border-gray-400"
                   />
                 </div>
-                <Button type="button" variant="secondary" onClick={handleAddDayOff}>
-                  <IconPlus className="h-4 w-4" />
-                  Add
-                </Button>
-              </div>
-              <div className="mt-4 flex flex-wrap gap-3">
-                {daysOffDraft.map((day) => (
-                  <span
-                    key={day}
-                    className="inline-flex items-center gap-2 rounded-full bg-white px-4 py-2 text-xs font-semibold uppercase tracking-[0.3em] text-gray-600 shadow-sm dark:bg-gray-950 dark:text-gray-300"
+                <div className="space-y-2">
+                  <label
+                    htmlFor="closure-reason"
+                    className="text-xs uppercase tracking-[0.3em] text-gray-500 dark:text-gray-400"
                   >
-                    {new Date(day).toLocaleDateString()}
-                    <button
-                      type="button"
-                      onClick={() => handleRemoveDayOff(day)}
-                      className="rounded-full bg-gray-900 px-2 py-[2px] text-[10px] font-bold text-white transition hover:bg-gray-700 dark:bg-gray-100 dark:text-gray-900 dark:hover:bg-gray-200"
-                      aria-label={`Remove ${day}`}
+                    Reason (optional)
+                  </label>
+                  <input
+                    id="closure-reason"
+                    type="text"
+                    value={closureReasonInput}
+                    onChange={(event) => setClosureReasonInput(event.target.value)}
+                    placeholder="Staffing, holiday, or prep"
+                    className="w-full rounded-2xl border border-gray-200 bg-white px-3 py-2 text-sm text-gray-900 focus:border-gray-900 focus:outline-none focus:ring-0 dark:border-gray-700 dark:bg-gray-950 dark:text-gray-100 dark:focus:border-gray-400"
+                  />
+                </div>
+                <div className="flex items-end">
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    onClick={handleAddClosure}
+                    disabled={!closureDateInput || closureBusy}
+                  >
+                    <IconPlus className="h-4 w-4" />
+                    Add closure
+                  </Button>
+                </div>
+              </div>
+              {closureFormError ? (
+                <p className="mt-2 text-xs uppercase tracking-[0.2em] text-rose-500 dark:text-rose-400">
+                  {closureFormError}
+                </p>
+              ) : null}
+              <div className="mt-4 space-y-3">
+                {closures.length ? (
+                  closures.map((closure) => (
+                    <div
+                      key={closure.id}
+                      className="space-y-3 rounded-3xl border border-gray-200 bg-white p-4 shadow-sm dark:border-gray-800 dark:bg-gray-950"
                     >
-                      ×
-                    </button>
-                  </span>
-                ))}
-                {!daysOffDraft.length ? (
+                      <div className="flex flex-wrap items-center justify-between gap-3">
+                        <div>
+                          <p className="text-sm font-semibold text-gray-900 dark:text-gray-100">
+                            {formatClosureDate(closure.date)}
+                          </p>
+                          {closure.reason ? (
+                            <p className="text-xs text-gray-500 dark:text-gray-400">{closure.reason}</p>
+                          ) : null}
+                        </div>
+                        <div className="flex flex-wrap gap-2">
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            onClick={() => handleStartEditClosure(closure)}
+                            disabled={closureBusy}
+                            className="text-[11px] tracking-[0.2em]"
+                          >
+                            <IconPencil className="h-3 w-3" />
+                            <span className="hidden uppercase tracking-[0.3em] sm:inline">Edit</span>
+                          </Button>
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            onClick={() => requestClosureDelete(closure)}
+                            disabled={closureBusy}
+                            className="text-[11px] uppercase tracking-[0.3em] text-rose-500"
+                          >
+                            <IconTrash className="h-3 w-3" />
+                            <span className="hidden uppercase tracking-[0.3em] sm:inline">Delete</span>
+                          </Button>
+                        </div>
+                      </div>
+                      {editingClosureId === closure.id ? (
+                        <div className="grid gap-3 md:grid-cols-2">
+                          <div className="space-y-2">
+                            <label
+                              htmlFor={`closure-edit-date-${closure.id}`}
+                              className="text-[11px] uppercase tracking-[0.3em] text-gray-500 dark:text-gray-400"
+                            >
+                              Date
+                            </label>
+                            <input
+                              id={`closure-edit-date-${closure.id}`}
+                              type="date"
+                              value={editingClosureDate}
+                              onChange={(event) => setEditingClosureDate(event.target.value)}
+                              className="w-full rounded-2xl border border-gray-200 bg-white px-3 py-2 text-sm text-gray-900 focus:border-gray-900 focus:outline-none focus:ring-0 dark:border-gray-700 dark:bg-gray-950 dark:text-gray-100 dark:focus:border-gray-400"
+                            />
+                          </div>
+                          <div className="space-y-2">
+                            <label
+                              htmlFor={`closure-edit-reason-${closure.id}`}
+                              className="text-[11px] uppercase tracking-[0.3em] text-gray-500 dark:text-gray-400"
+                            >
+                              Reason (optional)
+                            </label>
+                            <input
+                              id={`closure-edit-reason-${closure.id}`}
+                              type="text"
+                              value={editingClosureReason}
+                              onChange={(event) => setEditingClosureReason(event.target.value)}
+                              placeholder="Staffing, holiday, or prep"
+                              className="w-full rounded-2xl border border-gray-200 bg-white px-3 py-2 text-sm text-gray-900 focus:border-gray-900 focus:outline-none focus:ring-0 dark:border-gray-700 dark:bg-gray-950 dark:text-gray-100 dark:focus:border-gray-400"
+                            />
+                          </div>
+                          <div className="flex flex-wrap gap-2">
+                            <Button
+                              type="button"
+                              onClick={handleSaveClosureEdit}
+                              disabled={closureBusy}
+                              className="text-[11px] tracking-[0.3em]"
+                            >
+                              Save
+                            </Button>
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              onClick={handleCancelEditClosure}
+                              disabled={closureBusy}
+                              className="text-[11px] tracking-[0.3em]"
+                            >
+                              Cancel
+                            </Button>
+                          </div>
+                          {editingClosureError ? (
+                            <p className="col-span-full text-xs uppercase tracking-[0.3em] text-rose-500 dark:text-rose-400">
+                              {editingClosureError}
+                            </p>
+                          ) : null}
+                        </div>
+                      ) : null}
+                    </div>
+                  ))
+                ) : (
                   <span className="inline-flex items-center gap-2 rounded-full border border-dashed border-gray-300 px-4 py-2 text-xs uppercase tracking-[0.3em] text-gray-500 dark:border-gray-700 dark:text-gray-400">
                     <IconCalendar className="h-4 w-4" />
                     No closures yet
                   </span>
-                ) : null}
+                )}
               </div>
             </div>
           </section>
@@ -1213,6 +1429,8 @@ export default function AdminCalendar() {
             ? 'Delete'
             : confirmation?.type === 'create'
             ? 'Create'
+            : confirmation?.type === 'closureDelete'
+            ? 'Delete closure'
             : 'Save'
         }
         onConfirm={handleConfirm}
@@ -1255,6 +1473,11 @@ export default function AdminCalendar() {
               <li>Days off: {confirmation.payload.days_off.join(', ')}</li>
             ) : null}
           </ul>
+        ) : null}
+        {confirmation?.type === 'closureDelete' && confirmation?.closureDate ? (
+          <p className="text-sm text-gray-600 dark:text-gray-300">
+            Removing the closure scheduled for <strong>{formatClosureDate(confirmation.closureDate)}</strong>.
+          </p>
         ) : null}
       </ConfirmDialog>
     </div>

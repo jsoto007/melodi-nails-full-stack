@@ -91,7 +91,8 @@ function getErrorMessage(error, fallback = 'Something went wrong.') {
 function cloneSchedule(schedule) {
   return {
     operating_hours: ensureArray(schedule.operating_hours).map((entry) => ({ ...entry })),
-    days_off: ensureArray(schedule.days_off).slice()
+    days_off: ensureArray(schedule.days_off).slice(),
+    closures: ensureArray(schedule.closures).map((entry) => ({ ...entry }))
   };
 }
 
@@ -126,7 +127,7 @@ export function AdminDashboardProvider({ children }) {
   const [activityTracking, setActivityTracking] = useState([]);
   const [analytics, setAnalytics] = useState({ appointments_by_status: {}, gallery_items_by_category: {} });
   const [settings, setSettings] = useState([]);
-  const [schedule, setSchedule] = useState({ operating_hours: [], days_off: [] });
+  const [schedule, setSchedule] = useState({ operating_hours: [], days_off: [], closures: [] });
   const [pricing, setPricing] = useState({
     hourly_rate_cents: null,
     currency: 'USD',
@@ -263,7 +264,8 @@ export function AdminDashboardProvider({ children }) {
     const response = await apiGet('/api/admin/schedule');
     setSchedule({
       operating_hours: ensureArray(response?.operating_hours),
-      days_off: ensureArray(response?.days_off)
+      days_off: ensureArray(response?.days_off),
+      closures: ensureArray(response?.closures)
     });
     markFetched('schedule');
     return response;
@@ -888,13 +890,15 @@ export function AdminDashboardProvider({ children }) {
       const previousSchedule = cloneSchedule(schedule);
       setSchedule({
         operating_hours: ensureArray(payload?.operating_hours ?? schedule.operating_hours),
-        days_off: ensureArray(payload?.days_off ?? schedule.days_off)
+        days_off: ensureArray(payload?.days_off ?? schedule.days_off),
+        closures: ensureArray(payload?.closures ?? schedule.closures)
       });
       try {
         const response = await apiPut('/api/admin/schedule', payload);
         setSchedule({
           operating_hours: ensureArray(response?.operating_hours),
-          days_off: ensureArray(response?.days_off)
+          days_off: ensureArray(response?.days_off),
+          closures: ensureArray(response?.closures)
         });
         showNotice({ tone: 'success', message: 'Schedule updated.' });
         markFetched('schedule');
@@ -906,6 +910,50 @@ export function AdminDashboardProvider({ children }) {
       }
     },
     [schedule, showNotice, markFetched]
+  );
+
+  const createClosure = useCallback(
+    async (payload) => {
+      try {
+        const response = await apiPost('/api/admin/schedule/closures', payload);
+        await refreshSchedule();
+        showNotice({ tone: 'success', message: 'Closure saved.' });
+        return response;
+      } catch (err) {
+        showNotice({ tone: 'error', message: getErrorMessage(err, 'Unable to add closure.') });
+        throw err;
+      }
+    },
+    [refreshSchedule, showNotice]
+  );
+
+  const updateClosure = useCallback(
+    async (closureId, payload) => {
+      try {
+        const response = await apiPatch(`/api/admin/schedule/closures/${closureId}`, payload);
+        await refreshSchedule();
+        showNotice({ tone: 'success', message: 'Closure updated.' });
+        return response;
+      } catch (err) {
+        showNotice({ tone: 'error', message: getErrorMessage(err, 'Unable to update closure.') });
+        throw err;
+      }
+    },
+    [refreshSchedule, showNotice]
+  );
+
+  const deleteClosure = useCallback(
+    async (closureId) => {
+      try {
+        await apiDelete(`/api/admin/schedule/closures/${closureId}`);
+        await refreshSchedule();
+        showNotice({ tone: 'success', message: 'Closure removed.' });
+      } catch (err) {
+        showNotice({ tone: 'error', message: getErrorMessage(err, 'Unable to remove closure.') });
+        throw err;
+      }
+    },
+    [refreshSchedule, showNotice]
   );
 
   const value = useMemo(
@@ -967,7 +1015,10 @@ export function AdminDashboardProvider({ children }) {
         deleteAppointment,
         createAppointmentAsset,
         toggleAppointmentAssetVisibility,
-        updateSchedule
+        updateSchedule,
+        createClosure,
+        updateClosure,
+        deleteClosure
       }
     }),
     [
@@ -1024,7 +1075,10 @@ export function AdminDashboardProvider({ children }) {
       deleteAppointment,
       createAppointmentAsset,
       toggleAppointmentAssetVisibility,
-      updateSchedule
+      updateSchedule,
+      createClosure,
+      updateClosure,
+      deleteClosure
     ]
   );
 
