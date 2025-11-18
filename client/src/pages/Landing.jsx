@@ -2,6 +2,7 @@ import Hero from '../sections/Hero.jsx';
 import Gallery from '../sections/Gallery.jsx';
 import Services from '../sections/Services.jsx';
 import About from '../sections/About.jsx';
+import StudioHours from '../sections/StudioHours.jsx';
 import Testimonials from '../sections/Testimonials.jsx';
 import Booking from '../sections/Booking.jsx';
 import FAQ from '../sections/FAQ.jsx';
@@ -14,6 +15,7 @@ export default function Landing() {
       <Gallery />
       <Services />
       <About />
+      <StudioHours />
       <Testimonials />
       <Booking />
       <FAQ />
