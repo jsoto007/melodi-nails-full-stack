@@ -164,9 +164,9 @@ export default function StudioHours() {
   const showFallback = !summaryRows.length && !loading && !error;
 
   return (
-    <section id="hours" className="bg-black text-white">
+    <section id="hours" className="bg-white text-gray-900 dark:bg-black dark:text-white">
       <FadeIn className="mx-auto flex w-full max-w-5xl justify-center px-6 py-16" delayStep={0.18}>
-        <Card className="space-y-6 border border-white/10 bg-black/80 px-8 py-10 shadow-2xl shadow-black/40">
+        <Card className="space-y-6 border border-gray-200/30 bg-white/90 px-8 py-10 shadow-2xl shadow-black/10 dark:border-white/10 dark:bg-black/80">
           <SectionTitle
             eyebrow="Studio hours"
             title="Studio availability"
@@ -176,27 +176,31 @@ export default function StudioHours() {
           <div className="flex justify-center">
             <Link
               to="/share-your-idea"
-              className="inline-flex items-center gap-2 rounded-full border border-white/20 px-6 py-2 text-sm font-medium text-white transition hover:bg-white/10"
+              className="inline-flex items-center gap-2 rounded-full border border-gray-900 px-6 py-2 text-sm font-medium text-gray-900 transition hover:bg-gray-200 dark:border-white/30 dark:bg-white/0 dark:text-white dark:hover:bg-white/10"
             >
               Book Appointment <span className="text-lg">→</span>
             </Link>
           </div>
           <div className="space-y-4 text-center">
             {loading ? (
-              <p className="text-sm uppercase tracking-[0.3em] text-gray-400">Loading studio hours…</p>
+              <p className="text-sm uppercase tracking-[0.3em] text-gray-500 dark:text-gray-400">Loading studio hours…</p>
             ) : error ? (
-              <p className="text-sm uppercase tracking-[0.3em] text-rose-400">{error}</p>
+              <p className="text-sm uppercase tracking-[0.3em] text-rose-500">{error}</p>
             ) : showFallback ? (
-              <p className="text-sm uppercase tracking-[0.3em] text-gray-400">Currently not accepting walk-ins. </p>
+              <p className="text-sm uppercase tracking-[0.3em] text-gray-500 dark:text-gray-400">Currently not accepting walk-ins. </p>
             ) : (
               summaryRows.map((row) => (
-                <p key={`${row.dayLabel}-${row.timeLabel}`} className="text-base uppercase tracking-[0.3em] text-gray-100">
-                  {row.dayLabel} | <span className="font-semibold tracking-[0.4em]">{row.timeLabel}</span>
+                <p
+                  key={`${row.dayLabel}-${row.timeLabel}`}
+                  className="text-base uppercase tracking-[0.3em] text-gray-900 dark:text-white"
+                >
+                  {row.dayLabel} |{' '}
+                  <span className="font-semibold tracking-[0.4em] text-gray-900 dark:text-white">{row.timeLabel}</span>
                 </p>
               ))
             )}
           </div>
-          <p className="text-sm md:text-base leading-relaxed text-gray-300/90 max-w-xl mx-auto border-t border-white/10 pt-6 mt-2 text-center">
+          <p className="text-sm md:text-base leading-relaxed text-gray-500 dark:text-gray-400 max-w-xl mx-auto border-t border-gray-200/40 dark:border-white/10 pt-6 mt-2 text-center">
             {DEFAULT_DESCRIPTION}
           </p>
         </Card>
