@@ -3,7 +3,7 @@ import hmac
 import json
 import math
 import secrets
-from datetime import date, datetime, time, timedelta
+from datetime import date, datetime, time, timedelta, timezone
 from functools import wraps
 from pathlib import Path
 from uuid import uuid4
@@ -3279,6 +3279,8 @@ def admin_update_appointment(appointment_id):
             parsed = parse_iso_datetime(scheduled_start_raw)
             if not parsed:
                 return jsonify({"error": "Invalid datetime format (use ISO 8601)."}), 400
+            if parsed.tzinfo is not None:
+                parsed = parsed.astimezone(timezone.utc).replace(tzinfo=None)
             if parsed.minute % DEFAULT_SLOT_INTERVAL_MINUTES != 0 or parsed.second or parsed.microsecond:
                 return jsonify({"error": "Start time must align with the hour."}), 400
             new_start = parsed

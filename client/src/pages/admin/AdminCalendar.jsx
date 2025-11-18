@@ -43,13 +43,16 @@ const WEEK_LABELS = {
   sunday: 'Sunday'
 };
 
-function toDateTimeLocal(value) {
+const MINIMUM_APPOINTMENT_DURATION_MINUTES = 60;
+const SLOT_INTERVAL_MINUTES = 60;
+
+function formatLocalDateTime(value) {
   if (!value) {
-    return '';
+    return null;
   }
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) {
-    return '';
+    return null;
   }
   const pad = (input) => input.toString().padStart(2, '0');
   const year = date.getFullYear();
@@ -60,6 +63,10 @@ function toDateTimeLocal(value) {
   return `${year}-${month}-${day}T${hours}:${minutes}`;
 }
 
+function toDateTimeLocal(value) {
+  return formatLocalDateTime(value) || '';
+}
+
 function fromDateTimeLocal(value) {
   if (!value) {
     return null;
@@ -68,7 +75,7 @@ function fromDateTimeLocal(value) {
   if (Number.isNaN(date.getTime())) {
     return null;
   }
-  return date.toISOString();
+  return formatLocalDateTime(value);
 }
 
 function buildAppointmentUpdatePayload(draft) {
@@ -93,6 +100,47 @@ function buildAppointmentCreatePayload(draft) {
     assigned_admin_id: draft.assigned_admin_id ? Number(draft.assigned_admin_id) : null,
     client_description: draft.client_description?.trim() || undefined
   };
+}
+
+function isHourAligned(value) {
+  if (!value) {
+    return true;
+  }
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return false;
+  }
+  return date.getMinutes() === 0 && date.getSeconds() === 0 && date.getMilliseconds() === 0;
+}
+
+function alignScheduledStartInput(value) {
+  if (!value) {
+    return '';
+  }
+  if (isHourAligned(value)) {
+    return value;
+  }
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return value;
+  }
+  date.setMinutes(0, 0, 0);
+  return toDateTimeLocal(date.toISOString());
+}
+
+function alignDurationInput(value) {
+  if (!value) {
+    return '';
+  }
+  const minutes = Number(value);
+  if (Number.isNaN(minutes) || minutes <= 0) {
+    return '';
+  }
+  const aligned = Math.max(
+    MINIMUM_APPOINTMENT_DURATION_MINUTES,
+    Math.ceil(minutes / SLOT_INTERVAL_MINUTES) * SLOT_INTERVAL_MINUTES
+  );
+  return String(aligned);
 }
 
 function normaliseOperatingHours(hours) {
@@ -371,7 +419,20 @@ export default function AdminCalendar() {
     if (!draft) {
       return;
     }
-    const payload = buildAppointmentUpdatePayload(draft);
+    const normalizedStart = alignScheduledStartInput(draft.scheduled_start);
+    const normalizedDuration = alignDurationInput(draft.duration_minutes);
+    const normalizedDraft = {
+      ...draft,
+      scheduled_start: normalizedStart,
+      duration_minutes: normalizedDuration
+    };
+    if (normalizedStart !== draft.scheduled_start || normalizedDuration !== draft.duration_minutes) {
+      setAppointmentDrafts((prev) => ({
+        ...prev,
+        [appointmentId]: normalizedDraft
+      }));
+    }
+    const payload = buildAppointmentUpdatePayload(normalizedDraft);
     if (!payload.status) {
       setFeedback({ tone: 'offline', message: 'Status is required.' });
       return;
@@ -395,7 +456,17 @@ export default function AdminCalendar() {
   };
 
   const requestAppointmentCreate = () => {
-    const payload = buildAppointmentCreatePayload(newAppointmentDraft);
+    const normalizedStart = alignScheduledStartInput(newAppointmentDraft.scheduled_start);
+    const normalizedDuration = alignDurationInput(newAppointmentDraft.duration_minutes);
+    const normalizedDraft = {
+      ...newAppointmentDraft,
+      scheduled_start: normalizedStart,
+      duration_minutes: normalizedDuration
+    };
+    if (normalizedStart !== newAppointmentDraft.scheduled_start || normalizedDuration !== newAppointmentDraft.duration_minutes) {
+      setNewAppointmentDraft(normalizedDraft);
+    }
+    const payload = buildAppointmentCreatePayload(normalizedDraft);
     if (!payload.client_id && (!payload.guest_name || !payload.guest_email)) {
       setFeedback({ tone: 'offline', message: 'Provide client ID or guest name and email.' });
       return;
@@ -424,37 +495,46 @@ export default function AdminCalendar() {
     if (!confirmation) {
       return;
     }
+    const activeConfirmation = confirmation;
+    const editingTargetId = editingAppointmentId;
+    const shouldCloseEditor =
+      (activeConfirmation.type === 'update' || activeConfirmation.type === 'delete') &&
+      editingTargetId === activeConfirmation.appointmentId;
     setConfirmBusy(true);
+    setConfirmation(null);
+    if (shouldCloseEditor) {
+      setEditingAppointmentId(null);
+    }
     try {
-      if (confirmation.type === 'create') {
-        await createAppointment(confirmation.payload);
+      if (activeConfirmation.type === 'create') {
+        await createAppointment(activeConfirmation.payload);
         setNewAppointmentDraft(NEW_APPOINTMENT_TEMPLATE);
-      } else if (confirmation.type === 'update') {
-        await updateAppointment(confirmation.appointmentId, confirmation.payload);
-        if (editingAppointmentId === confirmation.appointmentId) {
-          setEditingAppointmentId(null);
-        }
-      } else if (confirmation.type === 'delete') {
-        await deleteAppointment(confirmation.appointmentId);
-        if (editingAppointmentId === confirmation.appointmentId) {
-          setEditingAppointmentId(null);
-        }
-      } else if (confirmation.type === 'schedule') {
-        await updateSchedule(confirmation.payload);
+      } else if (activeConfirmation.type === 'update') {
+        await updateAppointment(activeConfirmation.appointmentId, activeConfirmation.payload);
+      } else if (activeConfirmation.type === 'delete') {
+        await deleteAppointment(activeConfirmation.appointmentId);
+      } else if (activeConfirmation.type === 'schedule') {
+        await updateSchedule(activeConfirmation.payload);
       }
-      setConfirmation(null);
     } catch (err) {
       setFeedback({
         tone: 'offline',
         message:
-          confirmation.type === 'create'
+          activeConfirmation.type === 'create'
             ? 'Unable to create appointment.'
-            : confirmation.type === 'update'
+            : activeConfirmation.type === 'update'
             ? 'Unable to update appointment.'
-            : confirmation.type === 'delete'
+            : activeConfirmation.type === 'delete'
             ? 'Unable to delete appointment.'
             : 'Unable to update studio schedule.'
       });
+      if (shouldCloseEditor && activeConfirmation.type === 'update') {
+        const latestAppointment = appointments.find((entry) => entry.id === activeConfirmation.appointmentId);
+        if (latestAppointment) {
+          resetAppointmentDraft(latestAppointment);
+        }
+        setEditingAppointmentId(activeConfirmation.appointmentId);
+      }
     } finally {
       setConfirmBusy(false);
     }
@@ -602,6 +682,7 @@ export default function AdminCalendar() {
           <input
             id={NEW_APPOINTMENT_FIELD_IDS.scheduledStart}
             type="datetime-local"
+            step="3600"
             value={newAppointmentDraft.scheduled_start}
             onChange={(event) => handleCreateDraftChange('scheduled_start', event.target.value)}
             className="w-full rounded-2xl border border-gray-200 bg-white px-3 py-2 text-sm text-gray-900 focus:border-gray-900 focus:outline-none focus:ring-0 dark:border-gray-700 dark:bg-gray-950 dark:text-gray-100 dark:focus:border-gray-400"
@@ -617,8 +698,8 @@ export default function AdminCalendar() {
           <input
             id={NEW_APPOINTMENT_FIELD_IDS.duration}
             type="number"
-            min="0"
-            step="15"
+            min="60"
+            step="60"
             value={newAppointmentDraft.duration_minutes}
             onChange={(event) => handleCreateDraftChange('duration_minutes', event.target.value)}
             className="w-full rounded-2xl border border-gray-200 bg-white px-3 py-2 text-sm text-gray-900 focus:border-gray-900 focus:outline-none focus:ring-0 dark:border-gray-700 dark:bg-gray-950 dark:text-gray-100 dark:focus:border-gray-400"
@@ -799,6 +880,7 @@ export default function AdminCalendar() {
                         <input
                           id={startId}
                           type="datetime-local"
+                          step="3600"
                           value={draft.scheduled_start ?? ''}
                           onChange={(event) =>
                             handleAppointmentDraftChange(appointment.id, 'scheduled_start', event.target.value)
@@ -816,8 +898,8 @@ export default function AdminCalendar() {
                         <input
                           id={durationId}
                           type="number"
-                          min="0"
-                          step="15"
+                          min="60"
+                          step="60"
                           value={draft.duration_minutes ?? ''}
                           onChange={(event) =>
                             handleAppointmentDraftChange(appointment.id, 'duration_minutes', event.target.value)
