@@ -30,13 +30,14 @@ export default function Hero() {
         className="mx-auto flex max-w-6xl flex-col gap-12 px-6 text-left md:flex-row md:items-center md:justify-between"
       >
         <div className="max-w-2xl space-y-6">
-          <p className="text-xs font-semibold uppercase tracking-[0.4em] text-gray-500 dark:text-gray-400">Minimal craft</p>
+          <p className="text-xs font-semibold uppercase tracking-[0.4em] text-gray-500 dark:text-gray-400">Brooklyn studio</p>
           <h1 className="text-4xl font-semibold uppercase tracking-[0.2em] sm:text-5xl">
-            Where black ink meets minimal form
+            Custom fine line & blackwork tattoos in Brooklyn
           </h1>
           <p className="text-sm text-gray-600 dark:text-gray-300">
-            Precision-driven blackwork, fine line detailing, and bold color stories under one roof. Tailored for the
-            collectors who crave clarity and quiet confidence.
+            Precision first. Each piece begins with a collaborative sketch session, then a surgical focus on form,
+            balance, and the way your story moves across skin. BlackworkNYC delivers bespoke tattoos for New York
+            collectors who crave calm, considered craft.
           </p>
           <div className="flex flex-col gap-4 sm:flex-row">
             <Button as="a" href="#work">
@@ -51,8 +52,8 @@ export default function Hero() {
           <p className="uppercase tracking-[0.3em] text-gray-500 dark:text-gray-400">Studio Hours</p>
           <p className="mt-3 font-semibold uppercase tracking-[0.2em] text-gray-900 dark:text-gray-100">Wed - Sun | 11-7</p>
           <p className="mt-4 leading-relaxed">
-            Private sessions by appointment only. Each design is drafted in collaborative workshops to honor your story
-            while staying true to our monochrome aesthetic.
+            Private sessions by appointment only at 42 West Street, Suite 406 in Brooklyn. Each design is drafted in
+            collaborative workshops to honor your story while staying true to our monochrome aesthetic.
           </p>
         </div>
       </FadeIn>

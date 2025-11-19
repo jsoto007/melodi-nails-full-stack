@@ -2,7 +2,8 @@ import { NavLink, Outlet } from 'react-router-dom';
 
 const POSTS = [
   { slug: 'aftercare', title: 'Tattoo Aftercare Guide' },
-  { slug: 'faq', title: 'Frequently Asked Questions' }
+  { slug: 'faq', title: 'Frequently Asked Questions' },
+  { slug: 'custom-fine-line', title: 'Behind the Needle: Custom Fine Line Tattoo' }
 ];
 
 export default function BlogLayout() {

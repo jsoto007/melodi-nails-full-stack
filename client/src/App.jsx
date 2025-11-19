@@ -16,6 +16,7 @@ import BlogLayout from './pages/blog/BlogLayout.jsx';
 import BlogIndex from './pages/blog/BlogIndex.jsx';
 import TattooAftercare from './pages/blog/TattooAftercare.jsx';
 import TattooFaq from './pages/blog/TattooFaq.jsx';
+import CustomFineLine from './pages/blog/CustomFineLine.jsx';
 import Policies from './pages/Policies.jsx';
 
 export default function App() {
@@ -48,6 +49,7 @@ export default function App() {
           <Route index element={<BlogIndex />} />
           <Route path="aftercare" element={<TattooAftercare />} />
           <Route path="faq" element={<TattooFaq />} />
+          <Route path="custom-fine-line" element={<CustomFineLine />} />
         </Route>
         <Route path="/dashboard/user" element={<Navigate to="/portal/dashboard" replace />} />
         <Route path="/dashboard/admin/*" element={<AdminDashboard />} />

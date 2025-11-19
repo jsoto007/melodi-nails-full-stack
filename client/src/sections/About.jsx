@@ -12,14 +12,15 @@ export default function About() {
       >
         <SectionTitle
           eyebrow="About"
-          title="Led by precision"
-          description="Founder and lead artist Nova Clarke blends architectural linework with meditative shading to create pieces that age with intention."
+        title="Led by precision"
+        description="Founder and lead artist Nova Clarke blends architectural linework, meditative shading, and storytelling to create pieces that age with intention."
         />
         <div className="space-y-6">
           <Card className="space-y-4">
             <p className="text-sm text-gray-600 dark:text-gray-300">
               Sessions are collaborative and paced. Expect quiet stretches for focus, grounded check-ins, and aftercare
-              designed for busy schedules. We keep tools minimal, sanitation obsessive, and communication clear.
+              designed for busy schedules. We keep tools minimal, sanitation obsessive, and communication crystal clear.
+              The studio runs at a low-volume tempo so every tattoo gets the precision it deserves.
             </p>
             <div className="flex flex-wrap gap-3">
               <Badge>BBP Certified</Badge>

@@ -18,8 +18,8 @@ const CONTACT_POINTS = [
   {
     id: 'studio',
     heading: 'Studio',
-    value: '245 Mercer Street, Suite 4F, New York, NY',
-    body: 'By appointment only. Buzz 4F on arrival.'
+    value: '42 West Street, Suite 406, Brooklyn, NY',
+    body: 'By appointment only. Buzz 406 on arrival.'
   }
 ];
 
@@ -36,24 +36,27 @@ export default function Contact() {
           {CONTACT_POINTS.map((item) => (
             <Card key={item.id} className="space-y-3">
               <p className="text-xs uppercase tracking-[0.3em] text-gray-500 dark:text-gray-400">{item.heading}</p>
-              <p
-                className={`text-sm sm:text-base font-semibold uppercase tracking-[0.2em] text-gray-900 dark:text-gray-100 break-words ${
-                  item.id === 'email' ? 'whitespace-nowrap' : 'whitespace-normal'
-                }`}
-              >
-                {item.id === 'studio' ? (
+              {item.id === 'studio' ? (
+                <address className="not-italic text-sm sm:text-base font-semibold uppercase tracking-[0.2em] text-gray-900 dark:text-gray-100 break-words">
                   <a
                     href={`https://maps.google.com/?q=${encodeURIComponent(item.value)}`}
                     target="_blank"
                     rel="noreferrer"
                     className="underline-offset-4 hover:underline"
+                    aria-label="Open map to BlackworkNYC Brooklyn studio"
                   >
                     {item.value}
                   </a>
-                ) : (
-                  item.value
-                )}
-              </p>
+                </address>
+              ) : (
+                <p
+                  className={`text-sm sm:text-base font-semibold uppercase tracking-[0.2em] text-gray-900 dark:text-gray-100 break-words ${
+                    item.id === 'email' ? 'whitespace-nowrap' : 'whitespace-normal'
+                  }`}
+                >
+                  {item.value}
+                </p>
+              )}
               <p className="text-sm text-gray-600 dark:text-gray-300">{item.body}</p>
             </Card>
           ))}

@@ -27,6 +27,11 @@ export default function BlogIndex() {
           description="Clear, friendly answers to the most common questions we receive from clients."
           to="faq"
         />
+        <BlogPreview
+          title="Behind the Needle: How a Custom Fine Line Tattoo Comes to Life"
+          description="Learn how collaboration, precision, and post-care craftsmanship come together at BlackworkNYC."
+          to="custom-fine-line"
+        />
       </div>
     </article>
   );

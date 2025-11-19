@@ -10,7 +10,7 @@ export default function Services() {
         <SectionTitle
           eyebrow="Services"
           title="Crafted with restraint"
-          description="Every piece is drawn in-studio with an emphasis on balance, contrast, and longevity on skin. Explore the core offerings below."
+          description="Precision ink for fine line collectors. Each service begins with a collaborative sketch review, ensuring balance, contrast, and longevity across every custom composition."
         />
         <FadeIn className="grid gap-8 md:grid-cols-3" childClassName="h-full" delayStep={0.12}>
           {services.map((service) => (
