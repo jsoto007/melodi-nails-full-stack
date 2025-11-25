@@ -386,6 +386,8 @@ export default function AdminCalendar() {
   const [editingAppointmentId, setEditingAppointmentId] = useState(null);
   const [confirmation, setConfirmation] = useState(null);
   const [confirmBusy, setConfirmBusy] = useState(false);
+  const [appointmentSearchQuery, setAppointmentSearchQuery] = useState('');
+  const [appointmentSortOption, setAppointmentSortOption] = useState('schedule-asc');
 
   useEffect(() => {
     const drafts = {};
@@ -407,18 +409,91 @@ export default function AdminCalendar() {
     [admins]
   );
 
-  const sortedAppointments = useMemo(() => {
-    return appointments
-      .slice()
-      .sort((a, b) => {
-        const aTime = a.scheduled_start ? new Date(a.scheduled_start).getTime() : Number.MAX_SAFE_INTEGER;
-        const bTime = b.scheduled_start ? new Date(b.scheduled_start).getTime() : Number.MAX_SAFE_INTEGER;
-        if (aTime === bTime) {
-          return (b.created_at ? new Date(b.created_at).getTime() : 0) - (a.created_at ? new Date(a.created_at).getTime() : 0);
-        }
-        return aTime - bTime;
-      });
-  }, [appointments]);
+  const filteredAppointments = useMemo(() => {
+    const query = appointmentSearchQuery.trim().toLowerCase();
+    const scheduleTime = (appointment) =>
+      appointment.scheduled_start ? new Date(appointment.scheduled_start).getTime() : null;
+    const createdTime = (appointment) => (appointment.created_at ? new Date(appointment.created_at).getTime() : 0);
+    const matchesQuery = (appointment) => {
+      if (!query) {
+        return true;
+      }
+      const fields = [
+        appointment.client?.display_name,
+        appointment.guest_name,
+        appointment.guest_email,
+        appointment.guest_phone,
+        appointment.reference_code,
+        appointment.status,
+        appointment.assigned_admin?.name,
+        appointment.assigned_admin?.display_name,
+        appointment.assigned_admin?.email
+      ]
+        .filter(Boolean)
+        .map((value) => value.toString().toLowerCase());
+      return fields.some((field) => field.includes(query));
+    };
+    const compareScheduleAsc = (a, b) => {
+      const aTime = scheduleTime(a);
+      const bTime = scheduleTime(b);
+      if (aTime === null && bTime === null) {
+        return createdTime(b) - createdTime(a);
+      }
+      if (aTime === null) {
+        return 1;
+      }
+      if (bTime === null) {
+        return -1;
+      }
+      if (aTime === bTime) {
+        return createdTime(b) - createdTime(a);
+      }
+      return aTime - bTime;
+    };
+    const compareScheduleDesc = (a, b) => {
+      const aTime = scheduleTime(a);
+      const bTime = scheduleTime(b);
+      if (aTime === null && bTime === null) {
+        return createdTime(b) - createdTime(a);
+      }
+      if (aTime === null) {
+        return 1;
+      }
+      if (bTime === null) {
+        return -1;
+      }
+      if (aTime === bTime) {
+        return createdTime(b) - createdTime(a);
+      }
+      return bTime - aTime;
+    };
+    const compareStatusAsc = (a, b) => {
+      const result = (a.status || 'pending').localeCompare(b.status || 'pending');
+      if (result !== 0) {
+        return result;
+      }
+      return compareScheduleAsc(a, b);
+    };
+    const compareStatusDesc = (a, b) => {
+      const result = (b.status || 'pending').localeCompare(a.status || 'pending');
+      if (result !== 0) {
+        return result;
+      }
+      return compareScheduleAsc(a, b);
+    };
+    const comparator =
+      {
+        'schedule-asc': compareScheduleAsc,
+        'schedule-desc': compareScheduleDesc,
+        'status-asc': compareStatusAsc,
+        'status-desc': compareStatusDesc
+      }[appointmentSortOption] || compareScheduleAsc;
+
+    return appointments.filter(matchesQuery).slice().sort(comparator);
+  }, [appointmentSearchQuery, appointmentSortOption, appointments]);
+
+  const hasSearchQuery = Boolean(appointmentSearchQuery.trim());
+  const totalAppointments = appointmentsPagination.total || appointments.length;
 
   const handleAppointmentDraftChange = (appointmentId, field, value) => {
     setAppointmentDrafts((prev) => ({
@@ -882,224 +957,325 @@ export default function AdminCalendar() {
   );
 
   const renderAppointmentList = () => {
-    if (!sortedAppointments.length) {
-      return renderEmptyState('No appointments scheduled yet.');
+    const showingTotal = totalAppointments || filteredAppointments.length;
+    const showingLabel = hasSearchQuery
+      ? `Showing ${filteredAppointments.length} of ${showingTotal} appointments`
+      : `Showing ${filteredAppointments.length} appointments`;
+
+    if (!filteredAppointments.length) {
+      return renderEmptyState(hasSearchQuery ? 'No appointments match your search.' : 'No appointments scheduled yet.');
     }
 
     return (
       <div className="space-y-4">
-        <ol className="space-y-4">
-          {sortedAppointments.map((appointment) => {
-          const draft = appointmentDrafts[appointment.id] || buildDraftFromAppointment(appointment);
-          const scheduledDate = appointment.scheduled_start ? new Date(appointment.scheduled_start) : null;
-          const formattedDate = scheduledDate
-            ? scheduledDate.toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' })
-            : 'Awaiting schedule';
-          const clientName = appointment.client?.display_name || appointment.guest_name || 'Guest client';
-          const contact =
-            appointment.client?.email || appointment.guest_email || appointment.guest_phone || 'No contact info';
-          const reference = appointment.reference_code || `#${appointment.id}`;
-          const assigned =
-            appointment.assigned_admin?.name ||
-            appointment.assigned_admin?.display_name ||
-            appointment.assigned_admin?.email ||
-            'Unassigned';
-          const scheduledDateKey = scheduledDate ? scheduledDate.toISOString().slice(0, 10) : null;
-          const isDayOff = scheduledDateKey ? closureDaysSet.has(scheduledDateKey) : false;
-          const baseId = `appointment-${appointment.id}`;
-          const statusId = `${baseId}-status`;
-          const startId = `${baseId}-start`;
-          const durationId = `${baseId}-duration`;
-          const adminId = `${baseId}-assigned-admin`;
-          const notesId = `${baseId}-notes`;
-          const isEditing = editingAppointmentId === appointment.id;
-
-          return (
-            <li key={appointment.id}>
-              <div className="space-y-4 rounded-3xl border border-gray-200 bg-white p-5 shadow-sm dark:border-gray-800 dark:bg-gray-950">
-                <div className="flex flex-wrap items-start justify-between gap-4">
-                  <div className="flex items-center gap-3">
-                    <span className="flex h-12 w-12 items-center justify-center rounded-2xl bg-gray-900 text-white dark:bg-gray-100 dark:text-gray-900">
-                      <IconCalendar className="h-6 w-6" />
-                    </span>
-                    <div className="space-y-1">
-                      <div className="flex flex-wrap items-center gap-2">
-                        <p className="text-sm font-semibold text-gray-900 dark:text-gray-100">{clientName}</p>
-                        <span className="inline-flex items-center gap-2 rounded-full bg-white px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.3em] text-gray-600 shadow-sm dark:bg-gray-950 dark:text-gray-300">
-                          {appointment.status || 'pending'}
-                          {isDayOff ? (
-                            <span className="rounded-full bg-red-500 px-2 py-[2px] text-[10px] font-semibold uppercase tracking-[0.3em] text-white">
-                              Day off
-                            </span>
-                          ) : null}
-                        </span>
-                      </div>
-                      <p className="text-xs text-gray-500 dark:text-gray-400">{formattedDate}</p>
-                      <p className="text-xs text-gray-500 dark:text-gray-400">{contact}</p>
-                      <p className="text-xs text-gray-500 dark:text-gray-400">Ref {reference}</p>
-                      <p className="text-xs text-gray-500 dark:text-gray-400">Assigned to {assigned}</p>
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      onClick={() => navigate(`${appointment.id}`)}
-                      aria-label={`View appointment ${reference} details`}
-                      className="px-3 py-2 sm:px-4 sm:py-2"
-                    >
-                      <IconEye className="h-4 w-4" />
-                      <span className="hidden text-xs uppercase tracking-[0.3em] sm:inline">Details</span>
-                    </Button>
-                    <ActionIconButton
-                      icon={IconPencil}
-                      label={isEditing ? 'Close editor' : 'Edit appointment'}
-                      onClick={() => handleEditClick(appointment)}
-                      active={isEditing}
-                    />
-                    <ActionIconButton
-                      icon={IconTrash}
-                      label={`Delete appointment ${reference}`}
-                      onClick={() => requestAppointmentDelete(appointment)}
-                      tone="danger"
-                    />
-                  </div>
-                </div>
-                {isEditing ? (
-                  <div className="space-y-4 border-t border-gray-200 pt-4 dark:border-gray-800">
-                    <div className="grid gap-4 md:grid-cols-2">
-                      <div className="space-y-2">
-                        <label
-                          htmlFor={statusId}
-                          className="text-xs uppercase tracking-[0.3em] text-gray-500 dark:text-gray-400"
+        <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+          <div className="w-full max-w-md">
+            <label htmlFor="admin-calendar-search" className="sr-only">
+              Search appointments
+            </label>
+            <div className="relative">
+              <span className="pointer-events-none absolute inset-y-0 left-3 flex items-center text-sm">🔍</span>
+              <input
+                id="admin-calendar-search"
+                type="search"
+                value={appointmentSearchQuery}
+                onChange={(event) => setAppointmentSearchQuery(event.target.value)}
+                placeholder="Search by client, contact, reference, or status"
+                className="w-full rounded-2xl border border-gray-200 bg-white py-2 pl-10 pr-3 text-sm text-gray-900 placeholder:text-gray-400 focus:border-gray-900 focus:outline-none focus:ring-0 dark:border-gray-700 dark:bg-gray-950 dark:text-gray-100 dark:focus:border-gray-400"
+              />
+            </div>
+          </div>
+          <div className="flex flex-wrap items-center gap-3">
+            <label
+              htmlFor="admin-calendar-sort"
+              className="text-xs uppercase tracking-[0.3em] text-gray-500 dark:text-gray-400"
+            >
+              Sort
+            </label>
+            <select
+              id="admin-calendar-sort"
+              value={appointmentSortOption}
+              onChange={(event) => setAppointmentSortOption(event.target.value)}
+              className="rounded-2xl border border-gray-200 bg-white px-3 py-2 text-sm text-gray-900 focus:border-gray-900 focus:outline-none focus:ring-0 dark:border-gray-700 dark:bg-gray-950 dark:text-gray-100 dark:focus:border-gray-400"
+            >
+              <option value="schedule-asc">Upcoming (chronological)</option>
+              <option value="schedule-desc">Latest first</option>
+              <option value="status-asc">Status A → Z</option>
+              <option value="status-desc">Status Z → A</option>
+            </select>
+            <p className="text-xs text-gray-500 dark:text-gray-400">{showingLabel}</p>
+          </div>
+        </div>
+        <div className="flow-root">
+          <div className="-mx-4 -my-2 overflow-x-auto sm:-mx-6 lg:-mx-8">
+            <div className="inline-block min-w-full py-2 align-middle sm:px-6 lg:px-8">
+              <div className="overflow-hidden rounded-3xl border border-gray-200 bg-white shadow-sm dark:border-gray-800 dark:bg-gray-950">
+                <div className="max-h-[720px] overflow-y-auto">
+                  <table className="min-w-full divide-y divide-gray-300 dark:divide-gray-800">
+                    <thead className="bg-gray-50 dark:bg-gray-900">
+                      <tr>
+                        <th
+                          scope="col"
+                          className="py-3.5 pl-4 pr-3 text-left text-sm font-semibold text-gray-900 dark:text-gray-100 sm:pl-6"
+                        >
+                          Client
+                        </th>
+                        <th
+                          scope="col"
+                          className="px-3 py-3.5 text-left text-sm font-semibold text-gray-900 dark:text-gray-100"
+                        >
+                          Schedule
+                        </th>
+                        <th
+                          scope="col"
+                          className="px-3 py-3.5 text-left text-sm font-semibold text-gray-900 dark:text-gray-100"
                         >
                           Status
-                        </label>
-                        <input
-                          id={statusId}
-                          type="text"
-                          value={draft.status ?? ''}
-                          onChange={(event) => handleAppointmentDraftChange(appointment.id, 'status', event.target.value)}
-                          className="w-full rounded-2xl border border-gray-200 bg-white px-3 py-2 text-sm text-gray-900 focus:border-gray-900 focus:outline-none focus:ring-0 dark:border-gray-700 dark:bg-gray-950 dark:text-gray-100 dark:focus:border-gray-400"
-                        />
-                      </div>
-                      <div className="space-y-2">
-                        <label
-                          htmlFor={startId}
-                          className="text-xs uppercase tracking-[0.3em] text-gray-500 dark:text-gray-400"
+                        </th>
+                        <th
+                          scope="col"
+                          className="px-3 py-3.5 text-left text-sm font-semibold text-gray-900 dark:text-gray-100"
                         >
-                          Start
-                        </label>
-                        <input
-                          id={startId}
-                          type="datetime-local"
-                          step="3600"
-                          value={draft.scheduled_start ?? ''}
-                          onChange={(event) =>
-                            handleAppointmentDraftChange(appointment.id, 'scheduled_start', event.target.value)
-                          }
-                          className="w-full rounded-2xl border border-gray-200 bg-white px-3 py-2 text-sm text-gray-900 focus:border-gray-900 focus:outline-none focus:ring-0 dark:border-gray-700 dark:bg-gray-950 dark:text-gray-100 dark:focus:border-gray-400"
-                        />
-                      </div>
-                      <div className="space-y-2">
-                        <label
-                          htmlFor={durationId}
-                          className="text-xs uppercase tracking-[0.3em] text-gray-500 dark:text-gray-400"
+                          Assigned
+                        </th>
+                        <th
+                          scope="col"
+                          className="py-3.5 pl-3 pr-4 text-right text-sm font-semibold text-gray-900 dark:text-gray-100 sm:pr-6"
                         >
-                          Duration (min)
-                        </label>
-                        <input
-                          id={durationId}
-                          type="number"
-                          min="60"
-                          step="60"
-                          value={draft.duration_minutes ?? ''}
-                          onChange={(event) =>
-                            handleAppointmentDraftChange(appointment.id, 'duration_minutes', event.target.value)
-                          }
-                          className="w-full rounded-2xl border border-gray-200 bg-white px-3 py-2 text-sm text-gray-900 focus:border-gray-900 focus:outline-none focus:ring-0 dark:border-gray-700 dark:bg-gray-950 dark:text-gray-100 dark:focus:border-gray-400"
-                        />
-                      </div>
-                      <div className="space-y-2">
-                        <label
-                          htmlFor={adminId}
-                          className="text-xs uppercase tracking-[0.3em] text-gray-500 dark:text-gray-400"
-                        >
-                          Assigned admin
-                        </label>
-                        <select
-                          id={adminId}
-                          value={draft.assigned_admin_id ?? ''}
-                          onChange={(event) =>
-                            handleAppointmentDraftChange(appointment.id, 'assigned_admin_id', event.target.value)
-                          }
-                          className="w-full rounded-2xl border border-gray-200 bg-white px-3 py-2 text-sm text-gray-900 focus:border-gray-900 focus:outline-none focus:ring-0 dark:border-gray-700 dark:bg-gray-950 dark:text-gray-100 dark:focus:border-gray-400"
-                        >
-                          <option value="">Unassigned</option>
-                          {adminOptions.map((option) => (
-                            <option key={option.value} value={option.value}>
-                              {option.label}
-                            </option>
-                          ))}
-                        </select>
-                      </div>
-                    </div>
-                    <div className="space-y-2">
-                      <label
-                        htmlFor={notesId}
-                        className="text-xs uppercase tracking-[0.3em] text-gray-500 dark:text-gray-400"
-                      >
-                        Notes
-                      </label>
-                      <textarea
-                        id={notesId}
-                        rows={3}
-                        value={draft.client_description ?? ''}
-                        onChange={(event) =>
-                          handleAppointmentDraftChange(appointment.id, 'client_description', event.target.value)
-                        }
-                        className="w-full rounded-2xl border border-gray-200 bg-white px-3 py-2 text-sm text-gray-900 focus:border-gray-900 focus:outline-none focus:ring-0 dark:border-gray-700 dark:bg-gray-950 dark:text-gray-100 dark:focus:border-gray-400"
-                      />
-                    </div>
-                    <div className="flex flex-wrap items-center justify-between gap-3">
-                      <p className="text-xs text-gray-500 dark:text-gray-400">
-                        Last update{' '}
-                        {appointment.updated_at
-                          ? new Date(appointment.updated_at).toLocaleString([], {
-                              dateStyle: 'medium',
-                              timeStyle: 'short'
-                            })
-                          : 'n/a'}
-                      </p>
-                      <div className="flex items-center gap-2">
-                        <Button type="button" onClick={() => requestAppointmentUpdate(appointment.id)}>
-                          <IconPencil className="h-4 w-4" />
-                          Save changes
-                        </Button>
-                        <Button type="button" variant="ghost" onClick={() => handleCancelEdit(appointment)}>
-                          Cancel
-                        </Button>
-                      </div>
-                    </div>
-                  </div>
-                ) : null}
+                          Actions
+                        </th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-200 dark:divide-gray-800">
+                      {filteredAppointments.map((appointment) => {
+                        const draft = appointmentDrafts[appointment.id] || buildDraftFromAppointment(appointment);
+                        const scheduledDate = appointment.scheduled_start ? new Date(appointment.scheduled_start) : null;
+                        const formattedDate = scheduledDate
+                          ? scheduledDate.toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' })
+                          : 'Awaiting schedule';
+                        const clientName = appointment.client?.display_name || appointment.guest_name || 'Guest client';
+                        const contact =
+                          appointment.client?.email || appointment.guest_email || appointment.guest_phone || 'No contact info';
+                        const reference = appointment.reference_code || `#${appointment.id}`;
+                        const assigned =
+                          appointment.assigned_admin?.name ||
+                          appointment.assigned_admin?.display_name ||
+                          appointment.assigned_admin?.email ||
+                          'Unassigned';
+                        const scheduledDateKey = scheduledDate ? scheduledDate.toISOString().slice(0, 10) : null;
+                        const isDayOff = scheduledDateKey ? closureDaysSet.has(scheduledDateKey) : false;
+                        const baseId = `appointment-${appointment.id}`;
+                        const statusId = `${baseId}-status`;
+                        const startId = `${baseId}-start`;
+                        const durationId = `${baseId}-duration`;
+                        const adminId = `${baseId}-assigned-admin`;
+                        const notesId = `${baseId}-notes`;
+                        const isEditing = editingAppointmentId === appointment.id;
+
+                        return [
+                          <tr key={appointment.id} className="bg-white dark:bg-gray-950">
+                            <td className="whitespace-nowrap py-4 pl-4 pr-3 text-sm sm:pl-6">
+                              <div className="flex items-center">
+                                <div className="mr-4 flex h-11 w-11 items-center justify-center rounded-full bg-gray-900 text-white dark:bg-gray-100 dark:text-gray-900">
+                                  <IconCalendar className="h-5 w-5" />
+                                </div>
+                                <div>
+                                  <div className="font-semibold text-gray-900 dark:text-gray-100">{clientName}</div>
+                                  <div className="mt-1 text-xs text-gray-500 dark:text-gray-400">{contact}</div>
+                                  <div className="mt-1 text-xs text-gray-500 dark:text-gray-400">Ref {reference}</div>
+                                </div>
+                              </div>
+                            </td>
+                            <td className="whitespace-nowrap px-3 py-4 text-sm text-gray-500 dark:text-gray-300">
+                              <div className="text-gray-900 dark:text-gray-100">{formattedDate}</div>
+                              <div className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                                Duration {appointment.duration_minutes ? `${appointment.duration_minutes} min` : '—'}
+                              </div>
+                            </td>
+                            <td className="whitespace-nowrap px-3 py-4 text-sm text-gray-500 dark:text-gray-300">
+                              <span className="inline-flex items-center rounded-md bg-green-50 px-2 py-1 text-xs font-medium text-green-700 ring-1 ring-inset ring-green-600/20 dark:bg-green-950/50 dark:text-green-200">
+                                {appointment.status || 'pending'}
+                              </span>
+                              {isDayOff ? (
+                                <span className="ml-2 inline-flex items-center rounded-md bg-rose-50 px-2 py-1 text-xs font-medium text-rose-700 ring-1 ring-inset ring-rose-600/20 dark:bg-rose-950/50 dark:text-rose-200">
+                                  Day off
+                                </span>
+                              ) : null}
+                            </td>
+                            <td className="whitespace-nowrap px-3 py-4 text-sm text-gray-500 dark:text-gray-300">
+                              <div className="text-gray-900 dark:text-gray-100">{assigned}</div>
+                            </td>
+                            <td className="whitespace-nowrap py-4 pl-3 pr-4 text-right text-sm font-medium sm:pr-6">
+                              <div className="flex items-center justify-end gap-2">
+                                <Button
+                                  type="button"
+                                  variant="ghost"
+                                  onClick={() => navigate(`${appointment.id}`)}
+                                  aria-label={`View appointment ${reference} details`}
+                                  className="px-3 py-2"
+                                >
+                                  <IconEye className="h-4 w-4" />
+                                  <span className="hidden text-xs uppercase tracking-[0.3em] sm:inline">Details</span>
+                                </Button>
+                                <ActionIconButton
+                                  icon={IconPencil}
+                                  label={isEditing ? 'Close editor' : 'Edit appointment'}
+                                  onClick={() => handleEditClick(appointment)}
+                                  active={isEditing}
+                                />
+                                <ActionIconButton
+                                  icon={IconTrash}
+                                  label={`Delete appointment ${reference}`}
+                                  onClick={() => requestAppointmentDelete(appointment)}
+                                  tone="danger"
+                                />
+                              </div>
+                            </td>
+                          </tr>,
+                          isEditing ? (
+                            <tr key={`${appointment.id}-edit`} className="bg-gray-50 dark:bg-gray-900">
+                              <td colSpan={5} className="px-4 py-5 sm:px-6">
+                                <div className="space-y-4">
+                                  <div className="grid gap-4 md:grid-cols-2">
+                                    <div className="space-y-2">
+                                      <label
+                                        htmlFor={statusId}
+                                        className="text-xs uppercase tracking-[0.3em] text-gray-500 dark:text-gray-400"
+                                      >
+                                        Status
+                                      </label>
+                                      <input
+                                        id={statusId}
+                                        type="text"
+                                        value={draft.status ?? ''}
+                                        onChange={(event) =>
+                                          handleAppointmentDraftChange(appointment.id, 'status', event.target.value)
+                                        }
+                                        className="w-full rounded-2xl border border-gray-200 bg-white px-3 py-2 text-sm text-gray-900 focus:border-gray-900 focus:outline-none focus:ring-0 dark:border-gray-700 dark:bg-gray-950 dark:text-gray-100 dark:focus:border-gray-400"
+                                      />
+                                    </div>
+                                    <div className="space-y-2">
+                                      <label
+                                        htmlFor={startId}
+                                        className="text-xs uppercase tracking-[0.3em] text-gray-500 dark:text-gray-400"
+                                      >
+                                        Start
+                                      </label>
+                                      <input
+                                        id={startId}
+                                        type="datetime-local"
+                                        step="3600"
+                                        value={draft.scheduled_start ?? ''}
+                                        onChange={(event) =>
+                                          handleAppointmentDraftChange(appointment.id, 'scheduled_start', event.target.value)
+                                        }
+                                        className="w-full rounded-2xl border border-gray-200 bg-white px-3 py-2 text-sm text-gray-900 focus:border-gray-900 focus:outline-none focus:ring-0 dark:border-gray-700 dark:bg-gray-950 dark:text-gray-100 dark:focus:border-gray-400"
+                                      />
+                                    </div>
+                                    <div className="space-y-2">
+                                      <label
+                                        htmlFor={durationId}
+                                        className="text-xs uppercase tracking-[0.3em] text-gray-500 dark:text-gray-400"
+                                      >
+                                        Duration (min)
+                                      </label>
+                                      <input
+                                        id={durationId}
+                                        type="number"
+                                        min="60"
+                                        step="60"
+                                        value={draft.duration_minutes ?? ''}
+                                        onChange={(event) =>
+                                          handleAppointmentDraftChange(appointment.id, 'duration_minutes', event.target.value)
+                                        }
+                                        className="w-full rounded-2xl border border-gray-200 bg-white px-3 py-2 text-sm text-gray-900 focus:border-gray-900 focus:outline-none focus:ring-0 dark:border-gray-700 dark:bg-gray-950 dark:text-gray-100 dark:focus:border-gray-400"
+                                      />
+                                    </div>
+                                    <div className="space-y-2">
+                                      <label
+                                        htmlFor={adminId}
+                                        className="text-xs uppercase tracking-[0.3em] text-gray-500 dark:text-gray-400"
+                                      >
+                                        Assigned admin
+                                      </label>
+                                      <select
+                                        id={adminId}
+                                        value={draft.assigned_admin_id ?? ''}
+                                        onChange={(event) =>
+                                          handleAppointmentDraftChange(appointment.id, 'assigned_admin_id', event.target.value)
+                                        }
+                                        className="w-full rounded-2xl border border-gray-200 bg-white px-3 py-2 text-sm text-gray-900 focus:border-gray-900 focus:outline-none focus:ring-0 dark:border-gray-700 dark:bg-gray-950 dark:text-gray-100 dark:focus:border-gray-400"
+                                      >
+                                        <option value="">Unassigned</option>
+                                        {adminOptions.map((option) => (
+                                          <option key={option.value} value={option.value}>
+                                            {option.label}
+                                          </option>
+                                        ))}
+                                      </select>
+                                    </div>
+                                  </div>
+                                  <div className="space-y-2">
+                                    <label
+                                      htmlFor={notesId}
+                                      className="text-xs uppercase tracking-[0.3em] text-gray-500 dark:text-gray-400"
+                                    >
+                                      Notes
+                                    </label>
+                                    <textarea
+                                      id={notesId}
+                                      rows={3}
+                                      value={draft.client_description ?? ''}
+                                      onChange={(event) =>
+                                        handleAppointmentDraftChange(appointment.id, 'client_description', event.target.value)
+                                      }
+                                      className="w-full rounded-2xl border border-gray-200 bg-white px-3 py-2 text-sm text-gray-900 focus:border-gray-900 focus:outline-none focus:ring-0 dark:border-gray-700 dark:bg-gray-950 dark:text-gray-100 dark:focus:border-gray-400"
+                                    />
+                                  </div>
+                                  <div className="flex flex-wrap items-center justify-between gap-3">
+                                    <p className="text-xs text-gray-500 dark:text-gray-400">
+                                      Last update{' '}
+                                      {appointment.updated_at
+                                        ? new Date(appointment.updated_at).toLocaleString([], {
+                                            dateStyle: 'medium',
+                                            timeStyle: 'short'
+                                          })
+                                        : 'n/a'}
+                                    </p>
+                                    <div className="flex items-center gap-2">
+                                      <Button type="button" onClick={() => requestAppointmentUpdate(appointment.id)}>
+                                        <IconPencil className="h-4 w-4" />
+                                        Save changes
+                                      </Button>
+                                      <Button type="button" variant="ghost" onClick={() => handleCancelEdit(appointment)}>
+                                        Cancel
+                                      </Button>
+                                    </div>
+                                  </div>
+                                </div>
+                              </td>
+                            </tr>
+                          ) : null
+                        ];
+                      })}
+                    </tbody>
+                  </table>
+                </div>
               </div>
-            </li>
-          );
-          })}
-        </ol>
-        {appointmentsPagination.page < appointmentsPagination.pages ? (
-          <div className="flex justify-center">
-            <Button type="button" variant="ghost" onClick={() => loadMoreAppointments()}>
-              Load more appointments
-            </Button>
+            </div>
           </div>
-        ) : null}
+          {appointmentsPagination.page < appointmentsPagination.pages ? (
+            <div className="mt-4 flex justify-center">
+              <Button type="button" variant="ghost" onClick={() => loadMoreAppointments()}>
+                Load more appointments
+              </Button>
+            </div>
+          ) : null}
+        </div>
       </div>
     );
   };
 
-  const totalAppointments = appointmentsPagination.total || sortedAppointments.length;
   const appointmentCountLabel =
     totalAppointments === 1 ? '1 appointment scheduled' : `${totalAppointments} appointments scheduled`;
 
