@@ -95,7 +95,6 @@ const FIELD_LABELS = {
   tattoo_size: 'size selection',
   description: 'inspiration details',
   id_front: 'government ID',
-  id_back: 'government ID',
   scheduled_start: 'date & time',
   password: 'account password',
   files: 'upload section'
@@ -110,7 +109,6 @@ const VALIDATION_ORDER = [
   'selected_date',
   'description',
   'id_front',
-  'id_back',
   'scheduled_start',
   'password'
 ];
@@ -133,7 +131,6 @@ function createInitialForm() {
 function createInitialFiles() {
   return {
     idFront: null,
-    idBack: null,
     inspiration: []
   };
 }
@@ -585,9 +582,6 @@ export default function ShareYourIdea() {
       if (prev.idFront?.previewUrl) {
         URL.revokeObjectURL(prev.idFront.previewUrl);
       }
-      if (prev.idBack?.previewUrl) {
-        URL.revokeObjectURL(prev.idBack.previewUrl);
-      }
       prev.inspiration.forEach((entry) => entry.previewUrl && URL.revokeObjectURL(entry.previewUrl));
       return createInitialFiles();
     });
@@ -794,9 +788,6 @@ export default function ShareYourIdea() {
       if (files.idFront?.previewUrl) {
         URL.revokeObjectURL(files.idFront.previewUrl);
       }
-      if (files.idBack?.previewUrl) {
-        URL.revokeObjectURL(files.idBack.previewUrl);
-      }
       files.inspiration.forEach((entry) => entry.previewUrl && URL.revokeObjectURL(entry.previewUrl));
     };
   }, [files]);
@@ -938,16 +929,14 @@ export default function ShareYourIdea() {
     }
     setFiles((prev) => ({
       ...prev,
-      idFront: null,
-      idBack: null
+      idFront: null
     }));
     setErrors((prev) => {
-      if (!prev.id_front && !prev.id_back) {
+      if (!prev.id_front) {
         return prev;
       }
       const next = { ...prev };
       delete next.id_front;
-      delete next.id_back;
       return next;
     });
   }, [shouldSkipIdentityUpload]);
@@ -1138,8 +1127,6 @@ export default function ShareYourIdea() {
         const next = { ...prev };
         if (field === 'idFront') {
           delete next.id_front;
-        } else if (field === 'idBack') {
-          delete next.id_back;
         }
         delete next.files;
         return next;
@@ -1197,7 +1184,6 @@ export default function ShareYourIdea() {
         description: descriptionRef,
         files: inspirationRef,
         id_front: identityRef,
-        id_back: identityRef,
         scheduled_start: scheduleRef,
         password: passwordRef
       };
@@ -1251,9 +1237,6 @@ export default function ShareYourIdea() {
       if (!files.idFront?.file) {
         validationErrors.id_front = 'Required';
       }
-      if (!files.idBack?.file) {
-        validationErrors.id_back = 'Required';
-      }
     }
     if (!form.description.trim() && !files.inspiration.length) {
       validationErrors.description = 'Add inspiration details';
@@ -1299,9 +1282,8 @@ export default function ShareYourIdea() {
 
   const prepareBookingPayload = useCallback(async () => {
     const contactName = `${form.first_name.trim()} ${form.last_name.trim()}`.replace(/\s+/g, ' ').trim();
-    const [idFrontDataUrl, idBackDataUrl, inspirationDataUrls] = await Promise.all([
+    const [idFrontDataUrl, inspirationDataUrls] = await Promise.all([
       shouldSkipIdentityUpload ? Promise.resolve(null) : files.idFront?.file ? readFileAsDataUrl(files.idFront.file) : Promise.resolve(null),
-      shouldSkipIdentityUpload ? Promise.resolve(null) : files.idBack?.file ? readFileAsDataUrl(files.idBack.file) : Promise.resolve(null),
       Promise.all(files.inspiration.map((entry) => readFileAsDataUrl(entry.file)))
     ]);
     const payload = {
@@ -1318,7 +1300,6 @@ export default function ShareYourIdea() {
       scheduled_start: selectedSlot?.start,
       duration_minutes: durationMinutes,
       id_front_url: shouldSkipIdentityUpload ? null : idFrontDataUrl,
-      id_back_url: shouldSkipIdentityUpload ? null : idBackDataUrl,
       inspiration_urls: inspirationDataUrls.filter(Boolean)
     };
     if (selectedSessionOption) {
@@ -2087,87 +2068,51 @@ export default function ShareYourIdea() {
                     Use ID already on file
                   </button>
                 ) : null}
-                <div className="grid gap-4 sm:grid-cols-2">
-                  <div>
+                <div className="space-y-2 rounded-2xl border border-gray-200 p-4 dark:border-gray-800 dark:bg-gray-950/40">
+                  <div className="flex flex-col gap-1">
                     <label
                       htmlFor="booking-id-front"
                       className="text-xs font-semibold uppercase tracking-[0.3em] text-gray-500 dark:text-gray-400"
                     >
                       Government ID (front) *
                     </label>
-                    <input
-                      id="booking-id-front"
-                      name="id_front"
-                      type="file"
-                      accept="image/png,image/jpeg,image/jpg,image/heic,image/heif,image/webp"
-                      onChange={handleFileChange('idFront')}
-                      className="sr-only"
-                      aria-describedby="booking-id-front-help"
-                      required
-                    />
-                    <div className="mt-2 flex flex-wrap items-center gap-3">
-                      <Button as="label" htmlFor="booking-id-front">
-                        Upload front ID
-                      </Button>
-                      <p id="booking-id-front-help" className="text-xs text-gray-500 dark:text-gray-400">
-                        {files.idFront
-                          ? `${files.idFront.name} · ${formatFileSize(files.idFront.size)}`
-                          : 'Accepted: PNG, JPG, HEIC, WebP.'}
-                      </p>
-                    </div>
-                    {files.idFront ? (
-                      <img
-                        src={files.idFront.previewUrl}
-                        alt="Government ID front preview"
-                        className="mt-3 h-28 w-44 rounded-xl border border-gray-200 object-cover object-center dark:border-gray-700"
-                      />
-                    ) : null}
-                    {errors.id_front ? (
-                      <p className="mt-1 text-xs uppercase tracking-[0.2em] text-gray-500 dark:text-gray-400">
-                        {errors.id_front}
-                      </p>
-                    ) : null}
+                    <p className="text-xs text-gray-500 dark:text-gray-400">
+                      Front photo only. Files are end-to-end encrypted before they are stored and only visible to our
+                      studio team.
+                    </p>
                   </div>
-                  <div>
-                    <label
-                      htmlFor="booking-id-back"
-                      className="text-xs font-semibold uppercase tracking-[0.3em] text-gray-500 dark:text-gray-400"
-                    >
-                      Government ID (back) *
-                    </label>
-                    <input
-                      id="booking-id-back"
-                      name="id_back"
-                      type="file"
-                      accept="image/png,image/jpeg,image/jpg,image/heic,image/heif,image/webp"
-                      onChange={handleFileChange('idBack')}
-                      className="sr-only"
-                      aria-describedby="booking-id-back-help"
-                      required
-                    />
-                    <div className="mt-2 flex flex-wrap items-center gap-3">
-                      <Button as="label" htmlFor="booking-id-back">
-                        Upload back ID
-                      </Button>
-                      <p id="booking-id-back-help" className="text-xs text-gray-500 dark:text-gray-400">
-                        {files.idBack
-                          ? `${files.idBack.name} · ${formatFileSize(files.idBack.size)}`
-                          : 'Ensure details are readable.'}
-                      </p>
-                    </div>
-                    {files.idBack ? (
-                      <img
-                        src={files.idBack.previewUrl}
-                        alt="Government ID back preview"
-                        className="mt-3 h-28 w-44 rounded-xl border border-gray-200 object-cover object-center dark:border-gray-700"
-                      />
-                    ) : null}
-                    {errors.id_back ? (
-                      <p className="mt-1 text-xs uppercase tracking-[0.2em] text-gray-500 dark:text-gray-400">
-                        {errors.id_back}
-                      </p>
-                    ) : null}
+                  <input
+                    id="booking-id-front"
+                    name="id_front"
+                    type="file"
+                    accept="image/png,image/jpeg,image/jpg,image/heic,image/heif,image/webp"
+                    onChange={handleFileChange('idFront')}
+                    className="sr-only"
+                    aria-describedby="booking-id-front-help"
+                    required
+                  />
+                  <div className="flex flex-wrap items-center gap-3">
+                    <Button as="label" htmlFor="booking-id-front">
+                      Upload front ID
+                    </Button>
+                    <p id="booking-id-front-help" className="text-xs text-gray-500 dark:text-gray-400">
+                      {files.idFront
+                        ? `${files.idFront.name} · ${formatFileSize(files.idFront.size)}`
+                        : 'Accepted: PNG, JPG, HEIC, WebP.'}
+                    </p>
                   </div>
+                  {files.idFront ? (
+                    <img
+                      src={files.idFront.previewUrl}
+                      alt="Government ID front preview"
+                      className="mt-3 h-28 w-44 rounded-xl border border-gray-200 object-cover object-center dark:border-gray-700"
+                    />
+                  ) : null}
+                  {errors.id_front ? (
+                    <p className="mt-1 text-xs uppercase tracking-[0.2em] text-gray-500 dark:text-gray-400">
+                      {errors.id_front}
+                    </p>
+                  ) : null}
                 </div>
               </div>
             )}

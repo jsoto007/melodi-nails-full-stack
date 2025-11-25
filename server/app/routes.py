@@ -1,3 +1,4 @@
+import base64
 import hashlib
 import hmac
 import json
@@ -15,6 +16,7 @@ from PIL import Image, UnidentifiedImageError
 from flask import Blueprint, current_app, g, jsonify, request, send_from_directory, session
 from flask_limiter.errors import RateLimitExceeded
 from flask_limiter.util import get_remote_address
+from cryptography.fernet import Fernet, InvalidToken
 from sqlalchemy import case, func, select
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import joinedload
@@ -247,6 +249,58 @@ def _cleanup_upload_target(target):
             )
         except (BotoCoreError, ClientError):
             current_app.logger.warning("Unable to delete orphaned upload %s from bucket %s", key, bucket)
+
+
+IDENTITY_ENCRYPTION_PREFIX = "enc::"
+
+
+def _identity_cipher():
+    cached = getattr(current_app, "_identity_cipher", None)
+    if cached is False:
+        return None
+    if cached:
+        return cached
+    secret = current_app.config.get("IDENTITY_ENCRYPTION_KEY") or current_app.config.get("SECRET_KEY")
+    if not secret:
+        current_app._identity_cipher = False
+        return None
+    digest = hashlib.sha256(str(secret).encode("utf-8")).digest()
+    key = base64.urlsafe_b64encode(digest)
+    try:
+        cipher = Fernet(key)
+    except (ValueError, TypeError):
+        current_app._identity_cipher = False
+        return None
+    current_app._identity_cipher = cipher
+    return cipher
+
+
+def encrypt_identity_value(value: str | None) -> str | None:
+    if not value:
+        return value
+    cipher = _identity_cipher()
+    if not cipher:
+        return value
+    if value.startswith(IDENTITY_ENCRYPTION_PREFIX):
+        return value
+    token = cipher.encrypt(value.encode("utf-8"))
+    return f"{IDENTITY_ENCRYPTION_PREFIX}{token.decode('utf-8')}"
+
+
+def decrypt_identity_value(value: str | None) -> str | None:
+    if not value:
+        return value
+    if not value.startswith(IDENTITY_ENCRYPTION_PREFIX):
+        return value
+    cipher = _identity_cipher()
+    if not cipher:
+        return None
+    token = value[len(IDENTITY_ENCRYPTION_PREFIX):].encode("utf-8")
+    try:
+        return cipher.decrypt(token).decode("utf-8")
+    except InvalidToken:
+        current_app.logger.warning("Unable to decrypt identity asset with configured key.")
+        return None
 
 
 def _square_payments_active() -> bool:
@@ -782,7 +836,9 @@ def serialize_appointment(appointment):
             {
                 "id": asset.id,
                 "kind": asset.kind,
-                "file_url": asset.file_url,
+                "file_url": decrypt_identity_value(asset.file_url)
+                if asset.kind in {"id_front", "id_back"}
+                else asset.file_url,
                 "note_text": asset.note_text,
                 "is_visible_to_client": asset.is_visible_to_client,
                 "created_at": asset.created_at.isoformat() if asset.created_at else None,
@@ -850,11 +906,12 @@ def serialize_client_document(document: ClientDocument):
 
 def serialize_visible_asset(asset: AppointmentAsset):
     appointment_ref = asset.appointment.reference_code or f"#{asset.appointment.id}" if asset.appointment else None
+    file_url = decrypt_identity_value(asset.file_url) if asset.kind in {"id_front", "id_back"} else asset.file_url
     return {
         "id": f"asset-{asset.id}",
         "kind": asset.kind,
         "title": asset.note_text or asset.kind.replace("_", " ").title(),
-        "file_url": asset.file_url,
+        "file_url": file_url,
         "notes": asset.note_text,
         "created_at": asset.created_at.isoformat() if asset.created_at else None,
         "source": "studio",
@@ -3340,15 +3397,14 @@ def create_appointment():
     reuse_identity = False
     if client_account and client_account_id:
         stored_identity_assets = _latest_identity_assets_for_client(client_account)
-        reuse_identity = reuse_identity_requested and bool(
-            stored_identity_assets.get("id_front") and stored_identity_assets.get("id_back")
-        )
+        stored_identity_assets = {
+            kind: encrypt_identity_value(url) if url else url for kind, url in stored_identity_assets.items()
+        }
+        reuse_identity = reuse_identity_requested and bool(stored_identity_assets.get("id_front"))
 
     if not reuse_identity:
         if not id_front_url:
             errors.append({"field": "id_front_url", "message": "Front ID image is required."})
-        if not id_back_url:
-            errors.append({"field": "id_back_url", "message": "Back ID image is required."})
 
     resolved_contact_name = contact_name or None
     resolved_contact_email = contact_email_override or None
@@ -3439,6 +3495,11 @@ def create_appointment():
     except SquarePaymentError as exc:
         return jsonify({"error": str(exc)}), 402
 
+    if id_front_url:
+        id_front_url = encrypt_identity_value(id_front_url)
+    if id_back_url:
+        id_back_url = encrypt_identity_value(id_back_url)
+
     appointment = TattooAppointment(
         reference_code=generate_reference_code(),
         client=client_account,
@@ -3469,34 +3530,39 @@ def create_appointment():
 
     if reuse_identity:
         for kind in ("id_front", "id_back"):
+            url = stored_identity_assets.get(kind)
+            if not url:
+                continue
             assets.append(
                 AppointmentAsset(
                     appointment=appointment,
                     client_uploader=client_account,
                     kind=kind,
-                    file_url=stored_identity_assets.get(kind),
+                    file_url=url,
                     is_visible_to_client=False,
                 )
             )
     else:
-        assets.extend(
-            [
+        if id_front_url:
+            assets.append(
                 AppointmentAsset(
                     appointment=appointment,
                     client_uploader=client_account,
                     kind="id_front",
                     file_url=id_front_url,
                     is_visible_to_client=False,
-                ),
+                )
+            )
+        if id_back_url:
+            assets.append(
                 AppointmentAsset(
                     appointment=appointment,
                     client_uploader=client_account,
                     kind="id_back",
                     file_url=id_back_url,
                     is_visible_to_client=False,
-                ),
-            ]
-        )
+                )
+            )
 
     for url in inspiration_urls:
         assets.append(

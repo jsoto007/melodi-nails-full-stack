@@ -33,6 +33,8 @@ Werkzeug==3.0.6
 zipp==3.20.2
 stripe==9.7.0
 openpyxl>=3.1
-Pillow==10.3.0
+# Pillow 10.3.0 doesn't publish wheels for Python 3.13; 10.4.0+ supports 3.13.
+Pillow==10.4.0
 pyotp==2.9.0
 boto3==1.35.15
+cryptography==43.0.3

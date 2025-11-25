@@ -73,6 +73,7 @@ def configure_app(app: Flask) -> SQLAlchemy:
     app.config.setdefault("JSON_SORT_KEYS", False)
     app.config["FLASK_ENV"] = os.getenv("FLASK_ENV", "development")
     app.config["SECRET_KEY"] = os.getenv("SECRET_KEY", "dev-secret-key")
+    app.config["IDENTITY_ENCRYPTION_KEY"] = os.getenv("IDENTITY_ENCRYPTION_KEY")
     app.secret_key = app.config["SECRET_KEY"]
 
     if app.config["FLASK_ENV"] == "production" and app.config["SECRET_KEY"] == "dev-secret-key":
@@ -115,12 +116,15 @@ def configure_app(app: Flask) -> SQLAlchemy:
     app.config["SQUARE_ENVIRONMENT"] = os.getenv("SQUARE_ENVIRONMENT", "sandbox").lower()
     app.config["SQUARE_DEPOSIT_AMOUNT_CENTS"] = max(1, _int_from_env("SQUARE_DEPOSIT_AMOUNT_CENTS", 10000))
     app.config["SQUARE_DEPOSIT_CURRENCY"] = (os.getenv("SQUARE_DEPOSIT_CURRENCY") or "USD").upper()
-    fake_default = app.config["FLASK_ENV"] != "production"
-    fake_flag = os.getenv("SQUARE_FAKE_PAYMENTS")
-    if fake_flag is None:
-        app.config["SQUARE_FAKE_PAYMENTS"] = fake_default
+    if app.config["FLASK_ENV"] == "production":
+        # Never use fake payments in production; real deposits must be charged.
+        app.config["SQUARE_FAKE_PAYMENTS"] = False
     else:
-        app.config["SQUARE_FAKE_PAYMENTS"] = fake_flag.strip().lower() in {"1", "true", "yes", "y"}
+        fake_flag = os.getenv("SQUARE_FAKE_PAYMENTS")
+        if fake_flag is None:
+            app.config["SQUARE_FAKE_PAYMENTS"] = True
+        else:
+            app.config["SQUARE_FAKE_PAYMENTS"] = fake_flag.strip().lower() in {"1", "true", "yes", "y"}
 
     app.config["MAILGUN_DOMAIN"] = os.getenv("MAILGUN_DOMAIN")
     app.config["MAILGUN_API_KEY"] = os.getenv("MAILGUN_API_KEY")
