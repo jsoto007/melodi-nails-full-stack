@@ -18,6 +18,7 @@ const ASSET_FIELD_IDS = {
   kind: 'appointment-asset-kind',
   share: 'appointment-asset-share',
   fileUrl: 'appointment-asset-file-url',
+  fileUpload: 'appointment-asset-file-upload',
   note: 'appointment-asset-note'
 };
 
@@ -69,6 +70,22 @@ function isImageUrl(url) {
   return /\.(png|jpe?g|gif|webp|svg|avif)$/i.test(sanitized);
 }
 
+function getFileExtension(url) {
+  if (!url || typeof url !== 'string') {
+    return '';
+  }
+  const sanitized = url.split('?')[0]?.split('#')[0] ?? '';
+  const segments = sanitized.split('.');
+  if (segments.length < 2) {
+    return '';
+  }
+  return segments.pop()?.toLowerCase() || '';
+}
+
+function isPdfUrl(url) {
+  return getFileExtension(url) === 'pdf';
+}
+
 function getErrorMessage(error, fallback = 'Something went wrong.') {
   if (!error) {
     return fallback;
@@ -96,7 +113,6 @@ export default function AppointmentDetails() {
       setFeedback,
       createAppointmentAsset,
       toggleAppointmentAssetVisibility,
-      refreshAppointments,
       uploadMedia,
       updateAppointment
     }
@@ -109,16 +125,21 @@ export default function AppointmentDetails() {
   const [error, setError] = useState(null);
   const [assetDraft, setAssetDraft] = useState(INITIAL_ASSET_DRAFT);
   const [busyAssetId, setBusyAssetId] = useState(null);
+  const [assetUploadFile, setAssetUploadFile] = useState(null);
   const [uploadingImage, setUploadingImage] = useState(false);
   const [statusUpdating, setStatusUpdating] = useState(false);
   const [statusUpdateError, setStatusUpdateError] = useState(null);
   const imageInputRef = useRef(null);
+  const attachmentInputRef = useRef(null);
+  const [activePreviewAssetId, setActivePreviewAssetId] = useState(null);
 
-  const reloadAppointment = useCallback(async () => {
+  const reloadAppointment = useCallback(async ({ showLoader = false } = {}) => {
     if (!appointmentNumericId) {
       return;
     }
-    setLoading(true);
+    if (showLoader) {
+      setLoading(true);
+    }
     try {
       const response = await apiGet(`/api/admin/appointments/${appointmentNumericId}`);
       setAppointment(response);
@@ -126,13 +147,17 @@ export default function AppointmentDetails() {
     } catch (err) {
       setError('Unable to load appointment details.');
     } finally {
-      setLoading(false);
+      if (showLoader) {
+        setLoading(false);
+      }
     }
   }, [appointmentNumericId]);
 
   useEffect(() => {
-    reloadAppointment();
-  }, [reloadAppointment]);
+    if (!appointment) {
+      reloadAppointment({ showLoader: true });
+    }
+  }, [appointment, reloadAppointment]);
 
   useEffect(() => {
     const fresh = appointments.find((entry) => entry.id === appointmentNumericId);
@@ -153,6 +178,17 @@ export default function AppointmentDetails() {
       return ['id_front', 'id_back', 'inspiration_image'].includes(asset.kind);
     });
   }, [appointment]);
+  const previewableAssets = useMemo(() => {
+    if (!appointment?.assets?.length) {
+      return [];
+    }
+    return appointment.assets
+      .map((asset) => ({
+        ...asset,
+        resolvedUrl: resolveApiUrl(asset.file_url)
+      }))
+      .filter((asset) => Boolean(asset.resolvedUrl));
+  }, [appointment]);
   const appointmentStatusOptions = useMemo(() => {
     const options = [...STATUS_OPTIONS];
     const currentStatus = appointment?.status;
@@ -169,6 +205,19 @@ export default function AppointmentDetails() {
     }));
   };
 
+  const handleAssetFileChange = (event) => {
+    const file = event.target.files?.[0] || null;
+    setAssetUploadFile(file);
+  };
+
+  const resetAssetForm = () => {
+    setAssetDraft(INITIAL_ASSET_DRAFT);
+    setAssetUploadFile(null);
+    if (attachmentInputRef.current) {
+      attachmentInputRef.current.value = '';
+    }
+  };
+
   const handleAssetSubmit = async (event) => {
     event.preventDefault();
     if (!appointment) {
@@ -178,27 +227,33 @@ export default function AppointmentDetails() {
       setFeedback({ tone: 'offline', message: 'Select an asset type.' });
       return;
     }
-    if (!assetDraft.file_url.trim() && !assetDraft.note_text.trim()) {
-      setFeedback({ tone: 'offline', message: 'Provide a file URL or note text.' });
+    const trimmedUrl = assetDraft.file_url.trim();
+    const trimmedNote = assetDraft.note_text.trim();
+    const hasFile = Boolean(assetUploadFile);
+    if (!trimmedUrl && !trimmedNote && !hasFile) {
+      setFeedback({ tone: 'offline', message: 'Attach a file, upload, or provide a note.' });
       return;
     }
     setBusyAssetId('new');
     try {
+      let uploadedUrl = trimmedUrl || '';
+      if (hasFile) {
+        const upload = await uploadMedia(assetUploadFile);
+        if (!upload?.url) {
+          throw new Error('Upload failed.');
+        }
+        uploadedUrl = upload.url;
+      }
       await createAppointmentAsset(appointment.id, {
         kind: assetDraft.kind,
-        file_url: assetDraft.file_url.trim() || null,
-        note_text: assetDraft.note_text.trim() || null,
+        file_url: uploadedUrl || null,
+        note_text: trimmedNote || null,
         is_visible_to_client: assetDraft.is_visible_to_client,
         uploaded_by_admin_id: currentAdmin?.id
       });
-      await Promise.all([refreshAppointments(), reloadAppointment()]);
-      setAssetDraft((prev) => ({
-        ...INITIAL_ASSET_DRAFT,
-        kind: prev.kind,
-        is_visible_to_client: prev.is_visible_to_client
-      }));
+      resetAssetForm();
     } catch (err) {
-      setFeedback({ tone: 'offline', message: 'Unable to add asset.' });
+      setFeedback({ tone: 'offline', message: getErrorMessage(err, 'Unable to add asset.') });
     } finally {
       setBusyAssetId(null);
     }
@@ -208,15 +263,58 @@ export default function AppointmentDetails() {
     if (!appointment) {
       return;
     }
+    const nextVisibility = !asset.is_visible_to_client;
     setBusyAssetId(asset.id);
     try {
-      await toggleAppointmentAssetVisibility(appointment.id, asset.id, !asset.is_visible_to_client);
-      await Promise.all([refreshAppointments(), reloadAppointment()]);
+      await toggleAppointmentAssetVisibility(appointment.id, asset.id, nextVisibility);
+      setAppointment((prev) => {
+        if (!prev || !Array.isArray(prev.assets)) {
+          return prev;
+        }
+        return {
+          ...prev,
+          assets: prev.assets.map((entry) =>
+            entry.id === asset.id ? { ...entry, is_visible_to_client: nextVisibility } : entry
+          )
+        };
+      });
     } catch {
       setFeedback({ tone: 'offline', message: 'Unable to update asset visibility.' });
     } finally {
       setBusyAssetId(null);
     }
+  };
+
+  const selectedPreviewAsset = useMemo(() => {
+    if (!activePreviewAssetId || !previewableAssets.length) {
+      return null;
+    }
+    return previewableAssets.find((asset) => String(asset.id) === String(activePreviewAssetId)) || previewableAssets[0];
+  }, [activePreviewAssetId, previewableAssets]);
+
+  const handleOpenPreview = (assetId) => {
+    if (!previewableAssets.length) {
+      return;
+    }
+    const match = previewableAssets.find((asset) => String(asset.id) === String(assetId));
+    setActivePreviewAssetId((match || previewableAssets[0]).id);
+  };
+
+  const handleClosePreview = () => setActivePreviewAssetId(null);
+
+  const handlePreviewNav = (direction) => {
+    if (!selectedPreviewAsset || !previewableAssets.length) {
+      return;
+    }
+    const currentIndex = previewableAssets.findIndex((asset) => asset.id === selectedPreviewAsset.id);
+    if (currentIndex === -1) {
+      return;
+    }
+    const nextIndex =
+      direction === 'next'
+        ? (currentIndex + 1) % previewableAssets.length
+        : (currentIndex - 1 + previewableAssets.length) % previewableAssets.length;
+    setActivePreviewAssetId(previewableAssets[nextIndex].id);
   };
 
   const handleTriggerImageUpload = () => {
@@ -262,7 +360,7 @@ export default function AppointmentDetails() {
     setStatusUpdating(true);
     try {
       await updateAppointment(appointment.id, { status: newStatus });
-      await reloadAppointment();
+      setAppointment((prev) => (prev ? { ...prev, status: newStatus } : prev));
     } catch (err) {
       setStatusUpdateError(getErrorMessage(err, 'Unable to update status.'));
     } finally {
@@ -529,6 +627,14 @@ export default function AppointmentDetails() {
             )}
           </div>
           <form onSubmit={handleAssetSubmit} className="grid gap-3 rounded-xl border border-gray-200 p-4 dark:border-gray-800 dark:bg-gray-950">
+            <input
+              ref={attachmentInputRef}
+              id={ASSET_FIELD_IDS.fileUpload}
+              type="file"
+              className="sr-only"
+              onChange={handleAssetFileChange}
+              accept=".pdf,.doc,.docx,.txt,.zip,.rar,.png,.jpg,.jpeg,.webp,.heic,.svg,.gif"
+            />
             <div className="grid gap-3 md:grid-cols-2">
               <div>
                 <label
@@ -565,6 +671,22 @@ export default function AppointmentDetails() {
                   <label htmlFor={ASSET_FIELD_IDS.share}>Visible</label>
                 </div>
               </div>
+            </div>
+            <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl bg-gray-50 px-3 py-2 dark:bg-gray-900">
+              <div className="space-y-1">
+                <p className="text-xs uppercase tracking-[0.3em] text-gray-500 dark:text-gray-400">Attach file</p>
+                <p className="text-[11px] text-gray-500 dark:text-gray-400">
+                  {assetUploadFile ? assetUploadFile.name : 'No file selected'}
+                </p>
+              </div>
+              <Button
+                type="button"
+                variant="ghost"
+                onClick={() => attachmentInputRef.current?.click()}
+                disabled={busyAssetId === 'new'}
+              >
+                {assetUploadFile ? 'Change file' : 'Choose file'}
+              </Button>
             </div>
             <label
               htmlFor={ASSET_FIELD_IDS.fileUrl}
@@ -603,7 +725,10 @@ export default function AppointmentDetails() {
           <div className="space-y-3">
             {appointment.assets?.map((asset) => {
               const fileUrl = resolveApiUrl(asset.file_url);
-              const showPreview = fileUrl && (asset.kind === 'inspiration_image' || isImageUrl(fileUrl));
+              const extension = getFileExtension(fileUrl);
+              const isImagePreview = fileUrl && (asset.kind === 'inspiration_image' || isImageUrl(fileUrl));
+              const isPdfPreview = fileUrl && isPdfUrl(fileUrl);
+              const hasFile = Boolean(fileUrl);
               const kindLabel = asset.kind ? asset.kind.replace(/_/g, ' ') : 'Asset';
               return (
                 <div
@@ -612,14 +737,32 @@ export default function AppointmentDetails() {
                 >
                   <div className="flex flex-wrap items-start justify-between gap-4">
                     <div className="flex flex-1 flex-wrap items-start gap-4">
-                      {showPreview ? (
-                        <figure className="group relative flex-shrink-0 overflow-hidden rounded-xl border border-gray-200 bg-gray-100 dark:border-gray-700 dark:bg-gray-900">
-                          <img
-                            src={fileUrl}
-                            alt={`${kindLabel} preview`}
-                            className="h-32 w-32 object-cover transition duration-300 group-hover:scale-[1.02]"
+                      {hasFile ? (
+                        <button
+                          type="button"
+                          onClick={() => handleOpenPreview(asset.id)}
+                          className="group relative flex-shrink-0 overflow-hidden rounded-xl border border-gray-200 bg-gray-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-gray-900 dark:border-gray-700 dark:bg-gray-900 dark:focus-visible:outline-gray-100"
+                          aria-label={`Open ${kindLabel} viewer`}
+                        >
+                          {isImagePreview ? (
+                            <img
+                              src={fileUrl}
+                              alt={`${kindLabel} preview`}
+                              className="h-32 w-32 object-cover transition duration-300 group-hover:scale-[1.02]"
                           />
-                        </figure>
+                          ) : (
+                            <div className="flex h-32 w-32 flex-col items-center justify-center gap-1 bg-gray-50 text-gray-700 transition group-hover:bg-gray-100 dark:bg-gray-950 dark:text-gray-200 dark:group-hover:bg-gray-900">
+                              <span className="text-xs font-semibold uppercase">{extension || 'Doc'}</span>
+                            <span className="text-[11px] uppercase tracking-[0.25em] text-gray-500 dark:text-gray-400">
+                              Preview
+                            </span>
+                          </div>
+                          )}
+                          <span
+                            aria-hidden="true"
+                            className="absolute inset-0 ring-1 ring-inset ring-gray-900/5 transition group-hover:ring-gray-900/15 dark:ring-gray-50/5 dark:group-hover:ring-gray-50/15"
+                          />
+                        </button>
                       ) : null}
                       <div className="min-w-[200px] space-y-2">
                         <p className="text-xs uppercase tracking-[0.3em] text-gray-500 dark:text-gray-400">
@@ -628,7 +771,7 @@ export default function AppointmentDetails() {
                         <p className="text-sm text-gray-700 dark:text-gray-300">
                           {asset.note_text || asset.file_url || 'No content'}
                         </p>
-                        {fileUrl && !showPreview ? (
+                        {fileUrl && !(isImagePreview || isPdfPreview) ? (
                           <p className="text-xs text-gray-500 dark:text-gray-400 break-all">{fileUrl}</p>
                         ) : null}
                       </div>
@@ -668,6 +811,125 @@ export default function AppointmentDetails() {
             ) : null}
           </div>
         </Card>
+        {selectedPreviewAsset ? (
+          <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/70 px-3 py-6 sm:px-6">
+            <div className="relative flex w-full max-w-5xl max-h-[90vh] flex-col gap-4 overflow-y-auto rounded-3xl bg-white p-4 shadow-2xl ring-1 ring-black/10 dark:bg-gray-950 dark:ring-white/10 sm:p-6">
+              <div className="flex items-center justify-between">
+                <p className="text-xs font-semibold uppercase tracking-[0.3em] text-gray-500 dark:text-gray-400">
+                  Asset viewer
+                </p>
+                <div className="flex items-center gap-2">
+                  <Button type="button" variant="ghost" onClick={() => handlePreviewNav('prev')}>
+                    Prev
+                  </Button>
+                  <Button type="button" variant="ghost" onClick={() => handlePreviewNav('next')}>
+                    Next
+                  </Button>
+                  <Button type="button" variant="secondary" onClick={handleClosePreview}>
+                    Close
+                  </Button>
+                </div>
+              </div>
+              <div className="grid gap-4 lg:grid-cols-3 lg:items-start">
+                <div className="lg:col-span-2">
+                  {(() => {
+                    const current = selectedPreviewAsset;
+                    const currentUrl = current?.resolvedUrl;
+                    const isImage = currentUrl && (current.kind === 'inspiration_image' || isImageUrl(currentUrl));
+                    const isPdf = currentUrl && isPdfUrl(currentUrl);
+                    if (isImage) {
+                      return (
+                        <div className="overflow-hidden rounded-2xl border border-gray-200 bg-gray-100 dark:border-gray-800 dark:bg-gray-900">
+                          <img
+                            src={currentUrl}
+                            alt={`${current.kind || 'Asset'} preview`}
+                            className="h-[360px] w-full object-contain sm:h-[420px]"
+                          />
+                        </div>
+                      );
+                    }
+                    if (isPdf) {
+                      return (
+                        <div className="overflow-hidden rounded-2xl border border-gray-200 bg-gray-100 dark:border-gray-800 dark:bg-gray-900">
+                          <iframe
+                            title={`${current.kind || 'Asset'} document`}
+                            src={currentUrl}
+                            className="h-[360px] w-full sm:h-[420px]"
+                          />
+                        </div>
+                      );
+                    }
+                    return (
+                      <div className="flex h-[240px] flex-col items-center justify-center gap-3 rounded-2xl border border-dashed border-gray-300 bg-gray-50 text-center text-sm text-gray-600 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-300">
+                        <p className="text-base font-semibold uppercase">{getFileExtension(currentUrl) || 'File'}</p>
+                        <p className="text-xs uppercase tracking-[0.3em] text-gray-500 dark:text-gray-400">
+                          Preview not available
+                        </p>
+                      </div>
+                    );
+                  })()}
+                </div>
+                <div className="space-y-3">
+                  {(() => {
+                    const current = selectedPreviewAsset;
+                    const label = current.kind ? current.kind.replace(/_/g, ' ') : 'Asset';
+                    return (
+                      <>
+                        <div className="space-y-2">
+                          <p className="text-xs uppercase tracking-[0.3em] text-gray-500 dark:text-gray-400">{label}</p>
+                          <p className="break-all text-sm text-gray-700 dark:text-gray-300">{current.note_text || current.file_url}</p>
+                        </div>
+                        <div className="flex flex-wrap items-center gap-2">
+                          <Button as="a" href={current.resolvedUrl} target="_blank" rel="noreferrer" variant="secondary">
+                            Open in new tab
+                          </Button>
+                          <Button type="button" variant="ghost" onClick={() => handlePreviewNav('prev')}>
+                            Previous
+                          </Button>
+                          <Button type="button" variant="ghost" onClick={() => handlePreviewNav('next')}>
+                            Next
+                          </Button>
+                        </div>
+                        <p className="text-[11px] uppercase tracking-[0.25em] text-gray-400 dark:text-gray-500">
+                          Uploaded by{' '}
+                          {current.uploaded_by_admin?.name || current.uploaded_by_client?.display_name || 'unknown'}
+                        </p>
+                      </>
+                    );
+                  })()}
+                </div>
+              </div>
+              <div className="-mx-2 mt-2 flex gap-2 overflow-x-auto px-2 pb-1">
+                {previewableAssets.map((asset, index) => {
+                  const thumbUrl = asset.resolvedUrl;
+                  const isImageThumb = thumbUrl && (asset.kind === 'inspiration_image' || isImageUrl(thumbUrl));
+                  const isActive = selectedPreviewAsset?.id === asset.id;
+                  return (
+                    <button
+                      type="button"
+                      key={asset.id}
+                      onClick={() => setActivePreviewAssetId(asset.id)}
+                      className={`flex h-20 w-20 flex-shrink-0 items-center justify-center rounded-xl border text-xs uppercase transition ${
+                        isActive
+                          ? 'border-gray-900 ring-2 ring-gray-900 dark:border-gray-100 dark:ring-gray-100'
+                          : 'border-gray-200 dark:border-gray-800'
+                      }`}
+                      aria-label={`Open ${asset.kind || 'asset'} preview`}
+                    >
+                      {isImageThumb ? (
+                        <img src={thumbUrl} alt={`${asset.kind || 'Asset'} thumbnail`} className="h-full w-full rounded-lg object-cover" />
+                      ) : (
+                        <span className="text-[11px] tracking-[0.2em] text-gray-600 dark:text-gray-300">
+                          {getFileExtension(thumbUrl) || 'File'}
+                        </span>
+                      )}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          </div>
+        ) : null}
       </FadeIn>
     </main>
   );

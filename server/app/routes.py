@@ -1762,14 +1762,14 @@ def admin_upload_media():
     if not file or file.filename == "":
         return jsonify({"error": "Empty file."}), 400
 
-    if not allowed_file(file.filename, allowed_extensions=ALLOWED_IMAGE_EXTENSIONS):
+    if not allowed_file(file.filename, allowed_extensions=ALLOWED_UPLOAD_EXTENSIONS):
         return jsonify({"error": "Unsupported file type."}), 415
 
     extension = Path(file.filename).suffix.lower().lstrip('.')
     if not extension:
         return jsonify({"error": "Unsupported file type."}), 415
 
-    if not is_valid_image_file(file):
+    if extension in ALLOWED_IMAGE_EXTENSIONS and not is_valid_image_file(file):
         return jsonify({"error": "Unsupported file type."}), 415
     unique_name = f"{uuid4().hex}.{extension}"
     safe_name = secure_filename(unique_name)
