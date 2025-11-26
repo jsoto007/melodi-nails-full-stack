@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import Button from '../../components/Button.jsx';
 import Card from '../../components/Card.jsx';
@@ -10,7 +10,7 @@ import { useClientPortal } from '../../contexts/ClientPortalContext.jsx';
 import {
   getClientSideUploadError,
   getUploadErrorMessage,
-  validateImageBeforeUpload
+  validateDocumentBeforeUpload
 } from '../../lib/uploadValidation.js';
 
 const PREFERENCE_CONFIG = [
@@ -59,6 +59,29 @@ function formatDate(value) {
   } catch {
     return '—';
   }
+}
+
+const ACCEPTED_UPLOAD_TYPES = 'image/png,image/jpeg,image/jpg,image/webp,application/pdf,.pdf,.doc,.docx,.txt';
+const IMAGE_NAME_PATTERN = /\.(jpe?g|png|webp)$/i;
+
+function isImageFile(file) {
+  if (!file) {
+    return false;
+  }
+  if (file.type?.startsWith('image/')) {
+    return true;
+  }
+  if (typeof file.name === 'string') {
+    return IMAGE_NAME_PATTERN.test(file.name);
+  }
+  return false;
+}
+
+function isImageName(name) {
+  if (!name) {
+    return false;
+  }
+  return IMAGE_NAME_PATTERN.test(name);
 }
 
 export default function ClientProfilePage() {
@@ -204,7 +227,7 @@ export default function ClientProfilePage() {
         id,
         placeholderId: `pending-${id}`,
         file,
-        previewUrl: file.type.startsWith('image/') ? URL.createObjectURL(file) : null
+        previewUrl: isImageFile(file) ? URL.createObjectURL(file) : null
       };
     });
   };
@@ -218,7 +241,7 @@ export default function ClientProfilePage() {
     let validationReason = null;
 
     limitedFiles.forEach((file) => {
-      const validation = validateImageBeforeUpload(file);
+      const validation = validateDocumentBeforeUpload(file);
       if (validation.isValid) {
         validFiles.push(file);
         return;
@@ -273,7 +296,7 @@ export default function ClientProfilePage() {
       return;
     }
     for (const entry of inspirationFiles) {
-      const validation = validateImageBeforeUpload(entry.file);
+      const validation = validateDocumentBeforeUpload(entry.file);
       if (!validation.isValid) {
         setUploadError(getClientSideUploadError(validation.reason));
         return;
@@ -288,21 +311,22 @@ export default function ClientProfilePage() {
       for (const entry of inspirationFiles) {
         const formData = new FormData();
         formData.append('file', entry.file);
-        formData.append('kind', 'inspiration');
+        formData.append('kind', isImageFile(entry.file) ? 'inspiration' : 'document');
+        formData.append('title', entry.file.name);
         if (trimmedNotes) {
           formData.append('notes', trimmedNotes);
         }
         await apiUpload('/api/account/documents', formData);
       }
-      setUploadMessage('Inspiration uploaded successfully.');
+      setUploadMessage('Files uploaded successfully.');
       setNotes('');
       setInspirationFiles((prev) => {
         prev.forEach((entry) => entry.previewUrl && URL.revokeObjectURL(entry.previewUrl));
         return [];
       });
-      refresh();
+      await refresh();
     } catch (err) {
-      const message = getUploadErrorMessage(err) ?? 'Unable to upload inspiration right now.';
+      const message = getUploadErrorMessage(err) ?? 'Unable to upload files right now.';
       setUploadError(message);
     } finally {
       setIsUploading(false);
@@ -332,6 +356,15 @@ export default function ClientProfilePage() {
       previewRefs.current.forEach((entry) => entry.previewUrl && URL.revokeObjectURL(entry.previewUrl));
     };
   }, []);
+
+  const combinedDocuments = useMemo(() => {
+    const list = [...(documents || []), ...(sharedDocuments || [])];
+    return list.sort((a, b) => {
+      const aDate = a?.created_at ? new Date(a.created_at).getTime() : 0;
+      const bDate = b?.created_at ? new Date(b.created_at).getTime() : 0;
+      return bDate - aDate;
+    });
+  }, [documents, sharedDocuments]);
 
   const profileName = [profile?.first_name, profile?.last_name].filter(Boolean).join(' ') || profile?.email || 'Your profile';
   const initials = `${profile?.first_name?.[0] ?? ''}${profile?.last_name?.[0] ?? ''}`.trim().toUpperCase() || 'YO';
@@ -509,24 +542,40 @@ export default function ClientProfilePage() {
           </div>
           <div className="flex flex-wrap gap-2">
             <Button variant="ghost" onClick={focusInspirationUpload}>
-              Upload inspiration
+              Upload files
             </Button>
             <Button variant="secondary" onClick={() => navigate('/share-your-idea')}>
               Book consultation
             </Button>
           </div>
         </div>
-        {sharedDocuments?.length ? (
+        {combinedDocuments.length ? (
           <div className="grid gap-3 lg:grid-cols-2">
-            {sharedDocuments.map((document) => (
+            {combinedDocuments.map((document) => (
               <article
                 key={document.id}
                 className="flex flex-col gap-3 rounded-2xl border border-gray-200 bg-white/80 p-4 text-sm text-gray-700 shadow-sm transition hover:-translate-y-0.5 hover:shadow-lg dark:border-gray-800 dark:bg-gray-950/70 dark:text-gray-200"
               >
+                <div className="overflow-hidden rounded-xl border border-gray-100 bg-gray-50 dark:border-gray-800 dark:bg-gray-900">
+                  {isImageName(document.file_url || document.title) ? (
+                    <img
+                      src={resolveApiUrl(document.file_url)}
+                      alt={document.title || 'Uploaded file'}
+                      className="h-36 w-full object-cover"
+                      loading="lazy"
+                    />
+                  ) : (
+                    <div className="flex h-36 items-center justify-center text-3xl" aria-hidden="true">
+                      📄
+                    </div>
+                  )}
+                </div>
                 <div className="flex items-center justify-between">
                   <div>
                     <p className="text-lg font-semibold text-gray-900 dark:text-gray-50">{document.title}</p>
-                    <p className="text-[0.6rem] uppercase tracking-[0.35em] text-gray-500 dark:text-gray-400">{document.kind.replace(/_/g, ' ')}</p>
+                    <p className="text-[0.6rem] uppercase tracking-[0.35em] text-gray-500 dark:text-gray-400">
+                      {document.kind ? document.kind.replace(/_/g, ' ') : 'document'}
+                    </p>
                   </div>
                   <span className="rounded-full bg-gray-100 px-3 py-1 text-[0.65rem] font-semibold uppercase tracking-[0.35em] text-gray-600 dark:bg-gray-900 dark:text-gray-300">
                     {document.source === 'you' ? 'You' : 'Studio'}
@@ -551,8 +600,8 @@ export default function ClientProfilePage() {
         ) : (
           <div className="flex flex-col items-center justify-center rounded-2xl border border-dashed border-gray-200 bg-gray-50/80 px-6 py-10 text-center text-gray-500 dark:border-gray-800 dark:bg-gray-950/50 dark:text-gray-400">
             <div className="text-3xl">📁</div>
-            <p className="mt-2 text-sm font-semibold text-gray-700 dark:text-gray-200">No studio files yet</p>
-            <p className="text-xs text-gray-500 dark:text-gray-400">Upload documents or check back when the studio shares files.</p>
+            <p className="mt-2 text-sm font-semibold text-gray-700 dark:text-gray-200">No documents yet</p>
+            <p className="text-xs text-gray-500 dark:text-gray-400">Upload files or check back when the studio shares theirs.</p>
           </div>
         )}
       </Card>
@@ -590,11 +639,11 @@ export default function ClientProfilePage() {
       <Card ref={inspirationRef} className="space-y-5">
         <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
           <div>
-            <p className="text-xs uppercase tracking-[0.3em] text-gray-500 dark:text-gray-400">Inspiration uploads</p>
-            <p className="text-sm text-gray-500 dark:text-gray-400">Share references with the studio without refreshing the page.</p>
+            <p className="text-xs uppercase tracking-[0.3em] text-gray-500 dark:text-gray-400">Uploads</p>
+            <p className="text-sm text-gray-500 dark:text-gray-400">Share references or documents with the studio without refreshing the page.</p>
           </div>
           <Button variant="ghost" onClick={() => setIsInspirationOpen((prev) => !prev)}>
-            {isInspirationOpen ? 'Hide upload' : 'Upload inspiration'}
+            {isInspirationOpen ? 'Hide upload' : 'Upload files'}
           </Button>
         </div>
         {isInspirationOpen ? (
@@ -604,7 +653,7 @@ export default function ClientProfilePage() {
                 type="file"
                 id="inspiration-upload"
                 multiple
-                accept="image/png,image/jpeg,image/jpg,image/webp"
+                accept={ACCEPTED_UPLOAD_TYPES}
                 onChange={handleFileChange}
                 className="sr-only"
               />
@@ -615,7 +664,7 @@ export default function ClientProfilePage() {
               >
                 <label htmlFor="inspiration-upload" className="flex flex-col items-center gap-2">
                   <span className="text-3xl">📤</span>
-                  <span className="text-sm font-semibold text-gray-800 dark:text-gray-200">Drop PNG / JPEG / WebP files</span>
+                  <span className="text-sm font-semibold text-gray-800 dark:text-gray-200">Drop PNG, JPEG, WebP, PDF, DOC/DOCX, or TXT files</span>
                   <span className="text-xs text-gray-500 dark:text-gray-400">Up to 6 files. Click to choose from your device.</span>
                 </label>
                 <p className="mt-3 text-[0.7rem] text-gray-500 dark:text-gray-400">
@@ -666,7 +715,7 @@ export default function ClientProfilePage() {
             {uploadMessage ? <p className="text-xs uppercase tracking-[0.3em] text-emerald-600 dark:text-emerald-400">{uploadMessage}</p> : null}
             <div className="flex flex-wrap items-center gap-3">
               <Button type="submit" disabled={isUploading || !inspirationFiles.length}>
-                {isUploading ? 'Uploading…' : 'Upload inspiration'}
+                {isUploading ? 'Uploading…' : 'Upload files'}
               </Button>
               <p className="text-xs text-gray-500 dark:text-gray-400">We keep the latest six uploads ready for review.</p>
             </div>
@@ -679,6 +728,20 @@ export default function ClientProfilePage() {
                 key={document.id}
                 className="rounded-2xl border border-gray-200 bg-white/80 p-3 text-sm text-gray-700 shadow-sm transition hover:-translate-y-0.5 hover:shadow-lg dark:border-gray-800 dark:bg-gray-950/60 dark:text-gray-200"
               >
+                <div className="overflow-hidden rounded-xl border border-gray-100 bg-gray-50 dark:border-gray-800 dark:bg-gray-900">
+                  {isImageName(document.file_url || document.title) ? (
+                    <img
+                      src={resolveApiUrl(document.file_url)}
+                      alt={document.title || 'Uploaded file'}
+                      className="h-32 w-full object-cover"
+                      loading="lazy"
+                    />
+                  ) : (
+                    <div className="flex h-32 items-center justify-center text-2xl" aria-hidden="true">
+                      📄
+                    </div>
+                  )}
+                </div>
                 <div className="flex items-center justify-between">
                   <div>
                     <p className="font-semibold text-gray-900 dark:text-gray-100">{document.title}</p>
@@ -699,7 +762,7 @@ export default function ClientProfilePage() {
             ))}
           </div>
         ) : (
-          <p className="text-xs uppercase tracking-[0.3em] text-gray-500 dark:text-gray-400">No inspiration uploads yet.</p>
+          <p className="text-xs uppercase tracking-[0.3em] text-gray-500 dark:text-gray-400">No uploads yet.</p>
         )}
       </Card>
 
