@@ -333,6 +333,16 @@ export default function ClientProfilePage() {
     };
   }, []);
 
+  const profileName = [profile?.first_name, profile?.last_name].filter(Boolean).join(' ') || profile?.email || 'Your profile';
+  const initials = `${profile?.first_name?.[0] ?? ''}${profile?.last_name?.[0] ?? ''}`.trim().toUpperCase() || 'YO';
+  const memberSince = formatDate(profile?.created_at);
+  const lastLogin = formatDate(profile?.last_login_at);
+
+  const focusInspirationUpload = () => {
+    setIsInspirationOpen(true);
+    inspirationRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  };
+
   if (loading) {
     return (
       <main className="space-y-8">
@@ -354,46 +364,107 @@ export default function ClientProfilePage() {
   }
 
   return (
-    <div className="space-y-8">
-      <SectionTitle eyebrow="Client portal" title="Profile" description="Stay in view mode until you opt to edit." />
+    <main className="space-y-8">
+      <section className="overflow-hidden rounded-3xl bg-gradient-to-r from-gray-100 via-white to-gray-100 p-6 shadow-lg ring-1 ring-black/5 dark:from-gray-900 dark:via-gray-950 dark:to-gray-900 dark:ring-white/10 sm:p-8">
+        <div className="flex flex-col gap-6 lg:flex-row lg:items-center lg:justify-between">
+          <div className="flex items-center gap-4">
+            <div className="flex h-16 w-16 items-center justify-center rounded-full bg-gradient-to-br from-indigo-500 to-purple-600 text-xl font-bold uppercase text-white shadow-lg shadow-indigo-200 dark:shadow-none">
+              {initials}
+            </div>
+            <div>
+              <p className="text-[0.65rem] uppercase tracking-[0.35em] text-gray-500 dark:text-gray-400">Profile</p>
+              <h1 className="text-3xl font-semibold text-gray-900 dark:text-gray-50">{profileName}</h1>
+              <div className="mt-2 flex flex-wrap gap-2 text-sm text-gray-600 dark:text-gray-300">
+                <span className="inline-flex items-center gap-2 rounded-full bg-white/70 px-3 py-1 shadow-sm ring-1 ring-black/5 backdrop-blur dark:bg-gray-900/40 dark:ring-white/10">
+                  ✨ Member since {memberSince}
+                </span>
+                <span className="inline-flex items-center gap-2 rounded-full bg-emerald-50 px-3 py-1 text-emerald-700 ring-1 ring-emerald-100 dark:bg-emerald-950/60 dark:text-emerald-200 dark:ring-emerald-800/60">
+                  <span className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse" />
+                  Active
+                </span>
+              </div>
+            </div>
+          </div>
+          <div className="flex flex-wrap gap-3">
+            <Button variant="ghost" onClick={() => setIsEditingProfile((prev) => !prev)}>
+              {isEditingProfile ? 'Cancel edit' : 'Edit profile'}
+            </Button>
+            <Button onClick={() => navigate('/share-your-idea')}>Book consultation</Button>
+          </div>
+        </div>
+        <div className="mt-6 grid gap-3 sm:grid-cols-3">
+          <div className="rounded-2xl bg-white/80 p-4 text-sm text-gray-600 shadow-sm ring-1 ring-black/5 backdrop-blur dark:bg-gray-900/60 dark:text-gray-200 dark:ring-white/10">
+            <p className="text-[0.65rem] uppercase tracking-[0.35em] text-gray-500 dark:text-gray-400">Email</p>
+            <p className="truncate text-base font-semibold text-gray-900 dark:text-gray-50">{profile?.email || '—'}</p>
+          </div>
+          <div className="rounded-2xl bg-white/80 p-4 text-sm text-gray-600 shadow-sm ring-1 ring-black/5 backdrop-blur dark:bg-gray-900/60 dark:text-gray-200 dark:ring-white/10">
+            <p className="text-[0.65rem] uppercase tracking-[0.35em] text-gray-500 dark:text-gray-400">Phone</p>
+            <p className="text-base font-semibold text-gray-900 dark:text-gray-50">{profile?.phone || '—'}</p>
+          </div>
+          <div className="rounded-2xl bg-white/80 p-4 text-sm text-gray-600 shadow-sm ring-1 ring-black/5 backdrop-blur dark:bg-gray-900/60 dark:text-gray-200 dark:ring-white/10">
+            <p className="text-[0.65rem] uppercase tracking-[0.35em] text-gray-500 dark:text-gray-400">Last login</p>
+            <p className="text-base font-semibold text-gray-900 dark:text-gray-50">{lastLogin}</p>
+          </div>
+        </div>
+      </section>
 
       <Card ref={profileRef} className="space-y-6">
-        <div className="flex items-start justify-between">
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
           <div>
-            <p className="text-xs uppercase tracking-[0.3em] text-gray-500 dark:text-gray-400">Personal info</p>
-            <p className="text-sm text-gray-500 dark:text-gray-400">Always view-only unless you tap edit.</p>
+            <p className="text-xs uppercase tracking-[0.3em] text-gray-500 dark:text-gray-400">Personal information</p>
+            <p className="text-sm text-gray-500 dark:text-gray-400">Manage your contact details without leaving the portal.</p>
           </div>
           <Button variant="ghost" onClick={() => setIsEditingProfile((prev) => !prev)}>
-            {isEditingProfile ? 'Cancel' : 'Edit'}
+            {isEditingProfile ? 'Exit edit mode' : 'Edit details'}
           </Button>
         </div>
         {isEditingProfile ? (
-          <form className="space-y-4" onSubmit={handleProfileSubmit}>
+          <form className="space-y-5" onSubmit={handleProfileSubmit}>
             <div className="grid gap-4 md:grid-cols-2">
-              <label className="flex flex-col gap-1 text-xs uppercase tracking-[0.3em] text-gray-500 dark:text-gray-400">
-                First name
-                <input value={profileForm.first_name} onChange={handleProfileChange('first_name')} className="rounded-2xl border border-gray-200 bg-white px-3 py-2 text-sm focus:border-black dark:border-gray-700 dark:bg-gray-950" required />
+              <label className="flex flex-col gap-2">
+                <span className="text-xs uppercase tracking-[0.3em] text-gray-500 dark:text-gray-400">First name</span>
+                <input
+                  value={profileForm.first_name}
+                  onChange={handleProfileChange('first_name')}
+                  className="rounded-2xl border border-gray-200 bg-white px-3 py-2 text-sm text-gray-900 shadow-sm outline-none transition focus:border-black dark:border-gray-700 dark:bg-gray-950 dark:text-gray-100"
+                  required
+                />
               </label>
-              <label className="flex flex-col gap-1 text-xs uppercase tracking-[0.3em] text-gray-500 dark:text-gray-400">
-                Last name
-                <input value={profileForm.last_name} onChange={handleProfileChange('last_name')} className="rounded-2xl border border-gray-200 bg-white px-3 py-2 text-sm focus:border-black dark:border-gray-700 dark:bg-gray-950" required />
+              <label className="flex flex-col gap-2">
+                <span className="text-xs uppercase tracking-[0.3em] text-gray-500 dark:text-gray-400">Last name</span>
+                <input
+                  value={profileForm.last_name}
+                  onChange={handleProfileChange('last_name')}
+                  className="rounded-2xl border border-gray-200 bg-white px-3 py-2 text-sm text-gray-900 shadow-sm outline-none transition focus:border-black dark:border-gray-700 dark:bg-gray-950 dark:text-gray-100"
+                  required
+                />
               </label>
             </div>
             <div className="grid gap-4 md:grid-cols-2">
-              <label className="flex flex-col gap-1 text-xs uppercase tracking-[0.3em] text-gray-500 dark:text-gray-400">
-                Email
-                <input type="email" value={profileForm.email} onChange={handleProfileChange('email')} className="rounded-2xl border border-gray-200 bg-white px-3 py-2 text-sm focus:border-black dark:border-gray-700 dark:bg-gray-950" required />
+              <label className="flex flex-col gap-2">
+                <span className="text-xs uppercase tracking-[0.3em] text-gray-500 dark:text-gray-400">Email</span>
+                <input
+                  type="email"
+                  value={profileForm.email}
+                  onChange={handleProfileChange('email')}
+                  className="rounded-2xl border border-gray-200 bg-white px-3 py-2 text-sm text-gray-900 shadow-sm outline-none transition focus:border-black dark:border-gray-700 dark:bg-gray-950 dark:text-gray-100"
+                  required
+                />
               </label>
-              <label className="flex flex-col gap-1 text-xs uppercase tracking-[0.3em] text-gray-500 dark:text-gray-400">
-                Phone
-                <input value={profileForm.phone} onChange={handleProfileChange('phone')} className="rounded-2xl border border-gray-200 bg-white px-3 py-2 text-sm focus:border-black dark:border-gray-700 dark:bg-gray-950" />
+              <label className="flex flex-col gap-2">
+                <span className="text-xs uppercase tracking-[0.3em] text-gray-500 dark:text-gray-400">Phone</span>
+                <input
+                  value={profileForm.phone}
+                  onChange={handleProfileChange('phone')}
+                  className="rounded-2xl border border-gray-200 bg-white px-3 py-2 text-sm text-gray-900 shadow-sm outline-none transition focus:border-black dark:border-gray-700 dark:bg-gray-950 dark:text-gray-100"
+                />
               </label>
             </div>
             {profileStatus ? <p className="text-xs uppercase tracking-[0.3em] text-emerald-600 dark:text-emerald-400">{profileStatus}</p> : null}
             {profileError ? <p className="text-xs uppercase tracking-[0.3em] text-rose-600 dark:text-rose-300">{profileError}</p> : null}
             <div className="flex flex-wrap items-center gap-3">
               <Button type="submit" disabled={isSavingProfile}>
-                {isSavingProfile ? 'Saving…' : 'Save changes'}
+                {isSavingProfile ? 'Saving…' : 'Save profile'}
               </Button>
               <Button variant="ghost" onClick={() => setIsEditingProfile(false)} disabled={isSavingProfile}>
                 Cancel
@@ -402,62 +473,67 @@ export default function ClientProfilePage() {
           </form>
         ) : (
           <dl className="grid gap-4 md:grid-cols-2">
-            <div>
-              <dt className="text-[0.6rem] uppercase tracking-[0.4em] text-gray-500 dark:text-gray-400">First name</dt>
-              <dd className="text-sm text-gray-900 dark:text-gray-100">{profile?.first_name || '—'}</dd>
+            <div className="rounded-2xl bg-gray-50 p-4 text-gray-700 ring-1 ring-gray-200 dark:bg-gray-900 dark:text-gray-100 dark:ring-gray-800">
+              <dt className="text-[0.65rem] uppercase tracking-[0.35em] text-gray-500 dark:text-gray-400">First name</dt>
+              <dd className="text-base font-semibold">{profile?.first_name || '—'}</dd>
             </div>
-            <div>
-              <dt className="text-[0.6rem] uppercase tracking-[0.4em] text-gray-500 dark:text-gray-400">Last name</dt>
-              <dd className="text-sm text-gray-900 dark:text-gray-100">{profile?.last_name || '—'}</dd>
+            <div className="rounded-2xl bg-gray-50 p-4 text-gray-700 ring-1 ring-gray-200 dark:bg-gray-900 dark:text-gray-100 dark:ring-gray-800">
+              <dt className="text-[0.65rem] uppercase tracking-[0.35em] text-gray-500 dark:text-gray-400">Last name</dt>
+              <dd className="text-base font-semibold">{profile?.last_name || '—'}</dd>
             </div>
-            <div>
-              <dt className="text-[0.6rem] uppercase tracking-[0.4em] text-gray-500 dark:text-gray-400">Email</dt>
-              <dd className="text-sm text-gray-900 dark:text-gray-100">{profile?.email || '—'}</dd>
+            <div className="rounded-2xl bg-gray-50 p-4 text-gray-700 ring-1 ring-gray-200 dark:bg-gray-900 dark:text-gray-100 dark:ring-gray-800">
+              <dt className="text-[0.65rem] uppercase tracking-[0.35em] text-gray-500 dark:text-gray-400">Email</dt>
+              <dd className="text-base font-semibold">{profile?.email || '—'}</dd>
             </div>
-            <div>
-              <dt className="text-[0.6rem] uppercase tracking-[0.4em] text-gray-500 dark:text-gray-400">Phone</dt>
-              <dd className="text-sm text-gray-900 dark:text-gray-100">{profile?.phone || '—'}</dd>
+            <div className="rounded-2xl bg-gray-50 p-4 text-gray-700 ring-1 ring-gray-200 dark:bg-gray-900 dark:text-gray-100 dark:ring-gray-800">
+              <dt className="text-[0.65rem] uppercase tracking-[0.35em] text-gray-500 dark:text-gray-400">Phone</dt>
+              <dd className="text-base font-semibold">{profile?.phone || '—'}</dd>
             </div>
-            <div>
-              <dt className="text-[0.6rem] uppercase tracking-[0.4em] text-gray-500 dark:text-gray-400">Member since</dt>
-              <dd className="text-sm text-gray-900 dark:text-gray-100">{formatDate(profile?.created_at)}</dd>
+            <div className="rounded-2xl bg-gray-50 p-4 text-gray-700 ring-1 ring-gray-200 dark:bg-gray-900 dark:text-gray-100 dark:ring-gray-800">
+              <dt className="text-[0.65rem] uppercase tracking-[0.35em] text-gray-500 dark:text-gray-400">Member since</dt>
+              <dd className="text-base font-semibold">{memberSince}</dd>
             </div>
-            <div>
-              <dt className="text-[0.6rem] uppercase tracking-[0.4em] text-gray-500 dark:text-gray-400">Last login</dt>
-              <dd className="text-sm text-gray-900 dark:text-gray-100">{formatDate(profile?.last_login_at)}</dd>
+            <div className="rounded-2xl bg-gray-50 p-4 text-gray-700 ring-1 ring-gray-200 dark:bg-gray-900 dark:text-gray-100 dark:ring-gray-800">
+              <dt className="text-[0.65rem] uppercase tracking-[0.35em] text-gray-500 dark:text-gray-400">Last login</dt>
+              <dd className="text-base font-semibold">{lastLogin}</dd>
             </div>
           </dl>
         )}
       </Card>
 
       <Card ref={documentsRef} className="space-y-4">
-        <div className="flex items-center justify-between">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div>
             <p className="text-xs uppercase tracking-[0.3em] text-gray-500 dark:text-gray-400">Documents & studio files</p>
-            <p className="text-sm text-gray-500 dark:text-gray-400">All shared PDFs, policies, and aftercare guides.</p>
+            <p className="text-sm text-gray-500 dark:text-gray-400">Access shared PDFs, policies, and guides without reloading.</p>
           </div>
-          <Button variant="ghost" onClick={() => navigate('/share-your-idea')}>
-            Book consult
-          </Button>
+          <div className="flex flex-wrap gap-2">
+            <Button variant="ghost" onClick={focusInspirationUpload}>
+              Upload inspiration
+            </Button>
+            <Button variant="secondary" onClick={() => navigate('/share-your-idea')}>
+              Book consultation
+            </Button>
+          </div>
         </div>
         {sharedDocuments?.length ? (
-          <div className="space-y-3">
+          <div className="grid gap-3 lg:grid-cols-2">
             {sharedDocuments.map((document) => (
               <article
                 key={document.id}
-                className="flex flex-col gap-2 rounded-2xl border border-gray-200 bg-white/80 p-4 text-sm text-gray-700 dark:border-gray-800 dark:bg-gray-950/60 dark:text-gray-200"
+                className="flex flex-col gap-3 rounded-2xl border border-gray-200 bg-white/80 p-4 text-sm text-gray-700 shadow-sm transition hover:-translate-y-0.5 hover:shadow-lg dark:border-gray-800 dark:bg-gray-950/70 dark:text-gray-200"
               >
                 <div className="flex items-center justify-between">
                   <div>
-                    <p className="font-semibold text-gray-900 dark:text-gray-100">{document.title}</p>
+                    <p className="text-lg font-semibold text-gray-900 dark:text-gray-50">{document.title}</p>
                     <p className="text-[0.6rem] uppercase tracking-[0.35em] text-gray-500 dark:text-gray-400">{document.kind.replace(/_/g, ' ')}</p>
                   </div>
-                  <span className="text-[0.55rem] font-semibold uppercase tracking-[0.35em] text-gray-500 dark:text-gray-400">
+                  <span className="rounded-full bg-gray-100 px-3 py-1 text-[0.65rem] font-semibold uppercase tracking-[0.35em] text-gray-600 dark:bg-gray-900 dark:text-gray-300">
                     {document.source === 'you' ? 'You' : 'Studio'}
                   </span>
                 </div>
-                <p className="text-xs text-gray-500 dark:text-gray-400">{document.notes}</p>
-                <div className="flex items-center justify-between text-[0.6rem] uppercase tracking-[0.3em] text-gray-500 dark:text-gray-400">
+                <p className="text-sm text-gray-500 dark:text-gray-300">{document.notes}</p>
+                <div className="flex flex-wrap items-center justify-between gap-2 text-[0.65rem] uppercase tracking-[0.35em] text-gray-500 dark:text-gray-400">
                   <span>{formatDate(document.created_at)}</span>
                   <Button
                     as="a"
@@ -473,22 +549,29 @@ export default function ClientProfilePage() {
             ))}
           </div>
         ) : (
-          <p className="text-xs uppercase tracking-[0.3em] text-gray-500 dark:text-gray-400">No studio files yet.</p>
+          <div className="flex flex-col items-center justify-center rounded-2xl border border-dashed border-gray-200 bg-gray-50/80 px-6 py-10 text-center text-gray-500 dark:border-gray-800 dark:bg-gray-950/50 dark:text-gray-400">
+            <div className="text-3xl">📁</div>
+            <p className="mt-2 text-sm font-semibold text-gray-700 dark:text-gray-200">No studio files yet</p>
+            <p className="text-xs text-gray-500 dark:text-gray-400">Upload documents or check back when the studio shares files.</p>
+          </div>
         )}
       </Card>
 
       <Card className="space-y-4">
-        <div className="flex items-center justify-between">
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
           <div>
-            <p className="text-xs uppercase tracking-[0.3em] text-gray-500 dark:text-gray-400">Contact preferences</p>
-            <p className="text-sm text-gray-500 dark:text-gray-400">Toggle what updates you want to receive.</p>
+            <p className="text-xs uppercase tracking-[0.3em] text-gray-500 dark:text-gray-400">Communication preferences</p>
+            <p className="text-sm text-gray-500 dark:text-gray-400">Choose how you want reminders and aftercare updates.</p>
           </div>
           {prefSaving ? <p className="text-xs uppercase tracking-[0.3em] text-gray-500">Saving…</p> : null}
         </div>
         <div className="grid gap-4 md:grid-cols-2">
           {PREFERENCE_CONFIG.map((preference) => (
-            <div key={preference.key} className="flex items-start justify-between rounded-2xl border border-gray-200 bg-white/80 p-4 dark:border-gray-800 dark:bg-gray-950/60">
-              <div>
+            <div
+              key={preference.key}
+              className="flex items-start justify-between rounded-2xl bg-gray-50 p-4 ring-1 ring-gray-200 transition hover:-translate-y-0.5 hover:ring-black/10 dark:bg-gray-950/60 dark:ring-gray-800"
+            >
+              <div className="space-y-1">
                 <p className="text-sm font-semibold uppercase tracking-[0.3em] text-gray-900 dark:text-gray-100">{preference.label}</p>
                 <p className="text-xs text-gray-500 dark:text-gray-400">{preference.description}</p>
               </div>
@@ -504,20 +587,19 @@ export default function ClientProfilePage() {
         {prefError ? <p className="text-xs uppercase tracking-[0.3em] text-rose-600 dark:text-rose-300">{prefError}</p> : null}
       </Card>
 
-      <Card ref={inspirationRef} className="space-y-4">
-        <div className="flex items-center justify-between">
+      <Card ref={inspirationRef} className="space-y-5">
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
           <div>
             <p className="text-xs uppercase tracking-[0.3em] text-gray-500 dark:text-gray-400">Inspiration uploads</p>
-            <p className="text-sm text-gray-500 dark:text-gray-400">Drop files, add notes, and keep the studio inspired.</p>
+            <p className="text-sm text-gray-500 dark:text-gray-400">Share references with the studio without refreshing the page.</p>
           </div>
           <Button variant="ghost" onClick={() => setIsInspirationOpen((prev) => !prev)}>
-            {isInspirationOpen ? 'Hide' : 'Upload'}
+            {isInspirationOpen ? 'Hide upload' : 'Upload inspiration'}
           </Button>
         </div>
         {isInspirationOpen ? (
           <form className="space-y-4" onSubmit={handleUploadInspiration}>
             <div>
-              <label className="text-xs uppercase tracking-[0.3em] text-gray-500 dark:text-gray-400">Inspiration files</label>
               <input
                 type="file"
                 id="inspiration-upload"
@@ -527,19 +609,16 @@ export default function ClientProfilePage() {
                 className="sr-only"
               />
               <div
-                className="mt-2 rounded-2xl border border-dashed border-gray-300 bg-gray-50/70 px-4 py-8 text-center text-xs text-gray-500 dark:border-gray-700 dark:bg-gray-950/60 dark:text-gray-300"
+                className="mt-1 cursor-pointer rounded-2xl border border-dashed border-gray-300 bg-gray-50/70 p-6 text-center shadow-inner transition hover:border-indigo-400 hover:bg-white dark:border-gray-700 dark:bg-gray-950/60 dark:hover:border-indigo-500"
                 onDragOver={(event) => event.preventDefault()}
                 onDrop={handleDrop}
               >
-                <div className="flex flex-wrap items-center justify-center gap-3">
-                  <label htmlFor="inspiration-upload">
-                    <Button variant="ghost">Choose files</Button>
-                  </label>
-                  <p className="max-w-xs text-[0.65rem] text-gray-500 dark:text-gray-300">
-                    Drop PNG / JPEG / WebP here (max 6 files).
-                  </p>
-                </div>
-                <p className="mt-3 text-[0.6rem] text-gray-500 dark:text-gray-400">
+                <label htmlFor="inspiration-upload" className="flex flex-col items-center gap-2">
+                  <span className="text-3xl">📤</span>
+                  <span className="text-sm font-semibold text-gray-800 dark:text-gray-200">Drop PNG / JPEG / WebP files</span>
+                  <span className="text-xs text-gray-500 dark:text-gray-400">Up to 6 files. Click to choose from your device.</span>
+                </label>
+                <p className="mt-3 text-[0.7rem] text-gray-500 dark:text-gray-400">
                   {inspirationFiles.length
                     ? `${inspirationFiles.length} file${inspirationFiles.length > 1 ? 's' : ''} ready to upload`
                     : 'No files selected yet.'}
@@ -548,10 +627,17 @@ export default function ClientProfilePage() {
               {inspirationFiles.length ? (
                 <div className="mt-3 grid gap-3 sm:grid-cols-2">
                   {inspirationFiles.map((file) => (
-                    <div key={file.id} className="relative overflow-hidden rounded-2xl border border-gray-200 bg-white p-3 text-xs text-gray-700 dark:border-gray-800 dark:bg-gray-950/60">
-                      <div className="flex items-center justify-between">
+                    <div
+                      key={file.id}
+                      className="relative overflow-hidden rounded-2xl border border-gray-200 bg-white p-3 text-xs text-gray-700 shadow-sm dark:border-gray-800 dark:bg-gray-950/70"
+                    >
+                      <div className="flex items-center justify-between gap-2">
                         <p className="truncate font-semibold uppercase tracking-[0.3em] text-gray-500 dark:text-gray-400">{file.file.name}</p>
-                        <button type="button" onClick={() => handleRemoveFile(file.id)} className="text-[0.6rem] uppercase tracking-[0.4em] text-gray-400 hover:text-rose-500">
+                        <button
+                          type="button"
+                          onClick={() => handleRemoveFile(file.id)}
+                          className="text-[0.6rem] uppercase tracking-[0.4em] text-gray-400 hover:text-rose-500"
+                        >
                           Remove
                         </button>
                       </div>
@@ -567,13 +653,13 @@ export default function ClientProfilePage() {
                 </div>
               ) : null}
             </div>
-            <label className="flex flex-col gap-1 text-xs uppercase tracking-[0.3em] text-gray-500 dark:text-gray-400">
-              Notes for the artist (optional)
+            <label className="flex flex-col gap-2">
+              <span className="text-xs uppercase tracking-[0.3em] text-gray-500 dark:text-gray-400">Notes for the artist (optional)</span>
               <textarea
                 rows={3}
                 value={notes}
                 onChange={(event) => setNotes(event.target.value)}
-                className="rounded-2xl border border-gray-200 bg-white px-3 py-2 text-sm text-gray-900 outline-none transition focus:border-black dark:border-gray-700 dark:bg-gray-950 dark:text-gray-100"
+                className="rounded-2xl border border-gray-200 bg-white px-3 py-2 text-sm text-gray-900 shadow-sm outline-none transition focus:border-black dark:border-gray-700 dark:bg-gray-950 dark:text-gray-100"
               />
             </label>
             {uploadError ? <p className="text-xs uppercase tracking-[0.3em] text-rose-600 dark:text-rose-300">{uploadError}</p> : null}
@@ -589,7 +675,10 @@ export default function ClientProfilePage() {
         {documents?.length ? (
           <div className="grid gap-3 md:grid-cols-2">
             {documents.map((document) => (
-              <article key={document.id} className="rounded-2xl border border-gray-200 bg-white/80 p-3 text-sm text-gray-700 dark:border-gray-800 dark:bg-gray-950/60 dark:text-gray-200">
+              <article
+                key={document.id}
+                className="rounded-2xl border border-gray-200 bg-white/80 p-3 text-sm text-gray-700 shadow-sm transition hover:-translate-y-0.5 hover:shadow-lg dark:border-gray-800 dark:bg-gray-950/60 dark:text-gray-200"
+              >
                 <div className="flex items-center justify-between">
                   <div>
                     <p className="font-semibold text-gray-900 dark:text-gray-100">{document.title}</p>
@@ -614,11 +703,11 @@ export default function ClientProfilePage() {
         )}
       </Card>
 
-      <Card className="space-y-4">
-        <div className="flex items-center justify-between">
+      <Card className="space-y-4 border-rose-200/80 bg-rose-50/80 text-rose-900 ring-1 ring-rose-200 dark:border-rose-900/50 dark:bg-rose-950/40 dark:text-rose-100 dark:ring-rose-800/60">
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
           <div>
-            <p className="text-xs uppercase tracking-[0.3em] text-gray-500 dark:text-gray-400">Danger zone</p>
-            <p className="text-sm text-gray-500 dark:text-gray-400">Deleting removes all data permanently.</p>
+            <p className="text-xs uppercase tracking-[0.3em] text-rose-700 dark:text-rose-200">Danger zone</p>
+            <p className="text-sm text-rose-800 dark:text-rose-100">Deleting removes all data permanently.</p>
           </div>
           <Button variant="secondary" onClick={() => setDeleteModalOpen(true)}>
             Delete account
@@ -653,6 +742,6 @@ export default function ClientProfilePage() {
         />
         {deleteError ? <p className="text-xs uppercase tracking-[0.3em] text-rose-600 dark:text-rose-300">{deleteError}</p> : null}
       </Dialog>
-    </div>
+    </main>
   );
 }
