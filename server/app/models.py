@@ -1,4 +1,5 @@
 from datetime import datetime, timedelta
+from uuid import uuid4
 
 from werkzeug.security import check_password_hash, generate_password_hash
 
@@ -195,6 +196,15 @@ class Consultation(db.Model):
     placement = db.Column(db.String(120), nullable=False)
     description = db.Column(db.Text, nullable=False)
     created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+
+
+class StoredUpload(TimestampMixin, db.Model):
+    __tablename__ = "stored_uploads"
+
+    id = db.Column(db.String(36), primary_key=True, default=lambda: uuid4().hex)
+    filename = db.Column(db.String(255), unique=True, nullable=False)
+    content_type = db.Column(db.String(255))
+    data = db.Column(db.LargeBinary, nullable=False)
 
 
 class GalleryItem(db.Model):

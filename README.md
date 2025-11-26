@@ -78,7 +78,7 @@ The dev server proxies `/api/*` to `http://127.0.0.1:5000`, keeping credentialed
 
 ### Payments & uploads
 
-- **Uploads** – When the optional `UPLOADS_S3_*` variables are populated, media uploaded from the admin dashboard is streamed directly to S3 and served from the bucket (or a CDN you configure with `UPLOADS_PUBLIC_BASE_URL`). Without these values, uploads fall back to local disk which is not persistent across deployments.
+- **Uploads** – When the optional `UPLOADS_S3_*` variables are populated, media uploaded from the admin dashboard is streamed directly to S3 and served from the bucket (or a CDN you configure with `UPLOADS_PUBLIC_BASE_URL`). Without these values, uploads are stored in the database (and mirrored to disk) so they survive deployments; S3/CDN storage is still recommended for large files.
 - **Square deposits** – Booking submissions now use the Square Web Payments SDK and the `/api/appointments` endpoint records a deposit before storing the appointment. Provide the Square sandbox credentials listed above for testing, or switch `SQUARE_ENVIRONMENT=production` with a live access token for launch. Use `SQUARE_FAKE_PAYMENTS=true` locally if you want to bypass card entry entirely.
 
 ## Architecture

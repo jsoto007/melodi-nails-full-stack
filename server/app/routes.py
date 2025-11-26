@@ -3,7 +3,9 @@ import hashlib
 import hmac
 import json
 import math
+import mimetypes
 import secrets
+from io import BytesIO
 from datetime import date, datetime, time, timedelta, timezone
 from functools import wraps
 from pathlib import Path
@@ -13,7 +15,7 @@ import boto3
 import requests
 from botocore.exceptions import BotoCoreError, ClientError
 from PIL import Image, UnidentifiedImageError
-from flask import Blueprint, current_app, g, jsonify, request, send_from_directory, session
+from flask import Blueprint, current_app, g, jsonify, request, send_file, send_from_directory, session
 from flask_limiter.errors import RateLimitExceeded
 from flask_limiter.util import get_remote_address
 from cryptography.fernet import Fernet, InvalidToken
@@ -44,6 +46,7 @@ from .models import (
     Testimonial,
     UserNotification,
     SessionOption,
+    StoredUpload,
 )
 
 api_bp = Blueprint("api", __name__)
@@ -187,11 +190,33 @@ def _get_upload_root() -> Path:
     return upload_dir.resolve()
 
 
+def _persist_upload_record(safe_name: str, content: bytes, content_type: str) -> bool:
+    """Persist the upload bytes in the database so redeploys remain intact."""
+    existing = StoredUpload.query.filter_by(filename=safe_name).one_or_none()
+    if existing:
+        if existing.data == content and existing.content_type == content_type:
+            return False
+        existing.data = content
+        existing.content_type = content_type
+        return True
+    db.session.add(
+        StoredUpload(
+            filename=safe_name,
+            content_type=content_type,
+            data=content,
+        )
+    )
+    return True
+
+
 def _store_media_locally(file_storage, safe_name: str):
     upload_dir = _get_upload_root()
     destination = upload_dir / safe_name
     file_storage.stream.seek(0)
-    file_storage.save(destination)
+    payload = file_storage.read()
+    destination.write_bytes(payload)
+    _persist_upload_record(safe_name, payload, file_storage.mimetype or "application/octet-stream")
+    file_storage.stream.seek(0)
     return safe_name, f"/api/uploads/{safe_name}"
 
 
@@ -1738,6 +1763,15 @@ def serve_uploaded_file(filename):
     safe_name = secure_filename(filename)
     if not safe_name:
         return jsonify({"error": "File not found."}), 404
+    stored = StoredUpload.query.filter_by(filename=safe_name).one_or_none()
+    if stored:
+        return send_file(
+            BytesIO(stored.data),
+            mimetype=stored.content_type or "application/octet-stream",
+            download_name=safe_name,
+            as_attachment=False,
+        )
+
     target = upload_dir / safe_name
     try:
         target_resolved = target.resolve(strict=True)
@@ -1747,6 +1781,19 @@ def serve_uploaded_file(filename):
         return jsonify({"error": "File not found."}), 404
     if not target_resolved.is_file():
         return jsonify({"error": "File not found."}), 404
+
+    # Backfill locally stored uploads into the database so future deployments keep them.
+    try:
+        payload = target_resolved.read_bytes()
+        guessed_type = mimetypes.guess_type(safe_name)[0] or "application/octet-stream"
+        if _persist_upload_record(safe_name, payload, guessed_type):
+            db.session.commit()
+    except SQLAlchemyError:
+        db.session.rollback()
+        current_app.logger.warning("Unable to persist upload %s into database cache.", safe_name)
+    except OSError:
+        current_app.logger.warning("Unable to read upload %s for persistence.", safe_name)
+
     return send_from_directory(str(upload_dir), safe_name, as_attachment=False)
 
 
