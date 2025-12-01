@@ -1082,9 +1082,9 @@ def _send_password_changed_email(client: ClientAccount) -> None:
     )
 
 
-def _send_signup_email(client: ClientAccount, verification_code: str | None = None) -> None:
+def _send_signup_email(client: ClientAccount, verification_code: str | None = None) -> bool:
     if not client.email:
-        return
+        return False
     subject = "Welcome to BLACK INK TATTOO"
     verify_hint = (
         f"Your verification code: {verification_code}\n"
@@ -1112,7 +1112,7 @@ def _send_signup_email(client: ClientAccount, verification_code: str | None = No
             f"<p><a href=\"{_client_base_url()}/verify-email?email={escape(client.email)}&code={escape(verification_code)}\">Verify my email</a></p>"
         )
     html_parts.append("<p>If you did not create this account, you can ignore this email.</p>")
-    _mailgun_send(
+    return _mailgun_send(
         to=client.email,
         subject=subject,
         text=text,
