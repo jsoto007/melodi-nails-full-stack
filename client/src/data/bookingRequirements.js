@@ -1,6 +1,5 @@
 export const BOOKING_REQUIREMENTS = [
-  'Upload a clear photo of your ID for age verification.',
-  'Submit inspiration images or a short description.',
-  'Choose a date and time appointment time.',
-  'Pay the deposit to secure your spot.'
+  'Upload your ID and share your reference photos',
+  'Tell us your concept + preferred placement/size',
+  'Select a date and pay your deposit to book'
 ];

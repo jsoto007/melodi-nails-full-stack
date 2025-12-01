@@ -5,14 +5,14 @@ import SectionTitle from '../components/SectionTitle.jsx';
 const CONTACT_POINTS = [
   {
     id: 'call',
-    heading: 'Call',
-    value: '(555) 010-2020',
+    heading: 'Text',
+    value: '(347) 564-3896',
     body: 'Leave a message before 7 PM for next-day responses.'
   },
   {
     id: 'email',
     heading: 'Email',
-    value: 'artem@blackworknyc.com',
+    value: 'booking@blackworknyc.com',
     body: 'Best for sharing reference links and photos.'
   },
   {
@@ -49,22 +49,55 @@ export default function Contact() {
                   </a>
                 </address>
               ) : (
-                <p
-                  className={`text-sm sm:text-base font-semibold uppercase tracking-[0.2em] text-gray-900 dark:text-gray-100 break-words ${
-                    item.id === 'email' ? 'whitespace-nowrap' : 'whitespace-normal'
-                  }`}
-                >
-                  {item.value}
-                </p>
+                item.id === 'call' ? (
+                  <a
+                    href={`sms:${item.value.replace(/[^0-9]/g, '')}`}
+                    className="text-sm sm:text-base font-semibold uppercase tracking-[0.2em] text-gray-900 dark:text-gray-100 underline-offset-4 hover:underline"
+                    aria-label="Send text message"
+                  >
+                    {item.value}
+                  </a>
+                ) : item.id === 'email' ? (
+                  <a
+                    href={`mailto:${item.value}`}
+                    className="text-sm sm:text-base font-semibold uppercase tracking-[0.2em] text-gray-900 dark:text-gray-100 underline-offset-4 hover:underline whitespace-nowrap"
+                    aria-label="Send email"
+                  >
+                    {item.value}
+                  </a>
+                ) : (
+                  <p
+                    className="text-sm sm:text-base font-semibold uppercase tracking-[0.2em] text-gray-900 dark:text-gray-100 break-words"
+                  >
+                    {item.value}
+                  </p>
+                )
               )}
               <p className="text-sm text-gray-600 dark:text-gray-300">{item.body}</p>
             </Card>
           ))}
         </FadeIn>
         <FadeIn className="flex items-center gap-4" immediate delayStep={0.2}>
-          <span className="inline-flex h-12 w-12 items-center justify-center rounded-full border border-gray-300 text-xs font-semibold uppercase tracking-[0.3em] text-gray-600 dark:border-gray-700 dark:text-gray-300">
-            IG
-          </span>
+          <a
+            href="https://www.instagram.com/blackworknyc/"
+            target="_blank"
+            rel="noreferrer"
+            className="inline-flex h-12 w-12 items-center justify-center rounded-full border border-gray-300 text-xs font-semibold uppercase tracking-[0.3em] text-gray-600 dark:border-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 transition"
+            aria-label="Visit Blackwork NYC on Instagram"
+          >
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="1.5"
+              className="h-5 w-5"
+            >
+              <rect x="3" y="3" width="18" height="18" rx="5" />
+              <circle cx="12" cy="12" r="4" />
+              <circle cx="17" cy="7" r="1.25" />
+            </svg>
+          </a>
           <a
             href="https://www.instagram.com/blackworknyc/"
             target="_blank"
