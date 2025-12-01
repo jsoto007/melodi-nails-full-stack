@@ -414,18 +414,23 @@ def ensure_testimonials():
     db.session.add_all(
         [
             Testimonial(
-                name="Mara L.",
-                quote="Artem kept the room calm and somehow made a four-hour session feel like a conversation.",
+                name="Dorothy Weldon",
+                quote="Artem is an incredible artist and did a spectacular job on my first tattoo. He gave a small piece so much care and attention and it is holding up perfectly.",
                 rating=5,
             ),
             Testimonial(
-                name="Devon C.",
-                quote="The linework is exacting—no rushed decisions and the result is timeless.",
+                name="Brett Franklin",
+                quote="Flew in from Arizona to go to Artem. Before deciding on an artist, I did consultations with a bunch (including BangBang which was awful) and it was clear Artem cared enough to make sure I got exactly what I wanted. We went back and forth on the design before deciding on the final piece and it came out better than I thought possible. I’ll be back to Artem if I decide to get any more in the future and will recommend him to all my friends.",
                 rating=5,
             ),
             Testimonial(
-                name="Elena V.",
-                quote="I came in with a vague idea and left with a piece that feels like me.",
+                name="Yana Kanatyeva",
+                quote="I got my third tattoo from Artem on Saturday and I don’t want to stop. Artem is a very talented tattoo artist. He listens carefully to his clients wishes, always makes sure the tattoo will look good on the body in terms of placement and size, and the result always exceeds expectations. I highly recommend him whether you’re looking for something small or you have a bigger project in mind.",
+                rating=5,
+            ),
+            Testimonial(
+                name="Lisa Arnold",
+                quote="Artem is INCREDIBLE. He does excellent detailed work and he can do anything big or small. His studio is beautiful, clean and he is impeccable in his work style and attention to detail. I HIGHLY recommend him to anyone for a first or another tattoo!",
                 rating=5,
             ),
         ]

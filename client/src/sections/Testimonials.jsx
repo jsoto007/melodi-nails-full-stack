@@ -1,42 +1,36 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo } from 'react';
 import FadeIn from '../components/FadeIn.jsx';
 import Card from '../components/Card.jsx';
 import SectionTitle from '../components/SectionTitle.jsx';
 import Stars from '../components/Stars.jsx';
 import localTestimonials from '../data/testimonials.json';
-import { apiGet } from '../lib/api.js';
 
 export default function Testimonials() {
-  const [entries, setEntries] = useState(localTestimonials);
-  const [status, setStatus] = useState(null);
+  const entries = localTestimonials;
 
-  useEffect(() => {
-    const controller = new AbortController();
+  const filteredEntries = useMemo(
+    () => entries.filter((entry) => Number(entry.rating) === 5),
+    [entries]
+  );
 
-    async function load() {
-      try {
-        const data = await apiGet('/api/testimonials', { signal: controller.signal });
-        if (Array.isArray(data) && data.length) {
-          setEntries(data);
-          setStatus(null);
-        } else {
-          setEntries(localTestimonials);
-          setStatus('Studio notes - real words, demo data.');
-        }
-      } catch (error) {
-        setEntries(localTestimonials);
-        setStatus('Offline mode - sharing studio notes.');
-      }
+  const displayedEntries = useMemo(() => {
+    if (filteredEntries.length <= 3) {
+      return filteredEntries;
     }
 
-    load();
+    const shuffled = [...filteredEntries];
+    for (let i = shuffled.length - 1; i > 0; i -= 1) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+    }
 
-    return () => controller.abort();
-  }, []);
+    return shuffled.slice(0, 3);
+  }, [filteredEntries]);
 
   const entriesKey = useMemo(
-    () => entries.map((entry) => entry.id ?? entry.email ?? entry.name ?? '').join('|') || 'testimonials',
-    [entries]
+    () =>
+      displayedEntries.map((entry) => entry.id ?? entry.email ?? entry.name ?? '').join('|') || 'testimonials',
+    [displayedEntries]
   );
 
   return (
@@ -47,9 +41,8 @@ export default function Testimonials() {
           title="Trusted by collectors"
           description="A few words from clients who return for linework refreshers, large-scale projects, and thoughtful cover-ups."
         />
-        {status ? <p className="text-xs uppercase tracking-[0.3em] text-gray-500 dark:text-gray-400">{status}</p> : null}
         <FadeIn key={entriesKey} className="grid gap-8 md:grid-cols-3" childClassName="h-full" delayStep={0.12}>
-          {entries.map((entry) => (
+          {displayedEntries.map((entry) => (
             <Card key={entry.id} className="h-full space-y-6">
               <div className="space-y-4">
                 <Stars rating={entry.rating} />
