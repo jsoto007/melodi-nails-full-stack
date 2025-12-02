@@ -101,7 +101,6 @@ export default function ClientProfilePage() {
   const inspirationRef = useRef(null);
   const documentsRef = useRef(null);
   const previewRefs = useRef([]);
-  const deleteInputRef = useRef(null);
 
   const [isEditingProfile, setIsEditingProfile] = useState(false);
   const [profileForm, setProfileForm] = useState({
@@ -145,21 +144,16 @@ export default function ClientProfilePage() {
   const [uploadError, setUploadError] = useState(null);
   const [uploadMessage, setUploadMessage] = useState(null);
 
-  const [deleteModalOpen, setDeleteModalOpen] = useState(false);
-  const [deleteInput, setDeleteInput] = useState('');
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [deleteError, setDeleteError] = useState(null);
   const [isDeleting, setIsDeleting] = useState(false);
 
   useEffect(() => {
-    if (deleteModalOpen) {
-      setDeleteInput('');
-      setDeleteError(null);
-      // Ensure the confirmation field is focused so the user can type immediately.
-      requestAnimationFrame(() => {
-        deleteInputRef.current?.focus();
-      });
+    if (!deleteDialogOpen) {
+      return;
     }
-  }, [deleteModalOpen]);
+    setDeleteError(null);
+  }, [deleteDialogOpen]);
 
   useEffect(() => {
     if (!profile) {
@@ -408,7 +402,8 @@ export default function ClientProfilePage() {
     }
   };
 
-  const handleDeleteAccount = async () => {
+  const handleDeleteAccount = async (event) => {
+    event?.preventDefault();
     setIsDeleting(true);
     setDeleteError(null);
     try {
@@ -416,6 +411,11 @@ export default function ClientProfilePage() {
       await logout();
       navigate('/auth', { replace: true });
     } catch (err) {
+      if (err?.status === 401) {
+        await logout();
+        navigate('/auth', { replace: true });
+        return;
+      }
       setDeleteError(err?.message || 'Unable to delete your account at this time.');
     } finally {
       setIsDeleting(false);
@@ -431,6 +431,17 @@ export default function ClientProfilePage() {
       previewRefs.current.forEach((entry) => entry.previewUrl && URL.revokeObjectURL(entry.previewUrl));
     };
   }, []);
+
+  const openDeleteDialog = () => {
+    setDeleteDialogOpen(true);
+  };
+
+  const closeDeleteDialog = () => {
+    if (isDeleting) {
+      return;
+    }
+    setDeleteDialogOpen(false);
+  };
 
   const combinedDocuments = useMemo(() => {
     const list = [...(documents || []), ...(sharedDocuments || [])];
@@ -938,41 +949,47 @@ export default function ClientProfilePage() {
         <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
           <div>
             <p className="text-xs uppercase tracking-[0.3em] text-rose-700 dark:text-rose-200">Danger zone</p>
-            <p className="text-sm text-rose-800 dark:text-rose-100">Deleting removes all data permanently.</p>
+            <p className="text-sm text-rose-800 dark:text-rose-100">Remove your account and all associated data.</p>
           </div>
-          <Button variant="secondary" onClick={() => setDeleteModalOpen(true)}>
+          <Button variant="secondary" onClick={openDeleteDialog}>
             Delete account
           </Button>
         </div>
       </Card>
 
       <Dialog
-        open={deleteModalOpen}
-        onClose={() => setDeleteModalOpen(false)}
+        open={deleteDialogOpen}
+        onClose={closeDeleteDialog}
         title="Delete account"
         footer={
           <>
-            <Button variant="ghost" onClick={() => setDeleteModalOpen(false)} disabled={isDeleting}>
+            <Button variant="ghost" onClick={closeDeleteDialog} disabled={isDeleting}>
               Cancel
             </Button>
-            <Button variant="secondary" onClick={handleDeleteAccount} disabled={deleteInput.trim().toUpperCase() !== 'DELETE' || isDeleting}>
+            <Button
+              form="delete-account-form"
+              type="submit"
+              variant="secondary"
+              disabled={isDeleting}
+            >
               {isDeleting ? 'Deleting…' : 'Delete account'}
             </Button>
           </>
         }
       >
-        <p className="text-sm text-gray-600 dark:text-gray-400">
-          This action cannot be undone. Re-enter DELETE to confirm and remove everything associated with your account.
-        </p>
-        <input
-          ref={deleteInputRef}
-          type="text"
-          value={deleteInput}
-          onChange={(event) => setDeleteInput(event.target.value)}
-          className="mt-4 w-full rounded-2xl border border-gray-200 bg-white px-3 py-2 text-sm text-gray-900 outline-none dark:border-gray-700 dark:bg-gray-950 dark:text-gray-100"
-          placeholder="Type DELETE to confirm"
-        />
-        {deleteError ? <p className="text-xs uppercase tracking-[0.3em] text-rose-600 dark:text-rose-300">{deleteError}</p> : null}
+        <form
+          id="delete-account-form"
+          className="space-y-4"
+          onSubmit={handleDeleteAccount}
+          onKeyDown={(event) => {
+            event.stopPropagation();
+          }}
+          >
+          <p className="text-sm text-gray-600 dark:text-gray-400">
+            This action cannot be undone. Click delete below to permanently remove your account and all associated data.
+          </p>
+          {deleteError ? <p className="text-xs uppercase tracking-[0.3em] text-rose-600 dark:text-rose-300">{deleteError}</p> : null}
+        </form>
       </Dialog>
     </main>
   );

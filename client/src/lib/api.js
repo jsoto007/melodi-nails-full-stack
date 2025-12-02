@@ -62,7 +62,20 @@ export function resolveApiUrl(path) {
   return buildUrl(path);
 }
 
-async function request(path, options = {}) {
+function isCsrfErrorResponse(status, payload) {
+  if (status !== 400) {
+    return false;
+  }
+  const message =
+    payload?.error ||
+    (payload?.errors && payload.errors.length ? payload.errors[0]?.message : null);
+  if (!message || typeof message !== 'string') {
+    return false;
+  }
+  return message.toLowerCase().includes('csrf');
+}
+
+async function request(path, options = {}, { _csrfRetried = false } = {}) {
   const url = BASE_URL ? buildUrl(path) : path;
   const headers = {
     'Content-Type': 'application/json',
@@ -108,6 +121,18 @@ async function request(path, options = {}) {
     const error = new Error(detail || `Request failed with status ${response.status}`);
     error.status = response.status;
     error.body = payload;
+
+    // If the CSRF token is stale, refresh it once and retry the request automatically.
+    if (!_csrfRetried && isCsrfErrorResponse(response.status, payload)) {
+      resetCsrfToken();
+      try {
+        await ensureCsrfToken();
+      } catch {
+        // ignore; retry will surface the original error
+      }
+      return request(path, options, { _csrfRetried: true });
+    }
+
     throw error;
   }
 
