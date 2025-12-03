@@ -1837,23 +1837,32 @@ export default function AdminCalendar() {
           <div className="flex flex-wrap items-center gap-2">
             <Button
               type="button"
-              onClick={() => setShowCreateForm((prev) => !prev)}
+              onClick={() => setShowCreateForm(true)}
               aria-expanded={showCreateForm}
               aria-controls="admin-calendar-create"
-              variant={showCreateForm ? 'secondary' : 'primary'}
+              variant="primary"
             >
               <IconPlus className="h-4 w-4" />
-              {showCreateForm ? 'Close form' : 'New appointment'}
+              New appointment
             </Button>
           </div>
         </div>
         {showCreateForm ? (
-          <div
-            id="admin-calendar-create"
-            className="rounded-3xl border border-gray-100 bg-white p-6 shadow-sm dark:border-gray-800 dark:bg-gray-950"
+          <Dialog
+            open={showCreateForm}
+            onClose={() => setShowCreateForm(false)}
+            title="New appointment"
+            className="md:items-center"
           >
-            {renderCreatePanel()}
-          </div>
+            <div className="space-y-4">
+              {renderCreatePanel()}
+              <div className="flex justify-end">
+                <Button type="button" variant="ghost" onClick={() => setShowCreateForm(false)}>
+                  Close
+                </Button>
+              </div>
+            </div>
+          </Dialog>
         ) : null}
         <div className="rounded-3xl border border-gray-100 bg-white p-6 shadow-sm dark:border-gray-800 dark:bg-gray-950">
           <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">

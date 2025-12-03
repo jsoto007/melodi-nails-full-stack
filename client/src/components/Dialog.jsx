@@ -10,7 +10,7 @@ function getFocusableElements(container) {
   return Array.from(container.querySelectorAll(FOCUSABLE_SELECTORS));
 }
 
-export default function Dialog({ open, onClose, title, children, footer }) {
+export default function Dialog({ open, onClose, title, children, footer, className = '' }) {
   const overlayRef = useRef(null);
   const dialogRef = useRef(null);
   const titleId = useId();
@@ -71,7 +71,7 @@ export default function Dialog({ open, onClose, title, children, footer }) {
     <div
       ref={overlayRef}
       role="presentation"
-      className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/80 px-4 py-6 sm:px-6 sm:py-10 md:items-center"
+      className={`fixed inset-0 z-50 flex items-center justify-center overflow-y-auto bg-black/80 px-4 py-6 sm:px-6 sm:py-10 ${className}`}
       onMouseDown={(event) => {
         if (event.target === overlayRef.current) {
           onClose?.();
