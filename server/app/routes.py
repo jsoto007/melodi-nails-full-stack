@@ -27,6 +27,15 @@ from sqlalchemy.orm import joinedload
 from werkzeug.exceptions import RequestEntityTooLarge
 from werkzeug.utils import secure_filename
 
+from .emails import (
+    send_activation_email,
+    send_booking_confirmation_email,
+    send_email_verification_email,
+    send_password_changed_email,
+    send_password_reset_email,
+    send_signup_email,
+)
+
 from .config import db
 from .extensions import limiter
 from .models import (
@@ -171,7 +180,6 @@ SIZE_MULTIPLIERS = {
     "large": 2.0,  # half sleeve / medium panel
     "xl": 3.0,  # full back / large format
 }
-
 
 class MediaStorageError(Exception):
     pass
@@ -810,17 +818,6 @@ def _generate_numeric_code(length: int = VERIFICATION_CODE_LENGTH) -> str:
     return "".join(secrets.choice(alphabet) for _ in range(length))
 
 
-def _client_base_url() -> str:
-    base_url = current_app.config.get("CLIENT_BASE_URL")
-    if base_url:
-        return base_url.rstrip("/")
-    return (request.url_root or "").rstrip("/")
-
-
-def _build_activation_link(token: str) -> str:
-    return f"{_client_base_url()}/activate-account?token={token}"
-
-
 def _create_activation_token(client: ClientAccount) -> str:
     token = secrets.token_urlsafe(32)
     record = AccountActivationToken(
@@ -844,65 +841,6 @@ def _consume_activation_token(token: str):
     if not record or record.expires_at < datetime.utcnow():
         return None
     return record
-
-
-def _mailgun_send(*, to: str, subject: str, text: str, html: str | None = None, tags: tuple[str, ...] = ()) -> bool:
-    domain = current_app.config.get("MAILGUN_DOMAIN")
-    api_key = current_app.config.get("MAILGUN_API_KEY")
-    if not domain or not api_key:
-        current_app.logger.warning("Mailgun configuration missing; cannot send email.")
-        return False
-    from_address = current_app.config.get("MAILGUN_FROM") or f"no-reply@{domain}"
-    data = {
-        "from": from_address,
-        "to": to,
-        "subject": subject,
-        "text": text,
-    }
-    if html:
-        data["html"] = html
-    if tags:
-        data["o:tag"] = list(tags)
-    try:
-        response = requests.post(
-            f"https://api.mailgun.net/v3/{domain}/messages",
-            auth=("api", api_key),
-            data=data,
-            timeout=10,
-        )
-    except requests.RequestException as exc:
-        current_app.logger.error("Unable to send email via Mailgun: %s", exc)
-        return False
-    if not response.ok:
-        current_app.logger.error("Mailgun request failed: %s", response.text)
-        return False
-    return True
-
-
-def _send_activation_email(client: ClientAccount, token: str) -> bool:
-    link = _build_activation_link(token)
-    subject = "Activate your BLACK INK TATTOO account"
-    text = (
-        f"Hi {client.display_name or 'guest'},\n\n"
-        "Thanks for booking with BLACK INK TATTOO. Use the link below to finish creating your portal account "
-        "and choose a password so you can manage bookings and inspiration.\n\n"
-        f"{link}\n\n"
-        "This link expires in 24 hours. If you did not request this, you can ignore this message."
-    )
-    html = (
-        f"<p>Hi {client.display_name or 'guest'},</p>"
-        "<p>Thanks for booking with BLACK INK TATTOO. Use the link below to finish creating your portal account "
-        "and choose a password so you can manage bookings and inspiration.</p>"
-        f"<p><a href=\"{link}\">Activate my account</a></p>"
-        "<p>This link expires in 24 hours. If you did not request this, you can ignore this message.</p>"
-    )
-    return _mailgun_send(
-        to=client.email,
-        subject=subject,
-        text=text,
-        html=html,
-        tags=("auth", "activation"),
-    )
 
 
 def _issue_email_verification_token(client: ClientAccount, purpose: str = "verify_email"):
@@ -946,38 +884,6 @@ def _verify_email_token(email: str, code: str, purpose: str = "verify_email"):
         if _verify_code(code, token.code_hash):
             return token
     return None
-
-
-def _send_email_verification_email(client: ClientAccount, code: str) -> bool:
-    if not client.email:
-        return False
-    base_url = _client_base_url()
-    verify_url = f"{base_url}/verify-email?email={escape(client.email)}&code={escape(code)}"
-    subject = "Verify your email for BLACK INK TATTOO"
-    text = (
-        f"Hi {client.display_name or 'there'},\n\n"
-        "Use the verification code below to confirm your email address. "
-        f"This code expires in {int(EMAIL_VERIFICATION_TTL.total_seconds() // 60)} minutes.\n\n"
-        f"Verification code: {code}\n"
-        f"Or verify online: {verify_url}\n\n"
-        "If you did not create an account, you can ignore this email."
-    )
-    html = (
-        f"<p>Hi {escape(client.display_name or 'there')},</p>"
-        "<p>Use the verification code below to confirm your email address. "
-        f"This code expires in {int(EMAIL_VERIFICATION_TTL.total_seconds() // 60)} minutes.</p>"
-        f"<div style=\"margin:16px 0;padding:14px 18px;display:inline-block;background:#0b1f4d;"
-        f"color:#fff;font-weight:700;letter-spacing:4px;border-radius:10px;\">{escape(code)}</div>"
-        f"<p>Or verify online: <a href=\"{verify_url}\">Verify my email</a></p>"
-        "<p>If you did not create an account, you can ignore this email.</p>"
-    )
-    return _mailgun_send(
-        to=client.email,
-        subject=subject,
-        text=text,
-        html=html,
-        tags=("auth", "verify-email"),
-    )
 
 
 def _issue_password_reset_request(client: ClientAccount, *, request_ip: str | None = None, user_agent: str | None = None):
@@ -1025,188 +931,6 @@ def _verify_password_reset(email: str, code: str):
         if _verify_code(code, request_record.code_hash):
             return request_record
     return None
-
-
-def _send_password_reset_email(client: ClientAccount, code: str) -> bool:
-    if not client.email:
-        return False
-    subject = "Reset your BLACK INK TATTOO password"
-    reset_url = f"{_client_base_url()}/reset-password?email={escape(client.email)}&code={escape(code)}"
-    expires_minutes = int(PASSWORD_RESET_TTL.total_seconds() // 60)
-    text = (
-        f"Hi {client.display_name or 'there'},\n\n"
-        "We received a request to reset your password. Use the code below within "
-        f"{expires_minutes} minutes to continue.\n\n"
-        f"Verification code: {code}\n"
-        f"Reset online: {reset_url}\n\n"
-        "If you did not request this, you can ignore this email."
-    )
-    html = (
-        f"<p>Hi {escape(client.display_name or 'there')},</p>"
-        "<p>We received a request to reset your password. Use the code below within "
-        f"{expires_minutes} minutes to continue.</p>"
-        f"<div style=\"margin:16px 0;padding:14px 18px;display:inline-block;background:#111;color:#fff;"
-        f"font-weight:700;letter-spacing:4px;border-radius:10px;\">{escape(code)}</div>"
-        f"<p>Reset online: <a href=\"{reset_url}\">Reset my password</a></p>"
-        "<p>If you did not request this, you can ignore this email.</p>"
-    )
-    return _mailgun_send(
-        to=client.email,
-        subject=subject,
-        text=text,
-        html=html,
-        tags=("auth", "password-reset"),
-    )
-
-
-def _send_password_changed_email(client: ClientAccount) -> None:
-    if not client.email:
-        return
-    subject = "Your BLACK INK TATTOO password was updated"
-    text = (
-        f"Hi {client.display_name or 'there'},\n\n"
-        "This is a confirmation that the password for your account was changed. "
-        "If you did not make this change, please reset your password immediately or contact the studio.\n\n"
-        "Reset password: {base}/forgot-password"
-    ).format(base=_client_base_url())
-    html = (
-        f"<p>Hi {escape(client.display_name or 'there')},</p>"
-        "<p>This is a confirmation that the password for your account was changed.</p>"
-        f"<p>If you did not make this change, <a href=\"{_client_base_url()}/forgot-password\">reset your password</a> immediately or contact the studio.</p>"
-    )
-    _mailgun_send(
-        to=client.email,
-        subject=subject,
-        text=text,
-        html=html,
-        tags=("auth", "password-changed"),
-    )
-
-
-def _send_signup_email(client: ClientAccount, verification_code: str | None = None) -> bool:
-    if not client.email:
-        return False
-    subject = "Welcome to BLACK INK TATTOO"
-    verify_hint = (
-        f"Your verification code: {verification_code}\n"
-        f"Verify online: {_client_base_url()}/verify-email?email={client.email}&code={verification_code}\n\n"
-        if verification_code
-        else ""
-    )
-    text = (
-        f"Hi {client.display_name or 'there'},\n\n"
-        "Thanks for creating a portal account with BLACK INK TATTOO. "
-        "You can manage your bookings, documents, and inspiration online.\n\n"
-        f"{verify_hint}"
-        "If you did not create this account, you can ignore this email."
-    )
-    html_parts = [
-        f"<p>Hi {escape(client.display_name or 'there')},</p>",
-        "<p>Thanks for creating a portal account with BLACK INK TATTOO. "
-        "You can manage your bookings, documents, and inspiration online.</p>",
-    ]
-    if verification_code:
-        html_parts.append(
-            f"<p>Your verification code: <strong>{escape(verification_code)}</strong></p>"
-        )
-        html_parts.append(
-            f"<p><a href=\"{_client_base_url()}/verify-email?email={escape(client.email)}&code={escape(verification_code)}\">Verify my email</a></p>"
-        )
-    html_parts.append("<p>If you did not create this account, you can ignore this email.</p>")
-    return _mailgun_send(
-        to=client.email,
-        subject=subject,
-        text=text,
-        html="".join(html_parts),
-        tags=("auth", "welcome"),
-    )
-
-
-def _format_currency(amount_cents: int | float | None, currency: str | None = None) -> str:
-    if amount_cents is None:
-        return ""
-    code = (currency or _square_currency()).upper()
-    return f"{code} {float(amount_cents) / 100:,.2f}"
-
-
-def _format_appointment_datetime(dt: datetime | None) -> str:
-    if not dt:
-        return "To be scheduled"
-    try:
-        if dt.tzinfo is not None:
-            return dt.astimezone(timezone.utc).strftime("%A, %B %d %Y at %I:%M %p %Z")
-    except Exception:
-        pass
-    return dt.strftime("%A, %B %d %Y at %I:%M %p")
-
-
-def _send_booking_confirmation_email(
-    appointment: TattooAppointment,
-    *,
-    charge_amount_cents: int,
-    session_price_cents: int,
-    booking_fee_percent: int,
-    pay_full_amount: bool,
-    receipt_url: str | None = None,
-) -> None:
-    recipient = appointment.contact_email or (appointment.client.email if appointment.client else None)
-    if not recipient:
-        return
-    base_url = _client_base_url()
-    payment_currency = appointment.payments[0].currency if getattr(appointment, "payments", None) else _square_currency()
-    reference = appointment.reference_code or f"Appointment #{appointment.id}"
-    scheduled_label = _format_appointment_datetime(appointment.scheduled_start)
-    if appointment.duration_minutes:
-        hours = appointment.duration_minutes / 60.0
-        duration_label = f"{hours:.1f}h" if not hours.is_integer() else f"{int(hours)}h"
-    else:
-        duration_label = "Session"
-    payment_label = "Paid in full" if pay_full_amount else f"{booking_fee_percent}% deposit received"
-    subject = f"Booking received – {reference}"
-
-    lines = [
-        f"Hi {appointment.contact_name or 'there'},",
-        "Thanks for booking with BLACK INK TATTOO. Here are your details:",
-        f"- Reference: {reference}",
-        f"- Session: {scheduled_label} ({duration_label})",
-        f"- Placement: {appointment.tattoo_placement or 'n/a'}",
-        f"- Size: {appointment.tattoo_size or 'n/a'}",
-        f"- Payment: {payment_label} ({_format_currency(charge_amount_cents, payment_currency)})",
-    ]
-    if session_price_cents:
-        lines.append(f"- Session price: {_format_currency(session_price_cents, payment_currency)}")
-    if receipt_url:
-        lines.append(f"- Receipt: {receipt_url}")
-    lines.append(f"- Manage: {base_url}/portal/appointments")
-    text = "\n".join(lines)
-
-    html_parts = [
-        f"<p>Hi {escape(appointment.contact_name or 'there')},</p>",
-        "<p>Thanks for booking with BLACK INK TATTOO. Here are your details:</p>",
-        "<ul>",
-        f"<li><strong>Reference:</strong> {escape(reference)}</li>",
-        f"<li><strong>Session:</strong> {escape(scheduled_label)} ({escape(duration_label)})</li>",
-        f"<li><strong>Placement:</strong> {escape(appointment.tattoo_placement or 'n/a')}</li>",
-        f"<li><strong>Size:</strong> {escape(appointment.tattoo_size or 'n/a')}</li>",
-        f"<li><strong>Payment:</strong> {escape(payment_label)} ({escape(_format_currency(charge_amount_cents, payment_currency))})</li>",
-    ]
-    if session_price_cents:
-        html_parts.append(
-            f"<li><strong>Session price:</strong> {escape(_format_currency(session_price_cents, payment_currency))}</li>"
-        )
-    if receipt_url:
-        html_parts.append(f"<li><strong>Receipt:</strong> <a href=\"{escape(receipt_url)}\">View receipt</a></li>")
-    html_parts.append(f"<li><strong>Manage:</strong> <a href=\"{base_url}/portal/appointments\">View your portal</a></li>")
-    html_parts.append("</ul>")
-    html_parts.append("<p>If anything looks off, reply to this email and we will help.</p>")
-
-    _mailgun_send(
-        to=recipient,
-        subject=subject,
-        text=text,
-        html="".join(html_parts),
-        tags=("appointments", "confirmation"),
-    )
 
 
 def load_hourly_rate_cents() -> int:
@@ -2090,7 +1814,7 @@ def register_account():
     verification_code = None
     if client.email:
         _token, verification_code = _issue_email_verification_token(client)
-        if verification_code and not _send_signup_email(client, verification_code):
+        if verification_code and not send_signup_email(client, verification_code):
             db.session.rollback()
             return jsonify({"error": "Unable to send verification email right now."}), 503
 
@@ -2127,7 +1851,7 @@ def activation_request():
         return jsonify({"status": "ok"}), 200
 
     token = _create_activation_token(client)
-    if not _send_activation_email(client, token):
+    if not send_activation_email(client, token):
         db.session.rollback()
         return jsonify({"error": "Unable to send activation email right now."}), 500
 
@@ -2201,7 +1925,11 @@ def request_email_verification():
         return jsonify({"status": "already_verified"}), 200
 
     _token, code = _issue_email_verification_token(client)
-    if not code or not _send_email_verification_email(client, code):
+    if not code or not send_email_verification_email(
+        client,
+        code,
+        expires_minutes=int(EMAIL_VERIFICATION_TTL.total_seconds() // 60),
+    ):
         db.session.rollback()
         return jsonify({"error": "Unable to send verification email right now."}), 503
 
@@ -2258,7 +1986,11 @@ def forgot_password():
 
     if not client.email_verified_at:
         _token, code = _issue_email_verification_token(client)
-        if code and not _send_email_verification_email(client, code):
+        if code and not send_email_verification_email(
+            client,
+            code,
+            expires_minutes=int(EMAIL_VERIFICATION_TTL.total_seconds() // 60),
+        ):
             db.session.rollback()
             return jsonify({"error": "Unable to send verification email right now."}), 503
         try:
@@ -2273,7 +2005,11 @@ def forgot_password():
         request_ip=request.remote_addr,
         user_agent=request.headers.get("User-Agent"),
     )
-    if not code or not _send_password_reset_email(client, code):
+    if not code or not send_password_reset_email(
+        client,
+        code,
+        expires_minutes=int(PASSWORD_RESET_TTL.total_seconds() // 60),
+    ):
         db.session.rollback()
         return jsonify({"error": "Unable to send reset email right now."}), 503
 
@@ -2314,7 +2050,7 @@ def forgot_password_confirm():
         db.session.rollback()
         return jsonify({"error": "Unable to update password right now."}), 500
 
-    _send_password_changed_email(client)
+    send_password_changed_email(client)
     set_session("user", client.id)
     csrf_token = get_csrf_token()
     return (
@@ -2446,7 +2182,7 @@ def update_account_password():
         db.session.rollback()
         return jsonify({"error": "Unable to update password right now."}), 500
 
-    _send_password_changed_email(user)
+    send_password_changed_email(user)
     return jsonify({"status": "updated"}), 200
 
 
@@ -4382,7 +4118,7 @@ def create_appointment():
         joinedload(TattooAppointment.payments),
     ).get(appointment.id)
 
-    _send_booking_confirmation_email(
+    send_booking_confirmation_email(
         appointment,
         charge_amount_cents=charge_amount,
         session_price_cents=session_price_cents,
@@ -4391,7 +4127,7 @@ def create_appointment():
         receipt_url=receipt_url,
     )
     if signup_verification_code and appointment.client:
-        _send_signup_email(appointment.client, signup_verification_code)
+        send_signup_email(appointment.client, signup_verification_code)
 
     return jsonify(serialize_appointment(appointment)), 201
 
