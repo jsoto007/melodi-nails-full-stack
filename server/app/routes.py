@@ -11,6 +11,7 @@ from datetime import date, datetime, time, timedelta, timezone
 from functools import wraps
 from pathlib import Path
 from uuid import uuid4
+from urllib.parse import urlsplit
 
 import boto3
 import requests
@@ -20,7 +21,7 @@ from flask import Blueprint, current_app, g, jsonify, request, send_file, send_f
 from flask_limiter.errors import RateLimitExceeded
 from flask_limiter.util import get_remote_address
 from cryptography.fernet import Fernet, InvalidToken
-from sqlalchemy import case, func, select
+from sqlalchemy import case, func, or_, select
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import joinedload
 from werkzeug.exceptions import RequestEntityTooLarge
@@ -1230,6 +1231,14 @@ def calculate_session_price_cents(duration_minutes: int | None) -> int:
     return max(0, total)
 
 
+def _serialize_asset_file_url(asset: AppointmentAsset):
+    raw_url = decrypt_identity_value(asset.file_url) if asset.kind in {"id_front", "id_back"} else asset.file_url
+    owner_id = asset.client_uploader_id or (asset.appointment.client_id if asset.appointment else None)
+    if owner_id:
+        return _normalize_private_upload_url(raw_url)
+    return raw_url
+
+
 def serialize_appointment(appointment):
     client = appointment.client
     assigned_admin = appointment.assigned_admin
@@ -1285,9 +1294,7 @@ def serialize_appointment(appointment):
             {
                 "id": asset.id,
                 "kind": asset.kind,
-                "file_url": decrypt_identity_value(asset.file_url)
-                if asset.kind in {"id_front", "id_back"}
-                else asset.file_url,
+                "file_url": _serialize_asset_file_url(asset),
                 "note_text": asset.note_text,
                 "is_visible_to_client": asset.is_visible_to_client,
                 "created_at": asset.created_at.isoformat() if asset.created_at else None,
@@ -1345,12 +1352,13 @@ def serialize_user_profile(user: ClientAccount):
 
 
 def serialize_client_document(document: ClientDocument):
+    file_url = _normalize_private_upload_url(document.file_url)
     return {
         "id": f"document-{document.id}",
         "kind": document.kind,
         "title": document.title or document.kind.replace("_", " ").title(),
         "notes": document.notes,
-        "file_url": document.file_url,
+        "file_url": file_url,
         "created_at": document.created_at.isoformat() if document.created_at else None,
         "source": "you",
     }
@@ -1358,7 +1366,7 @@ def serialize_client_document(document: ClientDocument):
 
 def serialize_visible_asset(asset: AppointmentAsset):
     appointment_ref = asset.appointment.reference_code or f"#{asset.appointment.id}" if asset.appointment else None
-    file_url = decrypt_identity_value(asset.file_url) if asset.kind in {"id_front", "id_back"} else asset.file_url
+    file_url = _serialize_asset_file_url(asset)
     return {
         "id": f"asset-{asset.id}",
         "kind": asset.kind,
@@ -1445,6 +1453,80 @@ def is_valid_image_file(file_storage) -> bool:
             stream.seek(0)
         except (AttributeError, OSError):
             pass
+
+
+def _extract_upload_filename(value: str | None) -> str | None:
+    if not value:
+        return None
+    try:
+        parsed = urlsplit(value)
+    except ValueError:
+        parsed = None
+    path = (parsed.path if parsed else value) or value
+    candidate = path.rsplit("/", 1)[-1] if "/" in path else path
+    sanitized = secure_filename(candidate)
+    return sanitized or None
+
+
+def _normalize_private_upload_url(value: str | None) -> str | None:
+    if not value or value.startswith("data:") or value.startswith(IDENTITY_ENCRYPTION_PREFIX):
+        return value
+    filename = _extract_upload_filename(value)
+    if not filename:
+        return value
+    return f"/api/uploads/{filename}"
+
+
+def _resolve_upload_access_control(filename: str | None) -> dict | None:
+    """
+    Determine who may fetch an uploaded file.
+    Returns:
+        {"public": True} for public files (e.g., published gallery items)
+        {"admin_only": True} for files that should only be visible to admins
+        {"client_id": <id>} when a specific client owns the file
+    """
+    safe_name = secure_filename(filename or "")
+    if not safe_name:
+        return None
+    path_variants = {safe_name, f"/api/uploads/{safe_name}"}
+    like_pattern = f"%/{safe_name}"
+
+    try:
+        gallery_item = GalleryItem.query.filter(
+            or_(GalleryItem.image_url.in_(path_variants), GalleryItem.image_url.like(like_pattern))
+        ).first()
+    except SQLAlchemyError:
+        gallery_item = None
+    if gallery_item:
+        if gallery_item.is_published:
+            return {"public": True}
+        return {"admin_only": True}
+
+    try:
+        document = ClientDocument.query.filter(
+            or_(ClientDocument.file_url.in_(path_variants), ClientDocument.file_url.like(like_pattern))
+        ).first()
+    except SQLAlchemyError:
+        document = None
+    if document:
+        return {"client_id": document.client_id}
+
+    asset = (
+        AppointmentAsset.query.options(joinedload(AppointmentAsset.appointment))
+        .filter(
+            or_(
+                AppointmentAsset.file_url.in_(path_variants),
+                AppointmentAsset.file_url.like(like_pattern),
+            )
+        )
+        .first()
+    )
+    if asset:
+        owner_id = asset.client_uploader_id or (asset.appointment.client_id if asset.appointment else None)
+        if owner_id:
+            return {"client_id": owner_id}
+        return {"admin_only": True}
+    return None
 
 
 @api_bp.errorhandler(RequestEntityTooLarge)
@@ -2374,6 +2456,24 @@ def serve_uploaded_file(filename):
     safe_name = secure_filename(filename)
     if not safe_name:
         return jsonify({"error": "File not found."}), 404
+
+    access = _resolve_upload_access_control(safe_name)
+    if access:
+        role = session.get("role")
+        requester_id = session.get("user_id")
+        if access.get("public"):
+            pass
+        elif access.get("admin_only"):
+            if role != "admin":
+                return jsonify({"error": "File not found."}), 404
+        else:
+            owner_client_id = access.get("client_id")
+            if not (
+                role == "admin"
+                or (role == "user" and requester_id == owner_client_id)
+            ):
+                return jsonify({"error": "File not found."}), 404
+
     stored = StoredUpload.query.filter_by(filename=safe_name).one_or_none()
     if stored:
         return _with_cache_headers(
@@ -2730,7 +2830,8 @@ def upload_account_document():
 
     cleanup_target = None
     try:
-        stored_name, file_url = store_uploaded_media(file, safe_name)
+        stored_name, _stored_url = store_uploaded_media(file, safe_name)
+        file_url = f"/api/uploads/{safe_name}"
         if _use_s3_uploads():
             cleanup_target = {"mode": "s3", "key": stored_name}
         else:
@@ -4561,7 +4662,7 @@ def admin_create_appointment_asset(appointment_id):
         admin_uploader=admin_uploader,
         client_uploader=client_uploader,
         kind=kind,
-        file_url=file_url,
+        file_url=_normalize_private_upload_url(file_url) if file_url else None,
         note_text=note_text,
         is_visible_to_client=is_visible,
     )
@@ -4590,7 +4691,7 @@ def admin_create_appointment_asset(appointment_id):
         {
             "id": asset.id,
             "kind": asset.kind,
-            "file_url": asset.file_url,
+            "file_url": _serialize_asset_file_url(asset),
             "note_text": asset.note_text,
             "is_visible_to_client": asset.is_visible_to_client,
             "created_at": asset.created_at.isoformat() if asset.created_at else None,
@@ -4630,7 +4731,7 @@ def admin_update_appointment_asset(appointment_id, asset_id):
         asset.kind = kind
 
     if "file_url" in payload:
-        asset.file_url = (payload.get("file_url") or "").strip() or None
+        asset.file_url = _normalize_private_upload_url((payload.get("file_url") or "").strip()) or None
 
     if "note_text" in payload:
         asset.note_text = (payload.get("note_text") or "").strip() or None
@@ -4676,7 +4777,7 @@ def admin_update_appointment_asset(appointment_id, asset_id):
         {
             "id": asset.id,
             "kind": asset.kind,
-            "file_url": asset.file_url,
+            "file_url": _serialize_asset_file_url(asset),
             "note_text": asset.note_text,
             "is_visible_to_client": asset.is_visible_to_client,
             "created_at": asset.created_at.isoformat() if asset.created_at else None,
