@@ -4387,7 +4387,7 @@ def admin_update_appointment(appointment_id):
         and (appointment.suggested_duration_minutes is None or "tattoo_placement" in payload or "tattoo_size" in payload)
     ):
         if new_placement or new_size:
-        appointment.suggested_duration_minutes = calculate_suggested_duration_minutes(new_placement, new_size)
+            appointment.suggested_duration_minutes = calculate_suggested_duration_minutes(new_placement, new_size)
 
     if status_changed and appointment.client:
         reference_label = appointment.reference_code or f"Appointment #{appointment.id}"
