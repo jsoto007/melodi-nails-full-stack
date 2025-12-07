@@ -60,9 +60,10 @@ function buildSessionPayload(input) {
   if (!input.durationHours || Number.isNaN(durationValue) || durationValue <= 0) {
     return { error: 'Enter a valid duration in hours.' };
   }
-  const priceValue = Number(normalizeDecimalInput((input.price || '').trim()));
-  if (!input.price || Number.isNaN(priceValue) || priceValue <= 0) {
-    return { error: 'Enter a valid price.' };
+  const priceInput = normalizeDecimalInput((input.price ?? '').trim());
+  const priceValue = Number(priceInput);
+  if (priceInput === '' || Number.isNaN(priceValue) || priceValue < 0) {
+    return { error: 'Enter a valid price (zero allowed for consultations).' };
   }
   return {
     payload: {
@@ -784,7 +785,7 @@ export default function AdminSettings() {
                             type="text"
                             value={sessionForm.price}
                             onChange={handleSessionFormChange('price')}
-                            placeholder="e.g. 175.00"
+                            placeholder="e.g. 175.00 or 0 for consults"
                             className="w-full rounded-xl border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 transition focus:border-gray-900 focus:outline-none focus:ring-0 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-100 dark:focus:border-gray-400"
                           />
                         </div>
@@ -866,7 +867,7 @@ export default function AdminSettings() {
               type="text"
               value={modalForm.price}
               onChange={handleModalFormChange('price')}
-              placeholder="e.g. 175.00"
+              placeholder="e.g. 175.00 or 0 for consults"
               className="w-full rounded-xl border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 transition focus:border-gray-900 focus:outline-none focus:ring-0 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-100 dark:focus:border-gray-400"
             />
           </div>

@@ -59,7 +59,11 @@ def send_booking_confirmation_email(
         duration_label = f"{hours:.1f}h" if not hours.is_integer() else f"{int(hours)}h"
     else:
         duration_label = "Session"
-    payment_label = "Paid in full" if pay_full_amount else f"{booking_fee_percent}% deposit received"
+    payment_label = (
+        "No payment required"
+        if charge_amount_cents <= 0
+        else ("Paid in full" if pay_full_amount else f"{booking_fee_percent}% deposit received")
+    )
     manage_url = f"{base_url}/portal/appointments"
     subject = f"{brand} booking confirmed – {reference}"
 

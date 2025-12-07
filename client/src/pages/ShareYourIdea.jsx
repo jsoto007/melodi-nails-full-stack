@@ -423,9 +423,11 @@ export default function ShareYourIdea() {
   const signedInAccountId = isAuthenticated && account?.id ? account.id : null;
   const availableSessionOptions = useMemo(
     () =>
-      sessionOptions.filter(
-        (option) => (option?.duration_minutes ?? 0) >= effectiveMinimumDurationMinutes
-      ),
+      sessionOptions.filter((option) => {
+        const duration = option?.duration_minutes ?? 0;
+        const isConsultationOffer = option?.price_cents === 0;
+        return duration >= effectiveMinimumDurationMinutes || isConsultationOffer;
+      }),
     [sessionOptions, effectiveMinimumDurationMinutes]
   );
   const selectedSessionOption =
@@ -472,6 +474,10 @@ export default function ShareYourIdea() {
   const depositAmountCents = payFullAmount
     ? sessionPriceCents
     : calculateBookingFeeAmount(sessionPriceCents, bookingFeePercent);
+  const paymentDue = depositAmountCents > 0;
+  const requiresPaymentMethod = paymentDue && paymentConfig?.enabled;
+  const paymentsUnavailable =
+    paymentConfigLoaded && paymentDue && !paymentConfig?.enabled && !paymentConfig?.demo_mode;
   const depositAmountLabel = useMemo(() => {
     if (!depositAmountCents) {
       return null;
@@ -494,16 +500,23 @@ export default function ShareYourIdea() {
     recommendedPricing?.hourly_rate_cents != null
       ? pricingFormatter.format(recommendedPricing.hourly_rate_cents / 100)
       : null;
-  const paymentsUnavailable = paymentConfigLoaded && !paymentConfig?.enabled && !paymentConfig?.demo_mode;
   const submitDisabled =
-    submitting || (paymentConfig?.enabled ? paymentStatus !== 'ready' : false) || paymentsUnavailable;
+    submitting || (requiresPaymentMethod ? paymentStatus !== 'ready' : false) || paymentsUnavailable;
   const submitLabel = submitting
     ? 'Processing...'
-    : paymentConfig?.enabled
+    : paymentDue && requiresPaymentMethod
     ? payFullAmount
       ? `Pay ${depositAmountLabel || 'total amount'} & book`
       : `Pay ${depositAmountLabel || 'deposit'} & book`
-    : 'Submit booking';
+    : paymentDue
+    ? 'Submit booking'
+    : 'Book appointment';
+
+  useEffect(() => {
+    if (!paymentDue) {
+      setPaymentError(null);
+    }
+  }, [paymentDue]);
 
   const loadAvailabilityConfig = useCallback(async () => {
     if (availabilityConfig || availabilityLoading) {
@@ -663,13 +676,15 @@ export default function ShareYourIdea() {
   }, []);
 
   useEffect(() => {
-    if (!paymentConfig?.enabled) {
-      setPaymentStatus(paymentConfig?.demo_mode ? 'ready' : 'idle');
+    const skipPaymentCollection = !paymentConfig?.enabled || depositAmountCents <= 0;
+    if (skipPaymentCollection) {
+      setPaymentStatus(paymentConfig?.demo_mode || depositAmountCents <= 0 ? 'ready' : 'idle');
       if (cardInstanceRef.current?.destroy) {
         cardInstanceRef.current.destroy();
       }
       cardInstanceRef.current = null;
       paymentsRef.current = null;
+      Object.values(walletInstancesRef.current).forEach((wallet) => wallet?.destroy?.());
       walletInstancesRef.current = {};
       setAvailableWallets([]);
       setWalletProcessing(null);
@@ -781,7 +796,7 @@ export default function ShareYourIdea() {
       setAvailableWallets([]);
       setWalletProcessing(null);
     };
-  }, [paymentConfig]);
+  }, [paymentConfig, depositAmountCents]);
 
   useEffect(() => {
     return () => {
@@ -855,16 +870,17 @@ export default function ShareYourIdea() {
   }, [durationMinutes]);
 
   useEffect(() => {
-    if (!suggestedMinutes) {
+    if (!suggestedMinutes && !selectedSessionOption) {
       setRecommendedPricing(null);
       setPricingError(null);
       setPricingLoading(false);
       return;
     }
-    if (recommendedSessionOption) {
+    const prioritizedOption = selectedSessionOption || recommendedSessionOption;
+    if (prioritizedOption) {
       setRecommendedPricing({
-        duration_minutes: recommendedSessionOption.duration_minutes,
-        total_cents: recommendedSessionOption.price_cents,
+        duration_minutes: prioritizedOption.duration_minutes,
+        total_cents: prioritizedOption.price_cents ?? 0,
         hourly_rate_cents: null,
         currency: recommendedCurrency
       });
@@ -900,7 +916,7 @@ export default function ShareYourIdea() {
     return () => {
       controller.abort();
     };
-  }, [suggestedMinutes, recommendedSessionOption, recommendedCurrency]);
+  }, [suggestedMinutes, selectedSessionOption, recommendedSessionOption, recommendedCurrency]);
 
   useEffect(() => {
     if (!isAuthenticated || !account) {
@@ -1360,11 +1376,37 @@ export default function ShareYourIdea() {
     if (error?.body?.error) {
       return error.body.error;
     }
+    if (Array.isArray(error?.body?.errors) && error.body.errors.length) {
+      return error.body.errors[0]?.message || 'Unable to complete your booking right now. Please try again.';
+    }
     if (error?.status === 402) {
       return 'Payment failed. Please try another payment method.';
     }
     return 'Unable to complete your booking right now. Please try again.';
   }, []);
+
+  const handleServerFieldErrors = useCallback(
+    (serverErrors = []) => {
+      if (!Array.isArray(serverErrors) || !serverErrors.length) {
+        return;
+      }
+      const normalizedErrors = {};
+      serverErrors.forEach((entry) => {
+        if (entry?.field && entry?.message) {
+          normalizedErrors[entry.field] = entry.message;
+        }
+      });
+      if (!Object.keys(normalizedErrors).length) {
+        return;
+      }
+      setErrors((previous) => ({ ...previous, ...normalizedErrors }));
+      const firstField = serverErrors.find((entry) => entry?.field)?.field;
+      if (firstField) {
+        scrollToField(firstField);
+      }
+    },
+    [scrollToField]
+  );
 
   const runBooking = useCallback(async () => {
     if (!validate()) {
@@ -1382,7 +1424,7 @@ export default function ShareYourIdea() {
     }
 
     const squareFields = {};
-    if (paymentConfig?.enabled) {
+    if (requiresPaymentMethod) {
       setPaymentError(null);
       try {
         if (!cardInstanceRef.current) {
@@ -1405,6 +1447,7 @@ export default function ShareYourIdea() {
     try {
       await completeBooking(payload);
     } catch (error) {
+      handleServerFieldErrors(error?.body?.errors);
       const message = getBookingErrorMessage(error);
       setPaymentError(message);
       const noticeMessage =
@@ -1418,10 +1461,11 @@ export default function ShareYourIdea() {
     validate,
     prepareBookingPayload,
     handleFileReadError,
-    paymentConfig?.enabled,
+    requiresPaymentMethod,
     buildSquareFieldsFromToken,
     completeBooking,
-    getBookingErrorMessage
+    getBookingErrorMessage,
+    handleServerFieldErrors
   ]);
 
   const handleSubmit = async (event) => {
@@ -1442,6 +1486,10 @@ export default function ShareYourIdea() {
         return;
       }
       if (!validate()) {
+        return;
+      }
+      if (!requiresPaymentMethod) {
+        await runBooking();
         return;
       }
       const walletInstance = walletInstancesRef.current[walletId];
@@ -1473,6 +1521,7 @@ export default function ShareYourIdea() {
         await completeBooking(payload);
       } catch (error) {
         if (error?.status) {
+          handleServerFieldErrors(error?.body?.errors);
           const message = getBookingErrorMessage(error);
           setPaymentError(message);
           const noticeMessage =
@@ -1492,6 +1541,8 @@ export default function ShareYourIdea() {
       validate,
       prepareBookingPayload,
       handleFileReadError,
+      requiresPaymentMethod,
+      runBooking,
       buildSquareFieldsFromToken,
       completeBooking,
       getBookingErrorMessage
@@ -2250,67 +2301,82 @@ export default function ShareYourIdea() {
 
           <div className="space-y-3 rounded-2xl border border-dashed border-gray-300 p-4 dark:border-gray-700">
             <p className="text-xs font-semibold uppercase tracking-[0.3em] text-gray-500 dark:text-gray-400">
-              Booking deposit {depositAmountLabel ? `(${depositAmountLabel})` : ''}
+              Booking deposit{' '}
+              {paymentDue && depositAmountLabel ? `(${depositAmountLabel})` : !paymentDue ? '(not required)' : ''}
             </p>
             <p className="text-[11px] uppercase tracking-[0.25em] text-gray-500 dark:text-gray-400">
-              Standard booking fee is {bookingFeePercent}% of the session total.{' '}
-              {sessionPriceCents ? `Session total ${pricingFormatter.format(sessionPriceCents / 100)}.` : ''}
+              {paymentDue ? (
+                <>
+                  Standard booking fee is {bookingFeePercent}% of the session total.{' '}
+                  {sessionPriceCents ? `Session total ${pricingFormatter.format(sessionPriceCents / 100)}.` : ''}
+                </>
+              ) : (
+                'No payment is collected for this session option. Confirm your details to reserve the consultation slot.'
+              )}
             </p>
-            <label className="flex items-center gap-2 text-xs uppercase tracking-[0.25em] text-gray-500 dark:text-gray-400">
-              <input
-                type="checkbox"
-                checked={payFullAmount}
-                onChange={(event) => setPayFullAmount(event.target.checked)}
-                disabled={!sessionPriceCents}
-                className="h-4 w-4 rounded border border-gray-400 text-gray-900 focus:ring-gray-900 dark:border-gray-600 dark:bg-gray-900 dark:focus:ring-gray-400"
-              />
-              Charge the full session amount now (instead of the deposit)
-            </label>
-            {paymentConfig?.enabled ? (
-              <>
-                <div
-                  ref={cardContainerRef}
-                  className="min-h-[72px] rounded-xl border border-gray-300 bg-white p-4 dark:border-gray-700 dark:bg-gray-900"
+            {paymentDue ? (
+              <label className="flex items-center gap-2 text-xs uppercase tracking-[0.25em] text-gray-500 dark:text-gray-400">
+                <input
+                  type="checkbox"
+                  checked={payFullAmount}
+                  onChange={(event) => setPayFullAmount(event.target.checked)}
+                  disabled={!sessionPriceCents}
+                  className="h-4 w-4 rounded border border-gray-400 text-gray-900 focus:ring-gray-900 dark:border-gray-600 dark:bg-gray-900 dark:focus:ring-gray-400"
                 />
-                <p className="text-xs text-gray-500 dark:text-gray-400">
-                  Securely processed by Square. We only charge the deposit after you confirm this booking.
-                </p>
-                {availableWallets.length > 0 ? (
-                  <div className="mt-3 space-y-2">
-                    <p className="text-xs uppercase tracking-[0.2em] text-gray-500 dark:text-gray-400">
-                      Or choose another payment method
-                    </p>
-                    <div className="flex flex-wrap gap-2">
-                      {availableWallets.map((wallet) => (
-                        <button
-                          key={wallet.id}
-                          type="button"
-                          className="flex items-center justify-center gap-2 rounded-xl border border-gray-300 bg-white px-4 py-2 text-sm font-semibold text-gray-900 transition hover:border-gray-900 disabled:cursor-not-allowed disabled:opacity-50 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-100 dark:hover:border-gray-400"
-                          onClick={() => handleWalletPayment(wallet.id)}
-                          disabled={submitting || walletProcessing !== null}
-                        >
-                          {wallet.label}
-                        </button>
-                      ))}
-                    </div>
-                    {walletProcessing ? (
+                Charge the full session amount now (instead of the deposit)
+              </label>
+            ) : null}
+            {paymentDue ? (
+              paymentConfig?.enabled ? (
+                <>
+                  <div
+                    ref={cardContainerRef}
+                    className="min-h-[72px] rounded-xl border border-gray-300 bg-white p-4 dark:border-gray-700 dark:bg-gray-900"
+                  />
+                  <p className="text-xs text-gray-500 dark:text-gray-400">
+                    Securely processed by Square. We only charge the deposit after you confirm this booking.
+                  </p>
+                  {availableWallets.length > 0 ? (
+                    <div className="mt-3 space-y-2">
                       <p className="text-xs uppercase tracking-[0.2em] text-gray-500 dark:text-gray-400">
-                        Processing payment…
+                        Or choose another payment method
                       </p>
-                    ) : null}
-                  </div>
-                ) : null}
-              </>
-            ) : paymentConfig?.demo_mode ? (
-              <p className="text-sm text-gray-600 dark:text-gray-300">
-                Demo payments are enabled, so no card entry is required in this environment.
-              </p>
-            ) : paymentsUnavailable ? (
-              <p className="text-sm text-rose-500 dark:text-rose-400">
-                Payments are temporarily unavailable. Please email artem@blackworknyc.com to complete your booking.
-              </p>
+                      <div className="flex flex-wrap gap-2">
+                        {availableWallets.map((wallet) => (
+                          <button
+                            key={wallet.id}
+                            type="button"
+                            className="flex items-center justify-center gap-2 rounded-xl border border-gray-300 bg-white px-4 py-2 text-sm font-semibold text-gray-900 transition hover:border-gray-900 disabled:cursor-not-allowed disabled:opacity-50 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-100 dark:hover:border-gray-400"
+                            onClick={() => handleWalletPayment(wallet.id)}
+                            disabled={submitting || walletProcessing !== null}
+                          >
+                            {wallet.label}
+                          </button>
+                        ))}
+                      </div>
+                      {walletProcessing ? (
+                        <p className="text-xs uppercase tracking-[0.2em] text-gray-500 dark:text-gray-400">
+                          Processing payment…
+                        </p>
+                      ) : null}
+                    </div>
+                  ) : null}
+                </>
+              ) : paymentConfig?.demo_mode ? (
+                <p className="text-sm text-gray-600 dark:text-gray-300">
+                  Demo payments are enabled, so no card entry is required in this environment.
+                </p>
+              ) : paymentsUnavailable ? (
+                <p className="text-sm text-rose-500 dark:text-rose-400">
+                  Payments are temporarily unavailable. Please email artem@blackworknyc.com to complete your booking.
+                </p>
+              ) : (
+                <p className="text-sm text-gray-600 dark:text-gray-300">Loading the secure payment form…</p>
+              )
             ) : (
-              <p className="text-sm text-gray-600 dark:text-gray-300">Loading the secure payment form…</p>
+              <p className="text-sm text-gray-600 dark:text-gray-300">
+                No payment required for this booking. We will confirm your consultation without charging a card.
+              </p>
             )}
             {paymentError ? (
               <p className="text-xs uppercase tracking-[0.2em] text-rose-500 dark:text-rose-400">{paymentError}</p>

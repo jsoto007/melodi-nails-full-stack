@@ -957,7 +957,7 @@ def calculate_session_price_cents(duration_minutes: int | None) -> int:
 
 def _serialize_asset_file_url(asset: AppointmentAsset):
     raw_url = decrypt_identity_value(asset.file_url) if asset.kind in {"id_front", "id_back"} else asset.file_url
-    owner_id = asset.client_uploader_id or (asset.appointment.client_id if asset.appointment else None)
+    owner_id = asset.uploaded_by_client_id or (asset.appointment.client_id if asset.appointment else None)
     if owner_id:
         return _normalize_private_upload_url(raw_url)
     return raw_url
@@ -967,8 +967,16 @@ def serialize_appointment(appointment):
     client = appointment.client
     assigned_admin = appointment.assigned_admin
     session_option_data = serialize_session_option(appointment.session_option) if appointment.session_option else None
-    pricing_duration_minutes = appointment.suggested_duration_minutes or appointment.duration_minutes
-    session_price_cents = calculate_session_price_cents(pricing_duration_minutes)
+    pricing_duration_minutes = (
+        appointment.session_option.duration_minutes
+        if appointment.session_option
+        else (appointment.suggested_duration_minutes or appointment.duration_minutes)
+    )
+    session_price_cents = (
+        appointment.session_option.price_cents
+        if appointment.session_option
+        else calculate_session_price_cents(pricing_duration_minutes)
+    )
     return {
         "id": appointment.id,
         "reference_code": appointment.reference_code,
@@ -3021,8 +3029,8 @@ def admin_create_session_option():
         price_cents = None
     if duration_minutes is None or duration_minutes <= 0:
         errors.append("duration_minutes must be greater than zero.")
-    if price_cents is None or price_cents <= 0:
-        errors.append("price_cents must be greater than zero.")
+    if price_cents is None or price_cents < 0:
+        errors.append("price_cents must be zero or greater.")
 
     if errors:
         return jsonify({"errors": errors}), 400
@@ -3075,8 +3083,8 @@ def admin_update_session_option(option_id):
             price_cents = int(price_raw)
         except (TypeError, ValueError):
             return jsonify({"error": "price_cents must be a whole number."}), 400
-        if price_cents <= 0:
-            return jsonify({"error": "price_cents must be greater than zero."}), 400
+        if price_cents < 0:
+            return jsonify({"error": "price_cents must be zero or greater."}), 400
         option.price_cents = price_cents
     if is_active is not None:
         option.is_active = bool(is_active)
@@ -3756,8 +3764,6 @@ def create_appointment():
     signup_verification_code = None
 
     payments_active = _square_payments_active()
-    if not payments_active:
-        return jsonify({"error": "Payments are currently unavailable. Please try again soon."}), 503
 
     payments_demo_mode = bool(current_app.config.get("SQUARE_FAKE_PAYMENTS"))
     square_source_id = (payload.get("square_source_id") or "").strip()
@@ -3848,9 +3854,6 @@ def create_appointment():
     if not tattoo_size:
         errors.append({"field": "tattoo_size", "message": "Approximate size is required."})
 
-    if payments_active and not payments_demo_mode and not square_source_id:
-        errors.append({"field": "payment_method", "message": "Add a payment method to secure your booking."})
-
     if not client_account:
         if not email:
             errors.append({"field": "email", "message": "Email is required."})
@@ -3929,28 +3932,29 @@ def create_appointment():
     if session_option:
         duration_minutes = session_option.duration_minutes
 
-    if duration_minutes < booking_minimum_duration:
-        hours_label = booking_minimum_duration / 60
-        duration_desc = (
-            f"{int(hours_label)} hour{'s' if hours_label != 1 else ''}"
-            if hours_label.is_integer()
-            else f"{hours_label:.1f} hours"
-        )
-        label_suffix = f" on {booking_day_label}" if booking_day_label else ""
-        errors.append(
-            {
-                "field": "duration_minutes",
-                "message": f"Minimum session length{label_suffix} is {duration_desc}.",
-            }
-        )
-    if duration_minutes % DEFAULT_SLOT_INTERVAL_MINUTES != 0:
-        errors.append({"field": "duration_minutes", "message": "Duration must use whole-hour increments."})
+    if not session_option:
+        if duration_minutes < booking_minimum_duration:
+            hours_label = booking_minimum_duration / 60
+            duration_desc = (
+                f"{int(hours_label)} hour{'s' if hours_label != 1 else ''}"
+                if hours_label.is_integer()
+                else f"{hours_label:.1f} hours"
+            )
+            label_suffix = f" on {booking_day_label}" if booking_day_label else ""
+            errors.append(
+                {
+                    "field": "duration_minutes",
+                    "message": f"Minimum session length{label_suffix} is {duration_desc}.",
+                }
+            )
+        if duration_minutes % DEFAULT_SLOT_INTERVAL_MINUTES != 0:
+            errors.append({"field": "duration_minutes", "message": "Duration must use whole-hour increments."})
 
     if scheduled_start and duration_minutes and not errors:
         available_slots, _window = build_available_slots(
             scheduled_start.date(),
             duration_minutes,
-            minimum_duration_minutes=booking_minimum_duration,
+            minimum_duration_minutes=duration_minutes if session_option else booking_minimum_duration,
             hours_map=booking_hours_map,
         )
         slot_available = any(
@@ -3972,11 +3976,25 @@ def create_appointment():
     contact_email_value = resolved_contact_email or email or (client_account.email if client_account else None)
     contact_phone_value = resolved_contact_phone or phone or (client_account.phone if client_account else None)
 
-    recommended_duration_minutes = suggested_duration or duration_minutes
+    recommended_duration_minutes = (
+        session_option.duration_minutes if session_option else (suggested_duration or duration_minutes)
+    )
     booking_fee_percent = load_booking_fee_percent()
-    session_price_cents = calculate_session_price_cents(recommended_duration_minutes)
+    session_price_cents = (
+        session_option.price_cents if session_option else calculate_session_price_cents(recommended_duration_minutes)
+    )
     pay_full_amount = parse_bool(payload.get("pay_full_amount"), default=False)
     charge_amount = session_price_cents if pay_full_amount else calculate_booking_fee_amount(session_price_cents, booking_fee_percent)
+
+    requires_payment = charge_amount > 0
+    if requires_payment:
+        if not payments_active:
+            return jsonify({"error": "Payments are currently unavailable. Please try again soon."}), 503
+        if not payments_demo_mode and not square_source_id:
+            errors.append({"field": "payment_method", "message": "Add a payment method to secure your booking."})
+
+    if errors:
+        return jsonify({"errors": errors}), 400
 
     payment_result = None
     payment_note = (
@@ -3984,17 +4002,18 @@ def create_appointment():
         if pay_full_amount
         else f"Booking fee ({booking_fee_percent}% deposit)"
     )
-    try:
-        payment_result = charge_square_payment(
-            source_id=square_source_id or ("demo-source" if payments_demo_mode else ""),
-            amount_cents=charge_amount,
-            idempotency_key=square_idempotency_key,
-            verification_token=square_verification_token,
-            buyer_email=contact_email_value,
-            note=payment_note,
-        )
-    except SquarePaymentError as exc:
-        return jsonify({"error": str(exc)}), 402
+    if requires_payment:
+        try:
+            payment_result = charge_square_payment(
+                source_id=square_source_id or ("demo-source" if payments_demo_mode else ""),
+                amount_cents=charge_amount,
+                idempotency_key=square_idempotency_key,
+                verification_token=square_verification_token,
+                buyer_email=contact_email_value,
+                note=payment_note,
+            )
+        except SquarePaymentError as exc:
+            return jsonify({"error": str(exc)}), 402
 
     if id_front_url:
         id_front_url = encrypt_identity_value(id_front_url)
@@ -4091,18 +4110,21 @@ def create_appointment():
     payment_payload = (payment_result or {}).get("payment") or {}
     amount_details = payment_payload.get("amount_money") or {}
     receipt_url = payment_payload.get("receipt_url")
-    db.session.add(
-        AppointmentPayment(
-            appointment=appointment,
-            provider="square",
-            provider_payment_id=payment_payload.get("id") or f"demo-{secrets.token_hex(5)}",
-            status=payment_payload.get("status") or "COMPLETED",
-            amount_cents=int(amount_details.get("amount") or charge_amount),
-            currency=amount_details.get("currency") or _square_currency(),
-            receipt_url=payment_payload.get("receipt_url"),
-            note=payment_payload.get("note") or payment_note,
+    if requires_payment:
+        db.session.add(
+            AppointmentPayment(
+                appointment=appointment,
+                provider="square",
+                provider_payment_id=payment_payload.get("id") or f"demo-{secrets.token_hex(5)}",
+                status=payment_payload.get("status") or "COMPLETED",
+                amount_cents=int(amount_details.get("amount") or charge_amount),
+                currency=amount_details.get("currency") or _square_currency(),
+                receipt_url=payment_payload.get("receipt_url"),
+                note=payment_payload.get("note") or payment_note,
+            )
         )
-    )
+    else:
+        receipt_url = None
 
     try:
         db.session.commit()
