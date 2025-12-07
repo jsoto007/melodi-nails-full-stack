@@ -6,6 +6,7 @@ import FadeIn from '../../components/FadeIn.jsx';
 import SectionTitle from '../../components/SectionTitle.jsx';
 import { apiGet, resolveApiUrl } from '../../lib/api.js';
 import { ASSET_KIND_OPTIONS, useAdminDashboard } from './AdminDashboardContext.jsx';
+import { getAppointmentTypeLabel } from '../../lib/appointments.js';
 
 const INITIAL_ASSET_DRAFT = {
   kind: 'note',
@@ -540,6 +541,7 @@ export default function AppointmentDetails() {
 
   const appointmentTitle = appointment.reference_code || `#${appointment.id}`;
   const statusBadgeLabel = formatStatusLabel(appointment.status) || 'Pending';
+  const appointmentTypeLabel = getAppointmentTypeLabel(appointment);
 
   return (
     <main className="bg-gray-100 py-14 text-gray-900 dark:bg-gray-950 dark:text-gray-100">
@@ -614,6 +616,10 @@ export default function AppointmentDetails() {
                 <p className="mt-1 text-sm font-semibold text-gray-800 dark:text-gray-100">
                   {appointment.assigned_admin?.name || 'Unassigned'}
                 </p>
+              </div>
+              <div className="rounded-2xl bg-gray-50 p-4 dark:bg-gray-900/60">
+                <p className="text-[11px] font-semibold uppercase tracking-[0.3em] text-gray-500 dark:text-gray-400">Type</p>
+                <p className="mt-1 text-sm font-semibold text-gray-800 dark:text-gray-100">{appointmentTypeLabel}</p>
               </div>
             </div>
           </div>

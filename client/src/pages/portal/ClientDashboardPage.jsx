@@ -8,6 +8,7 @@ import Lightbox from '../../components/Lightbox.jsx';
 import SectionTitle from '../../components/SectionTitle.jsx';
 import { apiPost, resolveApiUrl } from '../../lib/api.js';
 import { useClientPortal } from '../../contexts/ClientPortalContext.jsx';
+import { getAppointmentTypeLabel } from '../../lib/appointments.js';
 
 const PAST_STATUSES = new Set(['cancelled', 'cancelled_by_client', 'declined', 'completed', 'no_show']);
 
@@ -209,7 +210,9 @@ export default function ClientDashboardPage() {
           <p className="text-lg font-semibold text-gray-900 dark:text-gray-100">{leftTime}</p>
         </div>
         <div className="flex-1 space-y-2">
-          <p className="text-[0.65rem] uppercase tracking-[0.3em] text-gray-500 dark:text-gray-400">Session with BLACKWORKNYC</p>
+          <p className="text-[0.65rem] uppercase tracking-[0.3em] text-gray-500 dark:text-gray-400">
+            {getAppointmentTypeLabel(appointment)}
+          </p>
           {appointment.assigned_admin ? (
             <p className="text-sm font-semibold text-gray-900 dark:text-gray-100">{appointment.assigned_admin.name}</p>
           ) : null}
@@ -467,7 +470,9 @@ export default function ClientDashboardPage() {
         {selectedAppointment ? (
           <div className="space-y-3 text-sm text-gray-700 dark:text-gray-200">
             <p className="font-semibold text-gray-900 dark:text-gray-100">{formatFriendlyDate(selectedAppointment.scheduled_start)}</p>
-            <p className="text-xs uppercase tracking-[0.3em] text-gray-500 dark:text-gray-400">Session with BLACKWORKNYC</p>
+            <p className="text-xs uppercase tracking-[0.3em] text-gray-500 dark:text-gray-400">
+              {getAppointmentTypeLabel(selectedAppointment)}
+            </p>
             {selectedAppointment.assigned_admin ? (
               <p>Artist: {selectedAppointment.assigned_admin.name}</p>
             ) : null}

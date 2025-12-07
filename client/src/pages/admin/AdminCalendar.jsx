@@ -6,6 +6,7 @@ import ConfirmDialog from '../../components/ConfirmDialog.jsx';
 import Dialog from '../../components/Dialog.jsx';
 import SectionTitle from '../../components/SectionTitle.jsx';
 import { useAdminDashboard } from './AdminDashboardContext.jsx';
+import { getAppointmentTypeLabel } from '../../lib/appointments.js';
 
 const NEW_APPOINTMENT_TEMPLATE = {
   client_id: '',
@@ -1455,6 +1456,10 @@ export default function AdminCalendar() {
           <div className="space-y-1 rounded-2xl border border-gray-200 p-3 text-sm dark:border-gray-800">
             <p className="text-xs uppercase tracking-[0.3em] text-gray-500 dark:text-gray-400">Contact</p>
             <p className="font-semibold text-gray-900 dark:text-gray-100">{contact}</p>
+          </div>
+          <div className="space-y-1 rounded-2xl border border-gray-200 p-3 text-sm dark:border-gray-800">
+            <p className="text-xs uppercase tracking-[0.3em] text-gray-500 dark:text-gray-400">Type</p>
+            <p className="font-semibold text-gray-900 dark:text-gray-100">{getAppointmentTypeLabel(selectedAppointment)}</p>
           </div>
           <div className="space-y-1 rounded-2xl border border-gray-200 p-3 text-sm dark:border-gray-800">
             <p className="text-xs uppercase tracking-[0.3em] text-gray-500 dark:text-gray-400">Notes</p>
