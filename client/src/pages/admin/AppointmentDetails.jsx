@@ -7,6 +7,7 @@ import SectionTitle from '../../components/SectionTitle.jsx';
 import { apiGet, resolveApiUrl } from '../../lib/api.js';
 import { ASSET_KIND_OPTIONS, useAdminDashboard } from './AdminDashboardContext.jsx';
 import { getAppointmentTypeLabel } from '../../lib/appointments.js';
+import { formatStatusLabel, getStatusBadgeClasses } from '../../lib/statusStyles.js';
 
 const INITIAL_ASSET_DRAFT = {
   kind: 'note',
@@ -32,16 +33,6 @@ const STATUS_OPTIONS = [
 const APPOINTMENT_STATUS_FIELD_ID = 'appointment-status-select';
 const ICON_BADGE_CLASS =
   'flex h-12 w-12 items-center justify-center rounded-full bg-gradient-to-br from-gray-900 via-gray-800 to-black text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.08)] ring-1 ring-black/10 dark:from-gray-100 dark:via-gray-200 dark:to-gray-400 dark:text-gray-900 dark:ring-white/15';
-
-function formatStatusLabel(value) {
-  if (!value) {
-    return '';
-  }
-  return value
-    .split(/[_\s]+/)
-    .map((segment) => (segment ? segment[0].toUpperCase() + segment.slice(1) : ''))
-    .join(' ');
-}
 
 function formatDateTime(value) {
   if (!value) {
@@ -540,7 +531,8 @@ export default function AppointmentDetails() {
   };
 
   const appointmentTitle = appointment.reference_code || `#${appointment.id}`;
-  const statusBadgeLabel = formatStatusLabel(appointment.status) || 'Pending';
+  const statusBadgeLabel = formatStatusLabel(appointment.status);
+  const statusBadgeClasses = getStatusBadgeClasses(appointment.status);
   const appointmentTypeLabel = getAppointmentTypeLabel(appointment);
 
   return (
@@ -569,7 +561,9 @@ export default function AppointmentDetails() {
             <div className="space-y-2">
               <p className="text-xs font-semibold uppercase tracking-[0.3em] text-gray-500 dark:text-gray-400">Appointment overview</p>
               <div className="flex flex-wrap items-center gap-3">
-                <span className="inline-flex items-center rounded-full bg-emerald-500 px-3 py-1 text-xs font-bold uppercase tracking-wide text-white">
+                <span
+                  className={`inline-flex items-center rounded-full px-3 py-1 text-xs font-bold uppercase tracking-wide ${statusBadgeClasses}`}
+                >
                   {statusBadgeLabel}
                 </span>
                 <div className="flex items-center gap-2 text-xs uppercase tracking-[0.25em] text-gray-500 dark:text-gray-400">

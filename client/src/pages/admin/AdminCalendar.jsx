@@ -7,6 +7,7 @@ import Dialog from '../../components/Dialog.jsx';
 import SectionTitle from '../../components/SectionTitle.jsx';
 import { useAdminDashboard } from './AdminDashboardContext.jsx';
 import { getAppointmentTypeLabel } from '../../lib/appointments.js';
+import { formatStatusLabel, getStatusBadgeClasses } from '../../lib/statusStyles.js';
 
 const NEW_APPOINTMENT_TEMPLATE = {
   client_id: '',
@@ -51,17 +52,6 @@ const STATUS_OPTIONS = [
   { value: 'completed', label: 'Completed' },
   { value: 'cancelled', label: 'Cancelled' }
 ];
-
-const STATUS_STYLE_MAP = {
-  pending:
-    'bg-amber-50 text-amber-800 ring-amber-600/20 dark:bg-amber-950/40 dark:text-amber-200 dark:ring-amber-900/50',
-  completed:
-    'bg-emerald-50 text-emerald-800 ring-emerald-600/20 dark:bg-emerald-950/40 dark:text-emerald-200 dark:ring-emerald-900/50',
-  cancelled:
-    'bg-rose-50 text-rose-800 ring-rose-600/20 dark:bg-rose-950/40 dark:text-rose-200 dark:ring-rose-900/50',
-  default:
-    'bg-gray-100 text-gray-700 ring-gray-300 dark:bg-gray-900 dark:text-gray-200 dark:ring-gray-700'
-};
 
 function formatLocalDateTime(value) {
   if (!value) {
@@ -516,27 +506,12 @@ function ActionIconButton({ icon: Icon, label, onClick, tone = 'default', active
   );
 }
 
-function formatStatusLabel(value) {
-  if (!value) {
-    return '';
-  }
-  return value
-    .split(/[_\s-]+/)
-    .map((segment) => (segment ? segment[0].toUpperCase() + segment.slice(1) : ''))
-    .join(' ');
-}
-
 function buildStatusOptions(currentStatus) {
   const options = [...STATUS_OPTIONS];
   if (currentStatus && !options.some((option) => option.value === currentStatus)) {
     options.push({ value: currentStatus, label: formatStatusLabel(currentStatus) });
   }
   return options;
-}
-
-function getStatusBadgeClasses(status) {
-  const key = (status || 'pending').toLowerCase();
-  return STATUS_STYLE_MAP[key] || STATUS_STYLE_MAP.default;
 }
 
 export default function AdminCalendar() {

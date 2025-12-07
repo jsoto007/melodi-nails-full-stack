@@ -5,34 +5,12 @@ import Card from '../components/Card.jsx';
 import Button from '../components/Button.jsx';
 import SectionTitle from '../components/SectionTitle.jsx';
 import { useAuth } from '../contexts/AuthContext.jsx';
+import { formatStatusLabel, getStatusBadgeClasses } from '../lib/statusStyles.js';
 
 const BOOKING_RECEIPT_KEY = 'black-ink:last-booking';
 const LOCATION_LINE = '245 Mercer Street, Suite 4F, New York, NY';
 const STUDIO_EMAIL = 'artem@blackworknyc.com';
 const DIRECTIONS_URL = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(LOCATION_LINE)}`;
-const STATUS_DISPLAY = {
-  pending: {
-    label: 'Pending review',
-    classes: 'bg-amber-100 text-amber-800 dark:bg-amber-400/20 dark:text-amber-200'
-  },
-  confirmed: {
-    label: 'Confirmed',
-    classes: 'bg-emerald-100 text-emerald-800 dark:bg-emerald-400/20 dark:text-emerald-200'
-  },
-  completed: {
-    label: 'Completed',
-    classes: 'bg-slate-200 text-slate-900 dark:bg-slate-700/40 dark:text-slate-200'
-  },
-  cancelled: {
-    label: 'Cancelled',
-    classes: 'bg-rose-100 text-rose-800 dark:bg-rose-400/20 dark:text-rose-200'
-  },
-  default: {
-    label: 'Scheduled',
-    classes: 'bg-gray-200 text-gray-800 dark:bg-gray-700/40 dark:text-gray-200'
-  }
-};
-
 function readLatestAppointment() {
   try {
     const raw = sessionStorage.getItem(BOOKING_RECEIPT_KEY);
@@ -81,8 +59,8 @@ export default function BookingConfirmation() {
   const descriptionCopy = appointment?.client_description || '';
   const artistName = appointment?.assigned_admin?.name || appointment?.assigned_admin?.display_name || 'Assigned shortly';
   const artistEmail = appointment?.assigned_admin?.email || appointment?.assigned_admin?.contact_email || '';
-  const statusKey = (appointment?.status || '').toLowerCase();
-  const statusDisplay = STATUS_DISPLAY[statusKey] || STATUS_DISPLAY.default;
+  const statusLabel = formatStatusLabel(appointment?.status);
+  const statusClasses = getStatusBadgeClasses(appointment?.status);
   const depositSecondary = payment?.receipt_url ? (
     <a
       href={payment.receipt_url}
@@ -119,9 +97,9 @@ export default function BookingConfirmation() {
                   <p className="text-sm text-gray-500 dark:text-gray-400">Booked for {contactName}</p>
                 </div>
                 <span
-                  className={`inline-flex w-fit items-center rounded-full px-4 py-1 text-[11px] font-semibold uppercase tracking-[0.3em] ${statusDisplay.classes}`}
+                  className={`inline-flex w-fit items-center rounded-full px-4 py-1 text-[11px] font-semibold uppercase tracking-[0.3em] ${statusClasses}`}
                 >
-                  {statusDisplay.label}
+                  {statusLabel}
                 </span>
               </div>
 

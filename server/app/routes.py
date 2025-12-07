@@ -30,6 +30,7 @@ from werkzeug.utils import secure_filename
 from .emails import (
     send_activation_email,
     send_booking_confirmation_email,
+    send_appointment_status_update_email,
     send_email_verification_email,
     send_password_changed_email,
     send_password_reset_email,
@@ -61,6 +62,7 @@ from .models import (
     StoredUpload,
     PasswordResetRequest,
 )
+from .status_helpers import format_status_label
 
 api_bp = Blueprint("api", __name__)
 
@@ -701,6 +703,17 @@ def serialize_notification(notification):
         "is_read": notification.is_read,
         "created_at": notification.created_at.isoformat() if notification.created_at else None,
     }
+
+
+def _format_status_schedule_label(dt):
+    if not dt:
+        return None
+    try:
+        if dt.tzinfo is not None:
+            dt = dt.astimezone(timezone.utc)
+    except Exception:
+        pass
+    return dt.strftime("%A, %B %d %Y at %I:%M %p")
 
 
 DEFAULT_PREFERENCES = {
@@ -4217,6 +4230,11 @@ def admin_update_appointment(appointment_id):
     appointment = TattooAppointment.query.get_or_404(appointment_id)
     payload = request.get_json(silent=True) or {}
 
+    previous_status = appointment.status
+    previous_status_key = (previous_status or "").strip().lower()
+    status_changed = False
+    updated_status_label = None
+
     new_start = appointment.scheduled_start
     new_duration = appointment.duration_minutes
     new_placement = appointment.tattoo_placement
@@ -4230,6 +4248,10 @@ def admin_update_appointment(appointment_id):
         status = (payload.get("status") or "").strip()
         if not status:
             return jsonify({"error": "Status cannot be empty."}), 400
+        normalized_status = status.lower()
+        if normalized_status != previous_status_key:
+            status_changed = True
+            updated_status_label = format_status_label(status)
         appointment.status = status
 
     if "scheduled_start" in payload:
@@ -4356,7 +4378,22 @@ def admin_update_appointment(appointment_id):
         and (appointment.suggested_duration_minutes is None or "tattoo_placement" in payload or "tattoo_size" in payload)
     ):
         if new_placement or new_size:
-            appointment.suggested_duration_minutes = calculate_suggested_duration_minutes(new_placement, new_size)
+        appointment.suggested_duration_minutes = calculate_suggested_duration_minutes(new_placement, new_size)
+
+    if status_changed and appointment.client:
+        reference_label = appointment.reference_code or f"Appointment #{appointment.id}"
+        schedule_label = _format_status_schedule_label(appointment.scheduled_start)
+        notification_parts = [f"{reference_label} is now {updated_status_label.lower()}."]
+        if schedule_label:
+            notification_parts.append(f"Scheduled for {schedule_label}.")
+        notification_parts.append("Check your portal for the latest details.")
+        notification = UserNotification(
+            user=appointment.client,
+            title=f"Appointment {updated_status_label}",
+            body=" ".join(notification_parts),
+            category="appointments",
+        )
+        db.session.add(notification)
 
     acting_admin: AdminAccount = g.current_admin
 
@@ -4379,6 +4416,17 @@ def admin_update_appointment(appointment_id):
         joinedload(TattooAppointment.assets).joinedload(AppointmentAsset.client_uploader),
         joinedload(TattooAppointment.payments),
     ).get(appointment.id)
+
+    if status_changed:
+        sent = send_appointment_status_update_email(
+            appointment,
+            status_label=updated_status_label,
+        )
+        if not sent:
+            current_app.logger.debug(
+                "Appointment status update email not sent for appointment %s; recipient missing or delivery failed.",
+                appointment.id,
+            )
 
     return jsonify(serialize_appointment(appointment))
 

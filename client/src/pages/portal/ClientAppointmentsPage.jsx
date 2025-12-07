@@ -8,6 +8,7 @@ import SectionTitle from '../../components/SectionTitle.jsx';
 import Tabs from '../../components/Tabs.jsx';
 import { useClientPortal } from '../../contexts/ClientPortalContext.jsx';
 import { getAppointmentTypeLabel } from '../../lib/appointments.js';
+import { formatStatusLabel, getStatusBadgeClasses } from '../../lib/statusStyles.js';
 
 const PAST_STATUSES = new Set(['cancelled', 'cancelled_by_client', 'declined', 'completed', 'no_show']);
 
@@ -33,26 +34,11 @@ function formatTime(value) {
   }
 }
 
-function statusLabel(status) {
-  if (!status) {
-    return 'Confirmed';
+function formatDialogTitle(value) {
+  if (!value) {
+    return 'Note';
   }
-  return status.replace(/_/g, ' ').replace(/\b\w/g, (char) => char.toUpperCase());
-}
-
-function statusTone(status) {
-  switch (status) {
-    case 'cancelled':
-    case 'cancelled_by_client':
-    case 'declined':
-      return 'text-rose-700 dark:text-rose-300';
-    case 'completed':
-      return 'text-emerald-700 dark:text-emerald-300';
-    case 'pending':
-      return 'text-amber-700 dark:text-amber-300';
-    default:
-      return 'text-gray-700 dark:text-gray-200';
-  }
+  return value.replace(/_/g, ' ').replace(/\b\w/g, (char) => char.toUpperCase());
 }
 
 export default function ClientAppointmentsPage() {
@@ -169,7 +155,9 @@ export default function ClientAppointmentsPage() {
                   <p className="text-sm font-semibold text-gray-900 dark:text-gray-100">{appointment.assigned_admin.name}</p>
                 ) : null}
                 <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.3em]">
-                  <Badge className={statusTone(appointment.status)}>{statusLabel(appointment.status)}</Badge>
+                  <Badge className={getStatusBadgeClasses(appointment.status)}>
+                    {formatStatusLabel(appointment.status)}
+                  </Badge>
                   {appointment.tattoo?.placement ? (
                     <span className="text-gray-500 dark:text-gray-400">{appointment.tattoo.placement.replace(/_/g, ' ')}</span>
                   ) : null}
@@ -250,7 +238,7 @@ export default function ClientAppointmentsPage() {
       <Dialog
         open={!!actionDialog}
         onClose={() => setActionDialog(null)}
-        title={actionDialog ? statusLabel(actionDialog.type) : 'Note'}
+        title={actionDialog ? formatDialogTitle(actionDialog.type) : 'Note'}
         footer={<Button onClick={() => setActionDialog(null)}>Close</Button>}
       >
         <p className="text-sm text-gray-600 dark:text-gray-400">{buildActionMessage()}</p>
@@ -271,7 +259,12 @@ export default function ClientAppointmentsPage() {
             {selectedAppointment.assigned_admin ? (
               <p>Artist: {selectedAppointment.assigned_admin.name}</p>
             ) : null}
-            <p>Status: <span className={statusTone(selectedAppointment.status)}>{statusLabel(selectedAppointment.status)}</span></p>
+                    <p>
+                      Status:{' '}
+                      <span className={getStatusBadgeClasses(selectedAppointment.status)}>
+                        {formatStatusLabel(selectedAppointment.status)}
+                      </span>
+                    </p>
             {selectedAppointment.tattoo?.notes ? <p>Notes: {selectedAppointment.tattoo.notes}</p> : null}
           </div>
         ) : null}
