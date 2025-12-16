@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
 from html import escape
+from urllib.parse import quote
 from uuid import uuid4
 
 from flask import current_app
@@ -40,6 +41,13 @@ def _format_ics_timestamp(dt: datetime) -> str:
         timestamp = timestamp.replace(tzinfo=timezone.utc)
     timestamp = timestamp.astimezone(timezone.utc)
     return timestamp.strftime("%Y%m%dT%H%M%SZ")
+
+
+def _format_field_label(value: str | None) -> str:
+    if not value:
+        return ""
+    cleaned = " ".join(value.replace("_", " ").split())
+    return cleaned.capitalize()
 
 def _build_calendar_attachment(
     summary: str,
@@ -92,15 +100,15 @@ def _detail_lines(
     payment_currency: str,
     receipt_url: str | None,
     manage_url: str | None,
-) -> list[str]:
+    ) -> list[str]:
     lines = [
         f"Reference: {reference}",
         f"Client: {appointment.display_client_name}",
         f"Contact: {appointment.display_contact_email or 'n/a'}",
         f"Scheduled: {scheduled_label}",
         f"Duration: {duration_label}",
-        f"Placement: {appointment.tattoo_placement or 'n/a'}",
-        f"Size: {appointment.tattoo_size or 'n/a'}",
+        f"Placement: {_format_field_label(appointment.tattoo_placement) or 'n/a'}",
+        f"Size: {_format_field_label(appointment.tattoo_size) or 'n/a'}",
         f"Payment: {payment_label} ({_format_currency(charge_amount_cents, payment_currency)})",
     ]
     if session_price_cents:
@@ -145,7 +153,52 @@ def send_internal_booking_notification(
         manage_url,
     )
     appointment_location = current_app.config.get("BOOKING_LOCATION_NAME") or brand
-    text = "\n".join(detail_lines)
+    organizer_email = current_app.config.get("MAILGUN_FROM") or f"no-reply@{current_app.config.get('MAILGUN_DOMAIN') or 'blackworknyc.com'}"
+    internal_email = current_app.config.get("INTERNAL_BOOKING_NOTIFICATION_EMAIL") or "jsoto@sotodev.com"
+
+    calendar_invite_text: str | None = None
+    calendar_invite_filename = f"{_safe_filename(reference)}.ics"
+    calendar_invite_data_uri: str | None = None
+    if appointment.scheduled_start:
+        end_time = _compute_end_time(appointment)
+        if end_time:
+            summary = f"{brand} booking – {reference}"
+            description = "\n".join(detail_lines)
+            calendar_invite_text = _build_calendar_attachment(
+                summary=summary,
+                description=description,
+                location=appointment_location,
+                start=appointment.scheduled_start,
+                end=end_time,
+                organizer_email=organizer_email,
+                attendee_email=internal_email,
+            )
+    attachments = []
+    if calendar_invite_text:
+        attachments.append((calendar_invite_filename, calendar_invite_text, "text/calendar; method=REQUEST; charset=UTF-8"))
+        calendar_invite_data_uri = f"data:text/calendar;charset=utf-8,{quote(calendar_invite_text)}"
+
+    header_text = "🔔 NEW APPOINTMENT BOOKED — this email shares the full details and includes a calendar invite for your records."
+    text_lines = [header_text, "", *detail_lines]
+    if attachments:
+        text_lines.append("")
+        text_lines.append(f"Calendar invite attached for your calendar ({calendar_invite_filename}).")
+    calendar_attached_html = ""
+    if attachments:
+        download_link_html = ""
+        if calendar_invite_data_uri:
+            download_link_html = (
+                f"<a href=\"{escape(calendar_invite_data_uri)}\" download=\"{escape(calendar_invite_filename)}\" "
+                "style=\"font-weight:600;color:#0f172a;text-decoration:none;\">Download invite</a>"
+            )
+        link_suffix = f" {download_link_html}" if download_link_html else ""
+        calendar_attached_html = (
+            "<p style=\"margin:8px 0 0 0;color:#6b7280;font-size:13px;\">"
+            "Calendar invite attached for your calendar."
+            f"{link_suffix}"
+            "</p>"
+        )
+    text = "\n".join(text_lines)
     detail_rows_html = []
     for line in detail_lines:
         label, _, value = line.partition(": ")
@@ -182,14 +235,13 @@ def send_internal_booking_notification(
         "</tr>"
         "<tr>"
         "<td style=\"padding:28px 32px;color:#0f172a;font-size:15px;line-height:1.6;\">"
-        "<p style=\"margin:0 0 12px 0;\">A new booking just went through. Details below:</p>"
+        "<p style=\"margin:0 0 12px 0;\">🔔 New appointment booked. This message notifies you of the booking details and includes a calendar invite.</p>"
         "<table role=\"presentation\" cellspacing=\"0\" cellpadding=\"0\" border=\"0\" "
         "style=\"width:100%;border:1px solid #e5e7eb;border-radius:12px;overflow:hidden;\">"
         f"{detail_table}"
         "</table>"
-        "<p style=\"margin:14px 0 0 0;color:#6b7280;font-size:13px;\">"
-        "Reply to this email if any adjustments are needed."
-        "</p>"
+        "<p style=\"margin:14px 0 0 0;color:#6b7280;font-size:13px;\">Reply to this email if any adjustments are needed.</p>"
+        f"{calendar_attached_html}"
         f"{manage_button}"
         "</td>"
         "</tr>"
@@ -197,27 +249,6 @@ def send_internal_booking_notification(
         "</td></tr>"
         "</table>"
     )
-    organizer_email = current_app.config.get("MAILGUN_FROM") or f"no-reply@{current_app.config.get('MAILGUN_DOMAIN') or 'blackworknyc.com'}"
-    internal_email = current_app.config.get("INTERNAL_BOOKING_NOTIFICATION_EMAIL") or "jsoto@sotodev.com"
-    attachment = None
-    if appointment.scheduled_start:
-        end_time = _compute_end_time(appointment)
-        if end_time:
-            summary = f"{brand} booking – {reference}"
-            description = "\n".join(detail_lines)
-            attachment = _build_calendar_attachment(
-                summary=summary,
-                description=description,
-                location=appointment_location,
-                start=appointment.scheduled_start,
-                end=end_time,
-                organizer_email=organizer_email,
-                attendee_email=internal_email,
-            )
-    attachments = []
-    if attachment:
-        attachments.append((f"{_safe_filename(reference)}.ics", attachment, "text/calendar; method=REQUEST; charset=UTF-8"))
-
     return mailgun_send(
         to=internal_email,
         subject=f"{brand} booking confirmed – {reference}",

@@ -84,6 +84,7 @@ const SIZE_OPTIONS = [
 
 const BOOKING_RECEIPT_KEY = 'black-ink:last-booking';
 const TERMS_ACCEPTED_KEY = 'blackworknyc:termsAccepted';
+const TERMS_AGREED_AT_KEY = 'blackworknyc:termsAgreedAt';
 const TERMS_PAGE_PATH = '/policies/terms';
 
 const FIELD_LABELS = {
@@ -303,6 +304,12 @@ export default function ShareYourIdea() {
     }
     return window.localStorage.getItem(TERMS_ACCEPTED_KEY) === 'true';
   });
+  const [termsAgreedAt, setTermsAgreedAt] = useState(() => {
+    if (typeof window === 'undefined') {
+      return null;
+    }
+    return window.localStorage.getItem(TERMS_AGREED_AT_KEY) || null;
+  });
   const [showTermsDialog, setShowTermsDialog] = useState(false);
   const [pendingSubmission, setPendingSubmission] = useState(false);
   const [pendingWalletId, setPendingWalletId] = useState(null);
@@ -456,14 +463,26 @@ export default function ShareYourIdea() {
   }, [selectedSessionOption]);
 
   useEffect(() => {
-    if (!termsAccepted) {
-      return;
-    }
     if (typeof window === 'undefined') {
       return;
     }
+    if (!termsAccepted) {
+      window.localStorage.removeItem(TERMS_ACCEPTED_KEY);
+      window.localStorage.removeItem(TERMS_AGREED_AT_KEY);
+      return;
+    }
     window.localStorage.setItem(TERMS_ACCEPTED_KEY, 'true');
-  }, [termsAccepted]);
+    if (termsAgreedAt) {
+      window.localStorage.setItem(TERMS_AGREED_AT_KEY, termsAgreedAt);
+    }
+  }, [termsAccepted, termsAgreedAt]);
+
+  useEffect(() => {
+    if (!termsAccepted || termsAgreedAt) {
+      return;
+    }
+    setTermsAgreedAt(new Date().toISOString());
+  }, [termsAccepted, termsAgreedAt]);
 
   const depositCurrency = paymentConfig?.currency ?? 'USD';
   const bookingFeePercent = Math.max(
@@ -1331,6 +1350,8 @@ export default function ShareYourIdea() {
     if (shouldSkipIdentityUpload) {
       payload.reuse_identity_on_file = true;
     }
+    const agreementTimestamp = termsAgreedAt || new Date().toISOString();
+    payload.terms_agreed_at = agreementTimestamp;
     return payload;
   }, [
     form,
@@ -1340,7 +1361,8 @@ export default function ShareYourIdea() {
     shouldSkipIdentityUpload,
     selectedSessionOption,
     payFullAmount,
-    signedInAccountId
+    signedInAccountId,
+    termsAgreedAt
   ]);
 
   const buildSquareFieldsFromToken = useCallback((tokenResult) => {
@@ -1567,6 +1589,8 @@ export default function ShareYourIdea() {
   }, [termsAccepted, pendingWalletId, handleWalletPayment]);
 
   const handleAgreeToTerms = () => {
+    const timestamp = new Date().toISOString();
+    setTermsAgreedAt(timestamp);
     setTermsAccepted(true);
     setShowTermsDialog(false);
   };

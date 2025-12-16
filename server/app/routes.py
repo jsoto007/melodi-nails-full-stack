@@ -1008,6 +1008,7 @@ def serialize_appointment(appointment):
         "tattoo_placement": appointment.tattoo_placement,
         "tattoo_size": appointment.tattoo_size,
         "placement_notes": appointment.placement_notes,
+        "terms_agreed_at": appointment.terms_agreed_at.isoformat() if appointment.terms_agreed_at else None,
         "contact": {
             "name": appointment.display_contact_name,
             "email": appointment.display_contact_email,
@@ -3808,6 +3809,28 @@ def create_appointment():
     if id_front_url or id_back_url:
         reuse_identity_requested = False
     description = (payload.get("description") or "").strip()
+    terms_agreed_at_raw = (payload.get("terms_agreed_at") or "").strip()
+    terms_agreed_at = None
+    if not terms_agreed_at_raw:
+        errors.append(
+            {
+                "field": "terms_agreed_at",
+                "message": "You must agree to the terms of service to continue.",
+            }
+        )
+    else:
+        parsed_terms_agreed_at = parse_iso_datetime(terms_agreed_at_raw)
+        if not parsed_terms_agreed_at:
+            errors.append(
+                {
+                    "field": "terms_agreed_at",
+                    "message": "Invalid timestamp for terms acceptance.",
+                }
+            )
+        else:
+            terms_agreed_at = parsed_terms_agreed_at
+            if terms_agreed_at.tzinfo is not None:
+                terms_agreed_at = terms_agreed_at.astimezone(timezone.utc).replace(tzinfo=None)
 
     if inspiration_urls and not isinstance(inspiration_urls, list):
         errors.append({"field": "inspiration_urls", "message": "Inspiration URLs must be a list of strings."})
@@ -4044,6 +4067,7 @@ def create_appointment():
         tattoo_placement=tattoo_placement or None,
         tattoo_size=tattoo_size or None,
         placement_notes=placement_notes or None,
+        terms_agreed_at=terms_agreed_at,
         suggested_duration_minutes=suggested_duration,
         session_option=session_option,
     )
@@ -4230,6 +4254,38 @@ def admin_get_appointment(appointment_id):
         )
         .get_or_404(appointment_id)
     )
+    return jsonify(serialize_appointment(appointment))
+
+
+@api_bp.route("/api/public/appointments/lookup", methods=["GET"])
+@limiter.limit("10 per hour", key_func=get_remote_address)
+def public_lookup_appointment():
+    reference = (request.args.get("reference") or "").strip()
+    contact_email = (request.args.get("email") or "").strip().lower()
+    if not reference or not contact_email:
+        return jsonify({"error": "Reference and contact email are required."}), 400
+
+    appointment = (
+        TattooAppointment.query.options(
+            joinedload(TattooAppointment.client),
+            joinedload(TattooAppointment.assigned_admin),
+            joinedload(TattooAppointment.assets).joinedload(AppointmentAsset.admin_uploader),
+            joinedload(TattooAppointment.assets).joinedload(AppointmentAsset.client_uploader),
+            joinedload(TattooAppointment.payments),
+        )
+        .outerjoin(ClientAccount)
+        .filter(
+            TattooAppointment.reference_code == reference,
+            or_(
+                func.lower(TattooAppointment.contact_email) == contact_email,
+                func.lower(TattooAppointment.guest_email) == contact_email,
+                func.lower(ClientAccount.email) == contact_email,
+            ),
+        )
+        .first()
+    )
+    if not appointment:
+        return jsonify({"error": "Appointment not found."}), 404
     return jsonify(serialize_appointment(appointment))
 
 

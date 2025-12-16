@@ -351,6 +351,7 @@ class TattooAppointment(TimestampMixin, db.Model):
         db.Integer,
         db.ForeignKey("session_options.id", ondelete="SET NULL"),
     )
+    terms_agreed_at = db.Column(db.DateTime)
     assigned_admin_id = db.Column(
         db.Integer,
         db.ForeignKey("admin_accounts.id"),

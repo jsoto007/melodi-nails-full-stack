@@ -1,12 +1,16 @@
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
+from urllib.parse import quote, quote_plus
 from html import escape
 from typing import TYPE_CHECKING
 
 from flask import current_app
 
 from .base import brand_name, client_base_url, email_logo_url, mailgun_send
+
+DEFAULT_STUDIO_LOCATION = "245 Mercer Street, Suite 4F, New York, NY"
+BOOKING_SUPPORT_EMAIL = "Booking@blackworknyc.com"
 
 if TYPE_CHECKING:  # pragma: no cover
     from app.models import TattooAppointment
@@ -34,6 +38,13 @@ def _format_appointment_datetime(dt: datetime | None) -> str:
     return dt.strftime("%A, %B %d %Y at %I:%M %p")
 
 
+def _format_field_label(value: str | None) -> str:
+    if not value:
+        return ""
+    cleaned = " ".join(value.replace("_", " ").split())
+    return cleaned.capitalize()
+
+
 def send_booking_confirmation_email(
     appointment: "TattooAppointment",
     *,
@@ -54,6 +65,8 @@ def send_booking_confirmation_email(
     payment_currency = payments[0].currency if payments else _default_currency()
     reference = appointment.reference_code or f"Appointment #{appointment.id}"
     scheduled_label = _format_appointment_datetime(appointment.scheduled_start)
+    placement_display = _format_field_label(appointment.tattoo_placement) or "n/a"
+    size_display = _format_field_label(appointment.tattoo_size) or "n/a"
     if appointment.duration_minutes:
         hours = appointment.duration_minutes / 60.0
         duration_label = f"{hours:.1f}h" if not hours.is_integer() else f"{int(hours)}h"
@@ -65,6 +78,59 @@ def send_booking_confirmation_email(
         else ("Paid in full" if pay_full_amount else f"{booking_fee_percent}% deposit received")
     )
     manage_url = f"{base_url}/portal/appointments"
+    studio_location = current_app.config.get("STUDIO_LOCATION") or DEFAULT_STUDIO_LOCATION
+    booking_contact_email = current_app.config.get("BOOKING_CONTACT_EMAIL") or BOOKING_SUPPORT_EMAIL
+    confirmation_url = None
+    if base_url and appointment.contact_email:
+        confirmation_url = (
+            f"{base_url}/booking/confirmation?reference={quote_plus(reference)}"
+            f"&email={quote_plus(appointment.contact_email)}"
+        )
+
+    calendar_attachment = None
+    google_calendar_url = None
+    apple_calendar_data_uri = None
+    if appointment.scheduled_start:
+        duration_minutes = appointment.duration_minutes or 60
+        start_at = appointment.scheduled_start
+        end_at = start_at + timedelta(minutes=duration_minutes)
+        start_utc = start_at.astimezone(timezone.utc)
+        end_utc = end_at.astimezone(timezone.utc)
+        start_stamp = start_utc.strftime("%Y%m%dT%H%M%SZ")
+        end_stamp = end_utc.strftime("%Y%m%dT%H%M%SZ")
+        summary = f"{brand} booking – {reference}"
+        description = f"Reference {reference}. Manage: {manage_url}"
+        google_calendar_url = (
+            "https://calendar.google.com/calendar/render?action=TEMPLATE"
+            f"&text={quote_plus(summary)}"
+            f"&dates={start_stamp}/{end_stamp}"
+            f"&details={quote_plus(description)}"
+            f"&location={quote_plus(studio_location)}"
+        )
+        event_uid = f"{reference}-{appointment.id}@blackworknyc.com"
+        dtstamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+        ics_lines = [
+            "BEGIN:VCALENDAR",
+            "VERSION:2.0",
+            "CALSCALE:GREGORIAN",
+            "METHOD:PUBLISH",
+            "PRODID:-//Black Work NYC//Booking Confirmation//EN",
+            "BEGIN:VEVENT",
+            f"UID:{event_uid}",
+            f"DTSTAMP:{dtstamp}",
+            f"DTSTART:{start_stamp}",
+            f"DTEND:{end_stamp}",
+            f"SUMMARY:{summary}",
+            f"DESCRIPTION:{description}",
+            f"LOCATION:{studio_location}",
+            "END:VEVENT",
+            "END:VCALENDAR",
+        ]
+        ics_text = "\r\n".join(ics_lines)
+        safe_reference = "".join(ch if ch.isalnum() or ch in "-_" else "_" for ch in reference)
+        filename = f"{safe_reference}-booking.ics" if safe_reference else "booking.ics"
+        calendar_attachment = (filename, ics_text.encode("utf-8"), "text/calendar")
+        apple_calendar_data_uri = f"data:text/calendar;charset=utf-8,{quote(ics_text)}"
     subject = f"{brand} booking confirmed – {reference}"
 
     lines = [
@@ -72,8 +138,8 @@ def send_booking_confirmation_email(
         f"Thank you for booking with {brand}. Your appointment is confirmed. Here are the details:",
         f"- Reference: {reference}",
         f"- Session: {scheduled_label} ({duration_label})",
-        f"- Placement: {appointment.tattoo_placement or 'n/a'}",
-        f"- Size: {appointment.tattoo_size or 'n/a'}",
+        f"- Placement: {placement_display}",
+        f"- Size: {size_display}",
         f"- Payment: {payment_label} ({_format_currency(charge_amount_cents, payment_currency)})",
     ]
     if session_price_cents:
@@ -81,7 +147,15 @@ def send_booking_confirmation_email(
     if receipt_url:
         lines.append(f"- Receipt: {receipt_url}")
     lines.append(f"- Manage: {manage_url}")
+    if confirmation_url:
+        lines.append(f"- View confirmation: {confirmation_url}")
     lines.append("If any details need adjusting, reply to this email and our team will help.")
+    if google_calendar_url:
+        lines.append(f"- Google Calendar: {google_calendar_url}")
+    if calendar_attachment:
+        lines.append("- Apple Calendar: an .ics invite is attached to this message.")
+    lines.append(f"Need to adjust anything? Reply to {booking_contact_email} and our team will help.")
+    lines.append("If you don’t see this email, check spam or promotions folders so the confirmation and invites don’t slip through.")
     text = "\n".join(lines)
 
     detail_rows: list[str] = []
@@ -101,14 +175,16 @@ def send_booking_confirmation_email(
 
     _detail_row("Reference", reference)
     _detail_row("Session", f"{scheduled_label} ({duration_label})")
-    _detail_row("Placement", appointment.tattoo_placement or "n/a")
-    _detail_row("Size", appointment.tattoo_size or "n/a")
+    _detail_row("Placement", placement_display)
+    _detail_row("Size", size_display)
     _detail_row("Payment", f"{payment_label} ({_format_currency(charge_amount_cents, payment_currency)})")
     if session_price_cents:
         _detail_row("Session price", _format_currency(session_price_cents, payment_currency))
     if receipt_url:
         _detail_row("Receipt", receipt_url, link_text="View receipt")
     _detail_row("Manage", manage_url, link_text="Open your portal")
+    if confirmation_url:
+        _detail_row("View confirmation", confirmation_url, link_text="Open confirmation")
 
     detail_table = "".join(detail_rows)
     logo_markup = (
@@ -118,8 +194,34 @@ def send_booking_confirmation_email(
     )
     manage_button = (
         f"<a href=\"{manage_url}\" style=\"display:inline-block;padding:12px 18px;background-color:#0b0b0b;color:#ffffff;"
-        f"text-decoration:none;border-radius:8px;font-weight:600;\">Manage your appointment</a>"
+        f"text-decoration:none;border-radius:8px;font-weight:600;\">Open booking portal</a>"
     )
+    calendar_actions_html = ""
+    if google_calendar_url or apple_calendar_data_uri:
+        action_buttons: list[str] = []
+        if google_calendar_url:
+            action_buttons.append(
+                f"<a href=\"{escape(google_calendar_url)}\" target=\"_blank\" rel=\"noreferrer\" "
+                "style=\"display:inline-flex;align-items:center;gap:6px;padding:10px 14px;background-color:#e5e7eb;"
+                "border-radius:8px;font-weight:600;color:#0f172a;text-decoration:none;font-size:13px;\">"
+                "Add to Google Calendar</a>"
+            )
+        if apple_calendar_data_uri:
+            action_buttons.append(
+                f"<a href=\"{escape(apple_calendar_data_uri)}\" download=\"booking.ics\" "
+                "style=\"display:inline-flex;align-items:center;gap:6px;padding:10px 14px;border:1px solid #d1d5db;"
+                "border-radius:8px;font-weight:600;color:#0f172a;text-decoration:none;font-size:13px;\">"
+                "Download Apple Calendar</a>"
+            )
+        calendar_actions_html = (
+            "<div style=\"margin-top:18px;\">"
+            "<p style=\"margin:0 0 8px 0;color:#6b7280;font-size:12px;letter-spacing:0.2em;\">Add to your calendar</p>"
+            "<div style=\"display:flex;gap:8px;flex-wrap:wrap;\">"
+            f"{''.join(action_buttons)}"
+            "</div>"
+            "<p style=\"margin:8px 0 0 0;color:#6b7280;font-size:12px;\">Apple Calendar invite attached as an .ics file.</p>"
+            "</div>"
+        )
 
     html = (
         "<table role=\"presentation\" cellspacing=\"0\" cellpadding=\"0\" border=\"0\" "
@@ -144,8 +246,16 @@ def send_booking_confirmation_email(
         "style=\"width:100%;border:1px solid #e5e7eb;border-radius:12px;overflow:hidden;\">"
         f"{detail_table}"
         "</table>"
-        "<p style=\"margin:18px 0 14px 0;\">Need to make a change? Reply to this email and our team will help.</p>"
-        f"<div style=\"margin:6px 0 20px 0;\">{manage_button}</div>"
+        "<div style=\"text-align:center;margin-top:18px;\">"
+        f"<p style=\"margin:0 0 8px 0;color:#0f172a;font-size:14px;letter-spacing:0.2em;\">"
+        f"Need to make a change? Reply to <a href=\"mailto:{escape(booking_contact_email)}\" "
+        "style=\"color:#0f172a;text-decoration:underline;\">"
+        f"{escape(booking_contact_email)}</a> and our team will help."
+        "</p>"
+        f"<div style=\"margin:0 auto;width:max-content;\">{manage_button}</div>"
+        "</div>"
+        f"{f'<p style=\"margin:12px 0 0 0;color:#6b7280;font-size:13px;\">View or revisit this confirmation <a href=\"{escape(confirmation_url)}\" style=\"color:#0f172a;text-decoration:underline;\">online</a> with the reference and email you used.</p>' if confirmation_url else ''}"
+        f"{calendar_actions_html}"
         "</td>"
         "</tr>"
         "</table>"
@@ -155,10 +265,12 @@ def send_booking_confirmation_email(
 
     html_document = f"<!DOCTYPE html><html><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\"></head><body>{html}</body></html>"
 
+    attachments = (calendar_attachment,) if calendar_attachment else None
     return mailgun_send(
         to=recipient,
         subject=subject,
         text=text,
         html=html_document,
         tags=("appointments", "confirmation"),
+        attachments=attachments,
     )

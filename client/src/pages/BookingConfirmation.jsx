@@ -1,11 +1,12 @@
-import { useMemo, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { useMemo, useEffect, useState } from 'react';
+import { Link, useLocation } from 'react-router-dom';
 import FadeIn from '../components/FadeIn.jsx';
 import Card from '../components/Card.jsx';
 import Button from '../components/Button.jsx';
 import SectionTitle from '../components/SectionTitle.jsx';
 import { useAuth } from '../contexts/AuthContext.jsx';
 import { formatStatusLabel, getStatusBadgeClasses } from '../lib/statusStyles.js';
+import { apiGet } from '../lib/api.js';
 
 const BOOKING_RECEIPT_KEY = 'black-ink:last-booking';
 const LOCATION_LINE = '245 Mercer Street, Suite 4F, New York, NY';
@@ -24,11 +25,66 @@ function readLatestAppointment() {
   }
 }
 
+function storeLatestAppointment(appointment) {
+  try {
+    sessionStorage.setItem(BOOKING_RECEIPT_KEY, JSON.stringify({ appointment, savedAt: Date.now() }));
+  } catch {
+    // Ignore persistence failures (e.g. Safari private mode).
+  }
+}
+
 export default function BookingConfirmation() {
   const { isAuthenticated } = useAuth();
   const [appointment] = useState(() => readLatestAppointment());
 
-  const scheduledStart = appointment?.scheduled_start ? new Date(appointment.scheduled_start) : null;
+  const location = useLocation();
+  const [remoteAppointment, setRemoteAppointment] = useState(null);
+  const [isFetchingRemote, setIsFetchingRemote] = useState(false);
+  const [fetchError, setFetchError] = useState(null);
+  const searchParams = useMemo(() => new URLSearchParams(location.search), [location.search]);
+  const referenceQuery = searchParams.get('reference')?.trim();
+  const emailQuery = searchParams.get('email')?.trim();
+
+  useEffect(() => {
+    if (appointment || !referenceQuery || !emailQuery) {
+      return;
+    }
+    let isActive = true;
+    const controller = new AbortController();
+    setIsFetchingRemote(true);
+    setFetchError(null);
+    apiGet(
+      `/api/public/appointments/lookup?reference=${encodeURIComponent(referenceQuery)}&email=${encodeURIComponent(
+        emailQuery
+      )}`,
+      { signal: controller.signal }
+    )
+      .then((payload) => {
+        if (!isActive) {
+          return;
+        }
+        setRemoteAppointment(payload);
+        storeLatestAppointment(payload);
+      })
+      .catch((error) => {
+        if (!isActive || error.name === 'AbortError') {
+          return;
+        }
+        setFetchError(error.message || 'Unable to load appointment details.');
+      })
+      .finally(() => {
+        if (isActive) {
+          setIsFetchingRemote(false);
+        }
+      });
+    return () => {
+      isActive = false;
+      controller.abort();
+    };
+  }, [appointment, referenceQuery, emailQuery]);
+
+  const bookingDetails = appointment || remoteAppointment;
+  const scheduledStart = bookingDetails?.scheduled_start ? new Date(bookingDetails.scheduled_start) : null;
   const formattedDateLabel = useMemo(
     () => (scheduledStart ? DAY_FORMATTER.format(scheduledStart) : 'Pending scheduling'),
     [scheduledStart]
@@ -38,29 +94,40 @@ export default function BookingConfirmation() {
     [scheduledStart]
   );
   const timeZoneLabel = useMemo(() => getTimeZoneLabel(scheduledStart), [scheduledStart]);
-  const durationLabel = formatDuration(appointment?.duration_minutes);
+  const durationLabel = formatDuration(bookingDetails?.duration_minutes);
   const suggestedDurationLabel =
-    appointment?.suggested_duration_minutes && appointment?.suggested_duration_minutes !== appointment?.duration_minutes
-      ? formatDuration(appointment.suggested_duration_minutes)
+    bookingDetails?.suggested_duration_minutes && bookingDetails?.suggested_duration_minutes !== bookingDetails?.duration_minutes
+      ? formatDuration(bookingDetails.suggested_duration_minutes)
       : null;
-  const payment = appointment?.payments?.[0] || null;
+  const payment = bookingDetails?.payments?.[0] || null;
   const depositLabel = payment
     ? new Intl.NumberFormat('en-US', {
         style: 'currency',
         currency: payment.currency || 'USD'
       }).format((payment.amount_cents || 0) / 100)
     : null;
-  const contactName = appointment?.contact_name || appointment?.contact?.name || appointment?.client?.display_name || 'Guest booking';
-  const contactEmail = appointment?.contact_email || appointment?.contact?.email || appointment?.client?.email || '—';
-  const contactPhone = appointment?.contact_phone || appointment?.contact?.phone || appointment?.client?.phone || '—';
-  const placementLabel = appointment?.tattoo?.placement || appointment?.tattoo_placement || 'Placement pending';
-  const sizeLabel = appointment?.tattoo?.size || appointment?.tattoo_size || 'Size pending';
-  const placementNotes = appointment?.tattoo?.notes || appointment?.placement_notes || '';
-  const descriptionCopy = appointment?.client_description || '';
-  const artistName = appointment?.assigned_admin?.name || appointment?.assigned_admin?.display_name || 'Assigned shortly';
-  const artistEmail = appointment?.assigned_admin?.email || appointment?.assigned_admin?.contact_email || '';
-  const statusLabel = formatStatusLabel(appointment?.status);
-  const statusClasses = getStatusBadgeClasses(appointment?.status);
+  const contactName =
+    bookingDetails?.contact_name ||
+    bookingDetails?.contact?.name ||
+    bookingDetails?.client?.display_name ||
+    'Guest booking';
+  const contactEmail =
+    bookingDetails?.contact_email || bookingDetails?.contact?.email || bookingDetails?.client?.email || '—';
+  const contactPhone =
+    bookingDetails?.contact_phone || bookingDetails?.contact?.phone || bookingDetails?.client?.phone || '—';
+  const placementLabel =
+    bookingDetails?.tattoo?.placement || bookingDetails?.tattoo_placement || 'Placement pending';
+  const sizeLabel = bookingDetails?.tattoo?.size || bookingDetails?.tattoo_size || 'Size pending';
+  const placementNotes = bookingDetails?.tattoo?.notes || bookingDetails?.placement_notes || '';
+  const descriptionCopy = bookingDetails?.client_description || '';
+  const artistName =
+    bookingDetails?.assigned_admin?.name ||
+    bookingDetails?.assigned_admin?.display_name ||
+    'Assigned shortly';
+  const artistEmail =
+    bookingDetails?.assigned_admin?.email || bookingDetails?.assigned_admin?.contact_email || '';
+  const statusLabel = formatStatusLabel(bookingDetails?.status);
+  const statusClasses = getStatusBadgeClasses(bookingDetails?.status);
   const depositSecondary = payment?.receipt_url ? (
     <a
       href={payment.receipt_url}
@@ -81,18 +148,23 @@ export default function BookingConfirmation() {
           <SectionTitle
             eyebrow="Booked"
             title="Appointment confirmed"
-            description="Thanks for securing your session. We’ll send a confirmation email shortly with next steps."
+            description="Thanks for securing your session. We emailed a confirmation with calendar invites—check your inbox or spam folder."
           />
         </FadeIn>
+        <FadeIn>
+          <p className="text-sm text-gray-600 dark:text-gray-300">
+            If you don’t see the email, double-check spam or promotions. The confirmation includes Google and Apple calendar options so you can lock in the time.
+          </p>
+        </FadeIn>
 
-        {appointment ? (
+        {bookingDetails ? (
           <FadeIn className="space-y-6">
             <Card className="space-y-6">
               <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                 <div>
                   <p className="text-xs uppercase tracking-[0.3em] text-gray-500 dark:text-gray-400">Reference</p>
                   <p className="text-2xl font-semibold tracking-[0.2em] text-gray-900 dark:text-gray-100">
-                    {appointment.reference_code || 'Pending'}
+                    {bookingDetails.reference_code || 'Pending'}
                   </p>
                   <p className="text-sm text-gray-500 dark:text-gray-400">Booked for {contactName}</p>
                 </div>
@@ -192,12 +264,24 @@ export default function BookingConfirmation() {
               )}
             </div>
           </FadeIn>
+        ) : isFetchingRemote ? (
+          <FadeIn>
+            <Card className="space-y-4">
+              <p className="text-sm text-gray-600 dark:text-gray-300">Retrieving your booking details…</p>
+              <p className="text-xs text-gray-500 dark:text-gray-400">
+                If you received a reference and contact email in your booking confirmation, that pair will unlock this page again.
+              </p>
+            </Card>
+          </FadeIn>
         ) : (
           <FadeIn>
             <Card className="space-y-4">
               <p className="text-sm text-gray-600 dark:text-gray-300">
-                We couldn’t find booking details for this session. If you just submitted a request, try refreshing this
-                page or check your email for confirmation.
+                {fetchError ||
+                  'We couldn’t find booking details for this session. Try refreshing the page or check your confirmation email for the link.'}
+              </p>
+              <p className="text-xs text-gray-500 dark:text-gray-400">
+                Use the reference code and contact email sent to you (or revisit the confirmation link) to view the full details even without signing in.
               </p>
               <div className="flex flex-wrap gap-3">
                 <Button as={Link} to="/share-your-idea">
