@@ -83,6 +83,14 @@ const SIZE_OPTIONS = [
   { value: 'xl', label: 'Extended (11"+ or more)' }
 ];
 
+const SUBMISSION_PROGRESS_LABELS = [
+  'Processing booking...',
+  'Uploading your files...',
+  'Confirming availability...',
+  'Finalizing your appointment...'
+];
+const SUBMISSION_PROGRESS_INTERVAL = 1400;
+
 const BOOKING_RECEIPT_KEY = 'black-ink:last-booking';
 const TERMS_ACCEPTED_KEY = 'blackworknyc:termsAccepted';
 const TERMS_AGREED_AT_KEY = 'blackworknyc:termsAgreedAt';
@@ -303,6 +311,7 @@ export default function ShareYourIdea() {
   const [notice, setNotice] = useState(null);
   const [noticeTone, setNoticeTone] = useState('success');
   const [submitting, setSubmitting] = useState(false);
+  const [submissionStepIndex, setSubmissionStepIndex] = useState(0);
   const [termsAccepted, setTermsAccepted] = useState(() => {
     if (typeof window === 'undefined') {
       return false;
@@ -489,6 +498,18 @@ export default function ShareYourIdea() {
     setTermsAgreedAt(new Date().toISOString());
   }, [termsAccepted, termsAgreedAt]);
 
+  useEffect(() => {
+    if (!submitting) {
+      setSubmissionStepIndex(0);
+      return undefined;
+    }
+    setSubmissionStepIndex(0);
+    const rotation = setInterval(() => {
+      setSubmissionStepIndex((current) => (current + 1) % SUBMISSION_PROGRESS_LABELS.length);
+    }, SUBMISSION_PROGRESS_INTERVAL);
+    return () => clearInterval(rotation);
+  }, [submitting]);
+
   const depositCurrency = paymentConfig?.currency ?? 'USD';
   const bookingFeePercent = Math.max(
     paymentConfig?.booking_fee_percent ?? 20,
@@ -526,15 +547,17 @@ export default function ShareYourIdea() {
       : null;
   const submitDisabled =
     submitting || (requiresPaymentMethod ? paymentStatus !== 'ready' : false) || paymentsUnavailable;
+  const idleSubmitLabel =
+    paymentDue && requiresPaymentMethod
+      ? payFullAmount
+        ? `Pay ${depositAmountLabel || 'total amount'} & book`
+        : `Pay ${depositAmountLabel || 'deposit'} & book`
+      : paymentDue
+      ? 'Submit booking'
+      : 'Book appointment';
   const submitLabel = submitting
-    ? 'Processing...'
-    : paymentDue && requiresPaymentMethod
-    ? payFullAmount
-      ? `Pay ${depositAmountLabel || 'total amount'} & book`
-      : `Pay ${depositAmountLabel || 'deposit'} & book`
-    : paymentDue
-    ? 'Submit booking'
-    : 'Book appointment';
+    ? SUBMISSION_PROGRESS_LABELS[submissionStepIndex]
+    : idleSubmitLabel;
 
   useEffect(() => {
     if (!paymentDue) {
@@ -2465,7 +2488,17 @@ export default function ShareYourIdea() {
 
           <div className="flex flex-wrap justify-end gap-3">
             <Button type="submit" disabled={submitDisabled}>
-              {submitLabel}
+              {submitting ? (
+                <span className="flex items-center gap-2">
+                  <span
+                    className="h-3 w-3 animate-spin rounded-full border border-white border-t-transparent"
+                    aria-hidden="true"
+                  />
+                  {submitLabel}
+                </span>
+              ) : (
+                submitLabel
+              )}
             </Button>
             <Button as={Link} to="/" variant="secondary" disabled={submitting}>
               Cancel
