@@ -277,6 +277,11 @@ const WALLET_METHODS = [
     id: 'googlePay',
     label: 'Google Pay',
     factory: (payments) => payments.googlePay?.()
+  },
+  {
+    id: 'samsungPay',
+    label: 'Samsung Pay',
+    factory: (payments) => payments.wallet?.({ walletType: 'samsungPay' })
   }
 ];
 
@@ -295,6 +300,94 @@ function validateFile(file) {
     return `Files must be under ${Math.round(MAX_FILE_SIZE_BYTES / (1024 * 1024))} MB.`;
   }
   return null;
+}
+
+const CLIENT_IMAGE_MAX_EDGE = 1600;
+const CLIENT_IMAGE_JPEG_QUALITY = 0.82;
+const SUPPORTED_CLIENT_CANVAS_MIMES = new Set(['image/png', 'image/jpeg', 'image/webp']);
+const CANVAS_MIME_EXTENSION = {
+  'image/png': 'png',
+  'image/webp': 'webp',
+  'image/jpeg': 'jpg'
+};
+
+function withFilenameExtension(filename, extension) {
+  const cleanExtension = (extension || '').toString().replace(/^\.+/, '');
+  if (!cleanExtension) {
+    return filename || 'file';
+  }
+  if (!filename) {
+    return `file.${cleanExtension}`;
+  }
+  const dotIndex = filename.lastIndexOf('.');
+  if (dotIndex === -1) {
+    return `${filename}.${cleanExtension}`;
+  }
+  const base = filename.slice(0, dotIndex);
+  return `${base}.${cleanExtension}`;
+}
+
+async function optimizeImageForUpload(
+  file,
+  { maxEdge = CLIENT_IMAGE_MAX_EDGE, quality = CLIENT_IMAGE_JPEG_QUALITY } = {}
+) {
+  if (!file || typeof file.type !== 'string' || !file.type.startsWith('image/')) {
+    return file;
+  }
+  if (typeof window === 'undefined' || typeof createImageBitmap !== 'function') {
+    return file;
+  }
+
+  let bitmap;
+  try {
+    bitmap = await createImageBitmap(file);
+  } catch {
+    return file;
+  }
+
+  try {
+    const maxDimension = Math.max(bitmap.width, bitmap.height, 1);
+    const scale = Math.min(1, maxEdge / maxDimension) || 1;
+    const width = Math.max(1, Math.round(bitmap.width * scale));
+    const height = Math.max(1, Math.round(bitmap.height * scale));
+    const canvas = document.createElement('canvas');
+    canvas.width = width;
+    canvas.height = height;
+    const ctx = canvas.getContext('2d');
+    if (!ctx || typeof canvas.toBlob !== 'function') {
+      return file;
+    }
+    ctx.drawImage(bitmap, 0, 0, width, height);
+
+    const encode = async (mime) =>
+      new Promise((resolve, reject) => {
+        canvas.toBlob(
+          (blob) => {
+            if (!blob) {
+              reject(new Error('canvas_encoding_failed'));
+              return;
+            }
+            resolve(blob);
+          },
+          mime,
+          mime === 'image/png' ? undefined : quality
+        );
+      });
+
+    const preferredMime = SUPPORTED_CLIENT_CANVAS_MIMES.has(file.type) ? file.type : 'image/jpeg';
+    let blob;
+    try {
+      blob = await encode(preferredMime);
+    } catch {
+      blob = await encode('image/jpeg');
+    }
+    const actualMime = blob.type || 'image/jpeg';
+    const extension = CANVAS_MIME_EXTENSION[actualMime] || 'jpg';
+    const normalizedName = withFilenameExtension(file.name, extension);
+    return new File([blob], normalizedName, { type: actualMime, lastModified: file.lastModified });
+  } finally {
+    bitmap.close?.();
+  }
 }
 
 export default function ShareYourIdea() {
@@ -1121,8 +1214,9 @@ export default function ShareYourIdea() {
     });
   };
 
-  const handleFileChange = (field) => (event) => {
-    const selectedFiles = Array.from(event.target.files || []);
+  const handleFileChange = (field) => async (event) => {
+    const target = event.target;
+    const selectedFiles = Array.from(target?.files || []);
     if (!selectedFiles.length) {
       setFiles((prev) => {
         const next = { ...prev };
@@ -1135,7 +1229,9 @@ export default function ShareYourIdea() {
         }
         return next;
       });
-      event.target.value = '';
+      if (target) {
+        target.value = '';
+      }
       return;
     }
 
@@ -1143,19 +1239,20 @@ export default function ShareYourIdea() {
 
     if (field === 'inspiration') {
       const uploads = [];
-      for (const file of selectedFiles.slice(0, 3)) {
-        const validationError = validateFile(file);
+      for (const originalFile of selectedFiles.slice(0, 3)) {
+        const validationError = validateFile(originalFile);
         if (validationError) {
-          errorsForSelection.push(`${file.name}: ${validationError}`);
+          errorsForSelection.push(`${originalFile.name}: ${validationError}`);
           continue;
         }
-        const previewUrl = URL.createObjectURL(file);
+        const optimizedFile = await optimizeImageForUpload(originalFile);
+        const previewUrl = URL.createObjectURL(optimizedFile);
         uploads.push({
-          file,
+          file: optimizedFile,
           previewUrl,
-          name: file.name,
-          size: file.size,
-          type: file.type,
+          name: optimizedFile.name,
+          size: optimizedFile.size,
+          type: optimizedFile.type,
           dataUrl: null
         });
       }
@@ -1182,23 +1279,26 @@ export default function ShareYourIdea() {
         cacheFileDataUrl(entry, 'inspiration', index).catch(() => {});
       });
     } else {
-      const file = selectedFiles[0];
-      const validationError = validateFile(file);
+      const originalFile = selectedFiles[0];
+      const validationError = validateFile(originalFile);
       if (validationError) {
         setErrors((prev) => ({
           ...prev,
-          files: `${file.name}: ${validationError}`
+          files: `${originalFile.name}: ${validationError}`
         }));
-        event.target.value = '';
+        if (target) {
+          target.value = '';
+        }
         return;
       }
-      const previewUrl = URL.createObjectURL(file);
+      const optimizedFile = await optimizeImageForUpload(originalFile);
+      const previewUrl = URL.createObjectURL(optimizedFile);
       const entry = {
-        file,
+        file: optimizedFile,
         previewUrl,
-        name: file.name,
-        size: file.size,
-        type: file.type,
+        name: optimizedFile.name,
+        size: optimizedFile.size,
+        type: optimizedFile.type,
         dataUrl: null
       };
       setFiles((prev) => {
@@ -1221,7 +1321,9 @@ export default function ShareYourIdea() {
       });
     }
 
-    event.target.value = '';
+    if (target) {
+      target.value = '';
+    }
   };
 
   const handleSelectDate = (day) => {
@@ -2455,7 +2557,7 @@ export default function ShareYourIdea() {
                     className="min-h-[72px] rounded-xl border border-gray-300 bg-white p-4 dark:border-gray-700 dark:bg-gray-900"
                   />
                   <p className="text-xs text-gray-500 dark:text-gray-400">
-                    Securely processed by Square. We only charge the deposit after you confirm this booking.
+                    Securely processed by Square. Apple Pay, Samsung Pay, and other Square wallet options are available this week when paying your deposit. We only charge the deposit after you confirm this booking.
                   </p>
                   {availableWallets.length > 0 ? (
                     <div className="mt-3 space-y-2">
