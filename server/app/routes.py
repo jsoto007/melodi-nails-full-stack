@@ -977,7 +977,7 @@ def _serialize_asset_file_url(asset: AppointmentAsset):
     return raw_url
 
 
-def serialize_appointment(appointment):
+def serialize_appointment(appointment, *, include_assets=True):
     client = appointment.client
     assigned_admin = appointment.assigned_admin
     session_option_data = serialize_session_option(appointment.session_option) if appointment.session_option else None
@@ -991,6 +991,27 @@ def serialize_appointment(appointment):
         if appointment.session_option
         else calculate_session_price_cents(pricing_duration_minutes)
     )
+    assets = []
+    if include_assets:
+        assets = [
+            {
+                "id": asset.id,
+                "kind": asset.kind,
+                "file_url": _serialize_asset_file_url(asset),
+                "note_text": asset.note_text,
+                "is_visible_to_client": asset.is_visible_to_client,
+                "created_at": asset.created_at.isoformat() if asset.created_at else None,
+                "uploaded_by_admin": serialize_admin(asset.admin_uploader) if asset.admin_uploader else None,
+                "uploaded_by_client": {
+                    "id": asset.client_uploader.id,
+                    "display_name": asset.client_uploader.display_name,
+                    "email": asset.client_uploader.email,
+                }
+                if asset.client_uploader
+                else None,
+            }
+            for asset in appointment.assets
+        ]
     return {
         "id": appointment.id,
         "reference_code": appointment.reference_code,
@@ -1037,25 +1058,7 @@ def serialize_appointment(appointment):
             "is_guest": True,
         },
         "assigned_admin": serialize_admin(assigned_admin) if assigned_admin else None,
-        "assets": [
-            {
-                "id": asset.id,
-                "kind": asset.kind,
-                "file_url": _serialize_asset_file_url(asset),
-                "note_text": asset.note_text,
-                "is_visible_to_client": asset.is_visible_to_client,
-                "created_at": asset.created_at.isoformat() if asset.created_at else None,
-                "uploaded_by_admin": serialize_admin(asset.admin_uploader) if asset.admin_uploader else None,
-                "uploaded_by_client": {
-                    "id": asset.client_uploader.id,
-                    "display_name": asset.client_uploader.display_name,
-                    "email": asset.client_uploader.email,
-                }
-                if asset.client_uploader
-                else None,
-            }
-            for asset in appointment.assets
-        ],
+        "assets": assets,
         "pricing": {
             "hourly_rate_cents": load_hourly_rate_cents(),
             "total_cents": session_price_cents,
@@ -4243,8 +4246,6 @@ def admin_list_appointments():
         query.options(
             joinedload(TattooAppointment.client),
             joinedload(TattooAppointment.assigned_admin),
-            joinedload(TattooAppointment.assets).joinedload(AppointmentAsset.admin_uploader),
-            joinedload(TattooAppointment.assets).joinedload(AppointmentAsset.client_uploader),
             joinedload(TattooAppointment.payments),
         )
         .order_by(TattooAppointment.created_at.desc())
@@ -4257,7 +4258,7 @@ def admin_list_appointments():
 
     return jsonify(
         {
-            "items": [serialize_appointment(appointment) for appointment in appointments],
+            "items": [serialize_appointment(appointment, include_assets=False) for appointment in appointments],
             "meta": {
                 "page": page,
                 "per_page": per_page,
