@@ -138,7 +138,7 @@ def send_booking_confirmation_email(
         f"Thank you for booking with {brand}. Your appointment is confirmed. Here are the details:",
         f"- Reference: {reference}",
         f"- Session: {scheduled_label} ({duration_label})",
-        f"- Location: {studio_location}",
+        f"- Studio address: {studio_location}",
         f"- Placement: {placement_display}",
         f"- Size: {size_display}",
         f"- Payment: {payment_label} ({_format_currency(charge_amount_cents, payment_currency)})",
@@ -176,7 +176,7 @@ def send_booking_confirmation_email(
 
     _detail_row("Reference", reference)
     _detail_row("Session", f"{scheduled_label} ({duration_label})")
-    _detail_row("Location", studio_location)
+    _detail_row("Studio address", studio_location)
     _detail_row("Placement", placement_display)
     _detail_row("Size", size_display)
     _detail_row("Payment", f"{payment_label} ({_format_currency(charge_amount_cents, payment_currency)})")
