@@ -216,6 +216,7 @@ export default function AppointmentDetails() {
   const imageInputRef = useRef(null);
   const attachmentInputRef = useRef(null);
   const [activePreviewAssetId, setActivePreviewAssetId] = useState(null);
+  const hasFetchedFullAppointmentRef = useRef(false);
 
   const reloadAppointment = useCallback(async ({ showLoader = false } = {}) => {
     if (!appointmentNumericId) {
@@ -238,10 +239,13 @@ export default function AppointmentDetails() {
   }, [appointmentNumericId]);
 
   useEffect(() => {
-    if (!appointment) {
-      reloadAppointment({ showLoader: true });
+    if (!appointmentNumericId || hasFetchedFullAppointmentRef.current) {
+      return;
     }
-  }, [appointment, reloadAppointment]);
+    hasFetchedFullAppointmentRef.current = true;
+    // Always fetch the full appointment once so assets/photos are present when arriving from the calendar list.
+    reloadAppointment({ showLoader: !appointment });
+  }, [appointmentNumericId, appointment, reloadAppointment]);
 
   useEffect(() => {
     const fresh = appointments.find((entry) => entry.id === appointmentNumericId);
