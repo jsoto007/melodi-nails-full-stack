@@ -53,36 +53,27 @@ const STATUS_OPTIONS = [
   { value: 'cancelled', label: 'Cancelled' }
 ];
 
-function formatLocalDateTime(value) {
-  if (!value) {
-    return null;
-  }
+import { formatInTimeZone, toZonedTime, fromZonedTime } from 'date-fns-tz';
+import { format, addMinutes, startOfDay, getDay, addDays, startOfMonth } from 'date-fns';
+
+const TIMEZONE = 'America/New_York';
+
+function formatNycDateTime(value) {
+  if (!value) return null;
   const date = new Date(value);
-  if (Number.isNaN(date.getTime())) {
-    return null;
-  }
-  const pad = (input) => input.toString().padStart(2, '0');
-  const year = date.getFullYear();
-  const month = pad(date.getMonth() + 1);
-  const day = pad(date.getDate());
-  const hours = pad(date.getHours());
-  const minutes = pad(date.getMinutes());
-  return `${year}-${month}-${day}T${hours}:${minutes}`;
+  if (Number.isNaN(date.getTime())) return null;
+  return formatInTimeZone(date, "yyyy-MM-dd'T'HH:mm", TIMEZONE);
 }
 
-function toDateTimeLocal(value) {
-  return formatLocalDateTime(value) || '';
+function toNycInput(value) {
+  return formatNycDateTime(value) || '';
 }
 
-function fromDateTimeLocal(value) {
-  if (!value) {
-    return null;
-  }
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) {
-    return null;
-  }
-  return formatLocalDateTime(value);
+function fromNycInput(value) {
+  if (!value) return null;
+  // Treat input string as NYC time and convert to UTC ISO string
+  const zoned = fromZonedTime(value, TIMEZONE);
+  return zoned.toISOString();
 }
 
 function formatClosureDate(value) {
@@ -102,62 +93,52 @@ function formatClosureDate(value) {
   });
 }
 
-function formatLocalDateKey(value) {
-  if (!value) {
-    return null;
-  }
+function formatNycDateKey(value) {
+  if (!value) return null;
   const date = new Date(value);
-  if (Number.isNaN(date.getTime())) {
-    return null;
-  }
-  const pad = (input) => input.toString().padStart(2, '0');
-  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
+  if (Number.isNaN(date.getTime())) return null;
+  return formatInTimeZone(date, 'yyyy-MM-dd', TIMEZONE);
 }
 
-function startOfDay(source) {
+// Helper to get a Date object representing the start of the day in NYC
+function startOfDayNyc(source) {
   const date = new Date(source);
-  if (Number.isNaN(date.getTime())) {
-    return null;
-  }
-  date.setHours(0, 0, 0, 0);
-  return date;
+  if (Number.isNaN(date.getTime())) return null;
+
+  // Convert to zoned time, set to midnight, convert back to get the instant
+  const zoned = toZonedTime(date, TIMEZONE);
+  const start = startOfDay(zoned);
+  // We want to return a date object that *behaves* like the start of the day in the calendar logic.
+  // The existing logic seems to rely on local date objects. 
+  // To keep it simple for the calendar grid which just needs "days", we can stick to the existing approach 
+  // but be careful about crossing DST boundaries if we were doing strict math.
+  // However, since we are replacing the whole block, let's use date-fns which is more robust.
+  return start;
 }
 
-function startOfWeek(source) {
-  const date = startOfDay(source);
-  if (!date) {
-    return null;
-  }
-  // Align to Monday as the first day of the week.
-  const day = date.getDay(); // Sunday = 0
-  const offset = day === 0 ? -6 : 1 - day;
-  date.setDate(date.getDate() + offset);
-  return date;
+function startOfWeekNyc(source) {
+  const start = startOfDayNyc(source);
+  if (!start) return null;
+  const day = getDay(start); // 0 = Sunday
+  const offset = day === 0 ? -6 : 1 - day; // Monday is 1
+  return addDays(start, offset);
 }
 
-function startOfMonth(source) {
-  const date = startOfDay(source);
-  if (!date) {
-    return null;
-  }
-  date.setDate(1);
-  return date;
+function startOfMonthNyc(source) {
+  const start = startOfDayNyc(source);
+  if (!start) return null;
+  return startOfMonth(start);
 }
 
-function getMonthGridDays(source) {
-  const monthStart = startOfMonth(source);
-  if (!monthStart) {
-    return [];
-  }
-  const gridStart = startOfWeek(monthStart);
-  if (!gridStart) {
-    return [];
-  }
+function getMonthGridDaysNyc(source) {
+  const monthStart = startOfMonthNyc(source);
+  if (!monthStart) return [];
+  const gridStart = startOfWeekNyc(monthStart);
+  if (!gridStart) return [];
+
   const days = [];
-  for (let index = 0; index < 42; index += 1) {
-    const next = new Date(gridStart);
-    next.setDate(gridStart.getDate() + index);
-    days.push(next);
+  for (let i = 0; i < 42; i++) {
+    days.push(addDays(gridStart, i));
   }
   return days;
 }
@@ -170,10 +151,12 @@ function formatAppointmentTimeRange(appointment) {
   if (Number.isNaN(start.getTime())) {
     return 'Awaiting schedule';
   }
-  const end = new Date(start);
-  end.setMinutes(end.getMinutes() + (appointment.duration_minutes || SLOT_INTERVAL_MINUTES));
-  const timeFormat = { hour: 'numeric', minute: '2-digit' };
-  return `${start.toLocaleTimeString([], timeFormat)} – ${end.toLocaleTimeString([], timeFormat)}`;
+  const end = addMinutes(start, appointment.duration_minutes || SLOT_INTERVAL_MINUTES);
+
+  const startStr = formatInTimeZone(start, 'h:mm a', TIMEZONE);
+  const endStr = formatInTimeZone(end, 'h:mm a', TIMEZONE);
+
+  return `${startStr} – ${endStr}`;
 }
 
 function buildAppointmentUpdatePayload(appointment, draft) {
@@ -188,10 +171,10 @@ function buildAppointmentUpdatePayload(appointment, draft) {
     payload.status = normalizedStatus;
   }
 
-  const originalStartLocal = toDateTimeLocal(appointment.scheduled_start) || '';
+  const originalStartLocal = toNycInput(appointment.scheduled_start) || '';
   const draftStartLocal = draft.scheduled_start || '';
   if (draftStartLocal !== originalStartLocal) {
-    payload.scheduled_start = draftStartLocal ? fromDateTimeLocal(draftStartLocal) : null;
+    payload.scheduled_start = draftStartLocal ? fromNycInput(draftStartLocal) : null;
   }
 
   const originalDuration = appointment.duration_minutes ?? null;
@@ -228,7 +211,7 @@ function buildAppointmentCreatePayload(draft) {
     guest_name: draft.guest_name?.trim() || undefined,
     guest_email: draft.guest_email?.trim() || undefined,
     guest_phone: draft.guest_phone?.trim() || undefined,
-    scheduled_start: draft.scheduled_start ? fromDateTimeLocal(draft.scheduled_start) : null,
+    scheduled_start: draft.scheduled_start ? fromNycInput(draft.scheduled_start) : null,
     duration_minutes: draft.duration_minutes ? Number(draft.duration_minutes) : null,
     assigned_admin_id: draft.assigned_admin_id ? Number(draft.assigned_admin_id) : null,
     client_description: draft.client_description?.trim() || undefined
@@ -236,29 +219,20 @@ function buildAppointmentCreatePayload(draft) {
 }
 
 function isHourAligned(value) {
-  if (!value) {
-    return true;
-  }
+  if (!value) return true;
   const date = new Date(value);
-  if (Number.isNaN(date.getTime())) {
-    return false;
-  }
-  return date.getMinutes() === 0 && date.getSeconds() === 0 && date.getMilliseconds() === 0;
+  if (Number.isNaN(date.getTime())) return false;
+  return date.getMinutes() === 0 && date.getSeconds() === 0;
 }
 
 function alignScheduledStartInput(value) {
-  if (!value) {
-    return '';
-  }
-  if (isHourAligned(value)) {
-    return value;
-  }
+  if (!value) return '';
+  if (isHourAligned(value)) return value;
   const date = new Date(value);
-  if (Number.isNaN(date.getTime())) {
-    return value;
-  }
+  if (Number.isNaN(date.getTime())) return value;
   date.setMinutes(0, 0, 0);
-  return toDateTimeLocal(date.toISOString());
+  // Re-format using the same 'yyy-MM-ddTHH:mm' style
+  return format(date, "yyyy-MM-dd'T'HH:mm");
 }
 
 function alignDurationInput(value) {
@@ -307,8 +281,8 @@ function normaliseOperatingHours(hours) {
       day === 'saturday'
         ? { open_time: '10:00', close_time: '16:00' }
         : day === 'sunday'
-        ? { open_time: '10:00', close_time: '14:00', is_open: false }
-        : { open_time: '10:00', close_time: '18:00', is_open: true };
+          ? { open_time: '10:00', close_time: '14:00', is_open: false }
+          : { open_time: '10:00', close_time: '18:00', is_open: true };
     const minutes = SLOT_INTERVAL_MINUTES;
     return {
       day,
@@ -331,7 +305,7 @@ function ensureArray(value) {
 function buildDraftFromAppointment(appointment) {
   return {
     status: appointment.status || 'pending',
-    scheduled_start: toDateTimeLocal(appointment.scheduled_start),
+    scheduled_start: toNycInput(appointment.scheduled_start),
     duration_minutes: appointment.duration_minutes ?? '',
     assigned_admin_id: appointment.assigned_admin?.id ? String(appointment.assigned_admin.id) : '',
     client_description: appointment.client_description || ''
@@ -572,7 +546,7 @@ export default function AdminCalendar() {
 
   useEffect(() => {
     if (showCreateForm && !users.length) {
-      refreshUsers().catch(() => {});
+      refreshUsers().catch(() => { });
     }
   }, [showCreateForm, users.length, refreshUsers]);
 
@@ -588,7 +562,7 @@ export default function AdminCalendar() {
       return;
     }
     initialAppointmentsLoadRef.current = true;
-    refreshAppointments().catch(() => {});
+    refreshAppointments().catch(() => { });
   }, [appointments.length, loading, appointmentsLoading, refreshAppointments]);
 
   const closures = useMemo(() => ensureArray(schedule.closures), [schedule.closures]);
@@ -710,15 +684,14 @@ export default function AdminCalendar() {
 
   const hasSearchQuery = Boolean(appointmentSearchQuery.trim());
   const totalAppointments = appointmentsPagination.total || appointments.length;
-  const todayKey = useMemo(() => formatLocalDateKey(new Date()), []);
+  const todayKey = useMemo(() => formatNycDateKey(new Date()), []);
 
   const appointmentsByDate = useMemo(() => {
     const map = new Map();
     filteredAppointments.forEach((appointment) => {
-      const dateKey = formatLocalDateKey(appointment.scheduled_start);
-      if (!dateKey) {
-        return;
-      }
+      const dateKey = formatNycDateKey(appointment.scheduled_start);
+      if (!dateKey) return;
+
       const bucket = map.get(dateKey) || [];
       bucket.push(appointment);
       map.set(dateKey, bucket);
@@ -733,31 +706,25 @@ export default function AdminCalendar() {
     return map;
   }, [filteredAppointments]);
 
-  const weekStart = useMemo(() => startOfWeek(focusDate), [focusDate]);
+  const weekStart = useMemo(() => startOfWeekNyc(focusDate), [focusDate]);
   const weekDays = useMemo(() => {
-    if (!weekStart) {
-      return [];
-    }
-    return Array.from({ length: 7 }).map((_, index) => {
-      const day = new Date(weekStart);
-      day.setDate(weekStart.getDate() + index);
-      return day;
-    });
+    if (!weekStart) return [];
+    return Array.from({ length: 7 }).map((_, index) => addDays(weekStart, index));
   }, [weekStart]);
-  const monthDays = useMemo(() => getMonthGridDays(focusDate), [focusDate]);
+
+  const monthDays = useMemo(() => getMonthGridDaysNyc(focusDate), [focusDate]);
 
   const calendarHeadline = useMemo(() => {
     if (viewMode === 'month') {
-      return focusDate.toLocaleDateString([], { month: 'long', year: 'numeric' });
+      return formatInTimeZone(focusDate, 'MMMM yyyy', TIMEZONE);
     }
     if (viewMode === 'week' && weekStart) {
-      const weekEnd = new Date(weekStart);
-      weekEnd.setDate(weekStart.getDate() + 6);
-      const startLabel = weekStart.toLocaleDateString([], { month: 'short', day: 'numeric' });
-      const endLabel = weekEnd.toLocaleDateString([], { month: 'short', day: 'numeric' });
+      const weekEnd = addDays(weekStart, 6);
+      const startLabel = formatInTimeZone(weekStart, 'MMM d', TIMEZONE);
+      const endLabel = formatInTimeZone(weekEnd, 'MMM d', TIMEZONE);
       return `Week of ${startLabel} – ${endLabel}`;
     }
-    return focusDate.toLocaleDateString([], { weekday: 'long', month: 'short', day: 'numeric' });
+    return formatInTimeZone(focusDate, 'EEEE, MMM d', TIMEZONE);
   }, [focusDate, viewMode, weekStart]);
 
   const handleAppointmentDraftChange = (appointmentId, field, value) => {
@@ -1032,12 +999,12 @@ export default function AdminCalendar() {
           activeConfirmation.type === 'create'
             ? 'Unable to create appointment.'
             : activeConfirmation.type === 'update'
-            ? 'Unable to update appointment.'
-            : activeConfirmation.type === 'delete'
-            ? 'Unable to delete appointment.'
-            : activeConfirmation.type === 'closureDelete'
-            ? 'Unable to remove closure.'
-            : 'Unable to update studio schedule.'
+              ? 'Unable to update appointment.'
+              : activeConfirmation.type === 'delete'
+                ? 'Unable to delete appointment.'
+                : activeConfirmation.type === 'closureDelete'
+                  ? 'Unable to remove closure.'
+                  : 'Unable to update studio schedule.'
       });
       if (shouldCloseEditor && activeConfirmation.type === 'update') {
         const latestAppointment = appointments.find((entry) => entry.id === activeConfirmation.appointmentId);
@@ -1213,21 +1180,20 @@ export default function AdminCalendar() {
         const dateKey = formatLocalDateKey(day);
         const entries = dateKey ? appointmentsByDate.get(dateKey) || [] : [];
         const isToday = todayKey === dateKey;
-          return (
-            <div
-              key={dateKey || day.toISOString()}
-              className={`space-y-2 rounded-2xl border bg-white p-3 shadow-sm dark:bg-gray-950 ${
-                isToday
-                ? 'border-gray-900 ring-2 ring-gray-900/10 dark:border-gray-200 dark:ring-gray-200/20'
-                : 'border-gray-200 dark:border-gray-800'
-            }`}
+        return (
+          <div
+            key={dateKey || day.toISOString()}
+            className={`space-y-2 rounded-2xl border bg-white p-3 shadow-sm dark:bg-gray-950 ${isToday
+              ? 'border-gray-900 ring-2 ring-gray-900/10 dark:border-gray-200 dark:ring-gray-200/20'
+              : 'border-gray-200 dark:border-gray-800'
+              }`}
+          >
+            <button
+              type="button"
+              onClick={() => openDayModal(day)}
+              className="flex w-full items-center justify-between text-sm font-semibold text-gray-900 transition hover:text-gray-600 dark:text-gray-100 dark:hover:text-gray-200"
             >
-              <button
-                type="button"
-                onClick={() => openDayModal(day)}
-                className="flex w-full items-center justify-between text-sm font-semibold text-gray-900 transition hover:text-gray-600 dark:text-gray-100 dark:hover:text-gray-200"
-              >
-                <span>{day.toLocaleDateString([], { weekday: 'short' })}</span>
+              <span>{day.toLocaleDateString([], { weekday: 'short' })}</span>
               <span className="rounded-full bg-gray-100 px-2 py-1 text-xs text-gray-700 dark:bg-gray-900 dark:text-gray-200">
                 {day.getDate()}
               </span>
@@ -1259,7 +1225,7 @@ export default function AdminCalendar() {
 
   const renderMonthView = () => {
     const activeMonth = focusDate.getMonth();
-    const selectedDateKey = formatLocalDateKey(focusDate);
+    const selectedDateKey = formatNycDateKey(focusDate);
     const selectedEntries = selectedDateKey ? appointmentsByDate.get(selectedDateKey) || [] : [];
     const weekdayLabels = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 
@@ -1272,7 +1238,7 @@ export default function AdminCalendar() {
                 Schedule for
               </p>
               <p className="text-base font-semibold text-gray-900 dark:text-gray-100">
-                {focusDate.toLocaleDateString([], { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })}
+                {formatInTimeZone(focusDate, 'EEEE, MMMM d, yyyy', TIMEZONE)}
               </p>
             </div>
             <Button type="button" variant="ghost" onClick={() => openDayModal(focusDate)}>
@@ -1316,7 +1282,7 @@ export default function AdminCalendar() {
 
         <section className="space-y-4 rounded-3xl border border-gray-200 bg-white p-4 shadow-sm dark:border-gray-800 dark:bg-gray-950 sm:p-6 lg:max-w-md lg:justify-self-end">
           <div className="flex items-center justify-between text-sm font-semibold text-gray-900 dark:text-gray-100">
-            <span>{focusDate.toLocaleDateString([], { month: 'long', year: 'numeric' })}</span>
+            <span>{formatInTimeZone(focusDate, 'MMMM yyyy', TIMEZONE)}</span>
           </div>
           <div className="grid grid-cols-7 text-center text-[11px] font-semibold uppercase tracking-[0.2em] text-gray-500 dark:text-gray-400">
             {weekdayLabels.map((label) => (
@@ -1325,7 +1291,7 @@ export default function AdminCalendar() {
           </div>
           <div className="grid grid-cols-7 gap-1.5">
             {monthDays.map((day, index) => {
-              const dateKey = formatLocalDateKey(day);
+              const dateKey = formatNycDateKey(day);
               const entries = dateKey ? appointmentsByDate.get(dateKey) || [] : [];
               const isCurrentMonth = day.getMonth() === activeMonth;
               const isToday = dateKey === todayKey;
@@ -1335,16 +1301,15 @@ export default function AdminCalendar() {
                   key={dateKey || `mini-${index}`}
                   type="button"
                   onClick={() => setFocusDay(day)}
-                  className={`flex h-9 w-9 items-center justify-center rounded-full text-[12px] font-semibold transition ${
-                    isSelected
-                      ? 'bg-gray-900 text-white shadow-sm dark:bg-gray-100 dark:text-gray-900'
-                      : isToday
+                  className={`flex h-9 w-9 items-center justify-center rounded-full text-[12px] font-semibold transition ${isSelected
+                    ? 'bg-gray-900 text-white shadow-sm dark:bg-gray-100 dark:text-gray-900'
+                    : isToday
                       ? 'border border-gray-900 text-gray-900 dark:border-gray-200 dark:text-gray-100'
                       : isCurrentMonth
-                      ? 'text-gray-700 hover:bg-gray-100 dark:text-gray-200 dark:hover:bg-gray-900'
-                      : 'text-gray-400 dark:text-gray-600'
-                  }`}
-                  aria-label={`View ${day.toLocaleDateString([], { month: 'long', day: 'numeric' })}`}
+                        ? 'text-gray-700 hover:bg-gray-100 dark:text-gray-200 dark:hover:bg-gray-900'
+                        : 'text-gray-400 dark:text-gray-600'
+                    }`}
+                  aria-label={`View ${formatInTimeZone(day, 'MMMM d', TIMEZONE)}`}
                 >
                   <span className="relative flex h-full w-full items-center justify-center">
                     {day.getDate()}
@@ -1365,13 +1330,8 @@ export default function AdminCalendar() {
     if (!dayModalDate) {
       return null;
     }
-    const modalDateLabel = dayModalDate.toLocaleDateString([], {
-      weekday: 'long',
-      month: 'long',
-      day: 'numeric',
-      year: 'numeric'
-    });
-    const isToday = formatLocalDateKey(dayModalDate) === todayKey;
+    const modalDateLabel = formatInTimeZone(dayModalDate, 'EEEE, MMMM d, yyyy', TIMEZONE);
+    const isToday = formatNycDateKey(dayModalDate) === todayKey;
 
     return (
       <Dialog open={Boolean(dayModalDate)} onClose={closeDayModal} title="Day schedule">
@@ -1410,7 +1370,7 @@ export default function AdminCalendar() {
       ? new Date(selectedAppointment.scheduled_start)
       : null;
     const scheduledLabel = scheduledDate
-      ? scheduledDate.toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' })
+      ? formatInTimeZone(scheduledDate, 'PPP p', TIMEZONE)
       : 'Awaiting schedule';
     const durationLabel = selectedAppointment.duration_minutes
       ? `${selectedAppointment.duration_minutes} minutes`
@@ -2010,9 +1970,9 @@ export default function AdminCalendar() {
                                           Last update{' '}
                                           {appointment.updated_at
                                             ? new Date(appointment.updated_at).toLocaleString([], {
-                                                dateStyle: 'medium',
-                                                timeStyle: 'short'
-                                              })
+                                              dateStyle: 'medium',
+                                              timeStyle: 'short'
+                                            })
                                             : 'n/a'}
                                         </p>
                                         <div className="flex items-center gap-2">
@@ -2057,8 +2017,8 @@ export default function AdminCalendar() {
     isLoadingAppointments
       ? 'Loading appointments...'
       : totalAppointments === 1
-      ? '1 appointment scheduled'
-      : `${totalAppointments} appointments scheduled`;
+        ? '1 appointment scheduled'
+        : `${totalAppointments} appointments scheduled`;
 
   return (
     <div className="space-y-8">
@@ -2126,11 +2086,10 @@ export default function AdminCalendar() {
                     key={mode}
                     type="button"
                     onClick={() => handleSetViewMode(mode)}
-                    className={`rounded-full px-4 py-2 transition ${
-                      viewMode === mode
-                        ? 'bg-gray-900 text-white shadow-sm dark:bg-gray-100 dark:text-gray-900'
-                        : 'text-gray-600 hover:text-gray-900 dark:text-gray-300 dark:hover:text-gray-100'
-                    }`}
+                    className={`rounded-full px-4 py-2 transition ${viewMode === mode
+                      ? 'bg-gray-900 text-white shadow-sm dark:bg-gray-100 dark:text-gray-900'
+                      : 'text-gray-600 hover:text-gray-900 dark:text-gray-300 dark:hover:text-gray-100'
+                      }`}
                   >
                     {mode}
                   </button>
@@ -2183,10 +2142,10 @@ export default function AdminCalendar() {
                   typeof entry.minimum_duration_hours_input === 'string'
                     ? entry.minimum_duration_hours_input
                     : entry.minimum_duration_minutes
-                    ? String(
+                      ? String(
                         Math.max(entry.minimum_duration_minutes ?? SLOT_INTERVAL_MINUTES, SLOT_INTERVAL_MINUTES) / 60
                       )
-                    : '';
+                      : '';
                 const statusStyles = entry.is_open
                   ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-200'
                   : 'bg-gray-200 text-gray-700 dark:bg-gray-800 dark:text-gray-300';
@@ -2452,10 +2411,10 @@ export default function AdminCalendar() {
           confirmation?.type === 'delete'
             ? 'Delete'
             : confirmation?.type === 'create'
-            ? 'Create'
-            : confirmation?.type === 'closureDelete'
-            ? 'Delete closure'
-            : 'Save'
+              ? 'Create'
+              : confirmation?.type === 'closureDelete'
+                ? 'Delete closure'
+                : 'Save'
         }
         onConfirm={handleConfirm}
         onClose={() => {
@@ -2475,9 +2434,9 @@ export default function AdminCalendar() {
             Status set to <strong>{confirmation.payload.status}</strong>.{' '}
             {confirmation.payload.scheduled_start
               ? `Scheduled start: ${new Date(confirmation.payload.scheduled_start).toLocaleString([], {
-                  dateStyle: 'medium',
-                  timeStyle: 'short'
-                })}.`
+                dateStyle: 'medium',
+                timeStyle: 'short'
+              })}.`
               : 'No start date provided.'}
           </p>
         ) : null}

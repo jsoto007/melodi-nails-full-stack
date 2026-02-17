@@ -710,12 +710,18 @@ def serialize_notification(notification):
     }
 
 
+from zoneinfo import ZoneInfo
+
+NYC_TZ = ZoneInfo("America/New_York")
+
 def _format_status_schedule_label(dt):
     if not dt:
         return None
     try:
-        if dt.tzinfo is not None:
-            dt = dt.astimezone(timezone.utc)
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        dt = dt.astimezone(NYC_TZ)
+        return dt.strftime("%A, %B %d %Y at %I:%M %p")
     except Exception:
         pass
     return dt.strftime("%A, %B %d %Y at %I:%M %p")

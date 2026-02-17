@@ -1,23 +1,36 @@
-from __future__ import annotations
-
-from datetime import timezone
+from datetime import datetime, timedelta, timezone
 from html import escape
 from typing import TYPE_CHECKING
+from zoneinfo import ZoneInfo
 
 from .base import brand_name, client_base_url, email_logo_url, mailgun_send
 from ..status_helpers import format_status_label
+
+NYC_TZ = ZoneInfo("America/New_York")
 
 if TYPE_CHECKING:  # pragma: no cover
     from app.models import TattooAppointment
 
 
-def _format_appointment_datetime(dt):
+def _format_appointment_datetime(dt: datetime | None, duration_minutes: int | None = None) -> str | None:
     if not dt:
         return None
     try:
-        if dt.tzinfo is not None:
-            dt = dt.astimezone(timezone.utc)
-            return dt.strftime("%A, %B %d %Y at %I:%M %p %Z")
+        # Ensure we have a timezone-aware datetime, defaulting to UTC if missing
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        
+        # Convert to NYC time
+        start_nyc = dt.astimezone(NYC_TZ)
+        date_part = start_nyc.strftime("%A, %B %d %Y")
+        start_time_part = start_nyc.strftime("%I:%M %p")
+        
+        if duration_minutes:
+            end_nyc = start_nyc + timedelta(minutes=duration_minutes)
+            end_time_part = end_nyc.strftime("%I:%M %p")
+            return f"{date_part} from {start_time_part} to {end_time_part} ET"
+            
+        return f"{date_part} at {start_time_part} ET"
     except Exception:
         pass
     return dt.strftime("%A, %B %d %Y at %I:%M %p")
@@ -38,7 +51,7 @@ def send_appointment_status_update_email(
     label = status_label or format_status_label(appointment.status)
     brand = brand_name()
     reference = appointment.reference_code or f"Appointment #{appointment.id}"
-    scheduled_label = _format_appointment_datetime(appointment.scheduled_start)
+    scheduled_label = _format_appointment_datetime(appointment.scheduled_start, appointment.duration_minutes)
     placement = appointment.tattoo_placement or "n/a"
     manage_url = f"{client_base_url()}/portal/appointments"
 
