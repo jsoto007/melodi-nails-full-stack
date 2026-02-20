@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
+from zoneinfo import ZoneInfo
 from html import escape
 from urllib.parse import quote
 from uuid import uuid4
@@ -35,10 +36,14 @@ def _safe_filename(reference: str) -> str:
 def _ics_escape(value: str) -> str:
     return value.replace("\\", "\\\\").replace("\n", "\\n").replace(",", "\\,").replace(";", "\\;")
 
+NYC_TZ = ZoneInfo("America/New_York")
+
+
 def _format_ics_timestamp(dt: datetime) -> str:
     timestamp = dt
+    # Naive datetimes from the database are in NYC local time
     if timestamp.tzinfo is None:
-        timestamp = timestamp.replace(tzinfo=timezone.utc)
+        timestamp = timestamp.replace(tzinfo=NYC_TZ)
     timestamp = timestamp.astimezone(timezone.utc)
     return timestamp.strftime("%Y%m%dT%H%M%SZ")
 

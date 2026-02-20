@@ -62,7 +62,7 @@ function formatNycDateTime(value) {
   if (!value) return null;
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return null;
-  return formatInTimeZone(date, "yyyy-MM-dd'T'HH:mm", TIMEZONE);
+  return formatInTimeZone(date, TIMEZONE, "yyyy-MM-dd'T'HH:mm");
 }
 
 function toNycInput(value) {
@@ -97,7 +97,7 @@ function formatNycDateKey(value) {
   if (!value) return null;
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return null;
-  return formatInTimeZone(date, 'yyyy-MM-dd', TIMEZONE);
+  return formatInTimeZone(date, TIMEZONE, 'yyyy-MM-dd');
 }
 
 // Helper to get a Date object representing the start of the day in NYC
@@ -153,8 +153,8 @@ function formatAppointmentTimeRange(appointment) {
   }
   const end = addMinutes(start, appointment.duration_minutes || SLOT_INTERVAL_MINUTES);
 
-  const startStr = formatInTimeZone(start, 'h:mm a', TIMEZONE);
-  const endStr = formatInTimeZone(end, 'h:mm a', TIMEZONE);
+  const startStr = formatInTimeZone(start, TIMEZONE, 'h:mm a');
+  const endStr = formatInTimeZone(end, TIMEZONE, 'h:mm a');
 
   return `${startStr} – ${endStr}`;
 }
@@ -716,15 +716,15 @@ export default function AdminCalendar() {
 
   const calendarHeadline = useMemo(() => {
     if (viewMode === 'month') {
-      return formatInTimeZone(focusDate, 'MMMM yyyy', TIMEZONE);
+      return formatInTimeZone(focusDate, TIMEZONE, 'MMMM yyyy');
     }
     if (viewMode === 'week' && weekStart) {
       const weekEnd = addDays(weekStart, 6);
-      const startLabel = formatInTimeZone(weekStart, 'MMM d', TIMEZONE);
-      const endLabel = formatInTimeZone(weekEnd, 'MMM d', TIMEZONE);
+      const startLabel = formatInTimeZone(weekStart, TIMEZONE, 'MMM d');
+      const endLabel = formatInTimeZone(weekEnd, TIMEZONE, 'MMM d');
       return `Week of ${startLabel} – ${endLabel}`;
     }
-    return formatInTimeZone(focusDate, 'EEEE, MMM d', TIMEZONE);
+    return formatInTimeZone(focusDate, TIMEZONE, 'EEEE, MMM d');
   }, [focusDate, viewMode, weekStart]);
 
   const handleAppointmentDraftChange = (appointmentId, field, value) => {
@@ -1162,7 +1162,7 @@ export default function AdminCalendar() {
       return renderLoadingState();
     }
 
-    const dayKey = formatLocalDateKey(date);
+    const dayKey = formatNycDateKey(date);
     const dayAppointments = dayKey ? appointmentsByDate.get(dayKey) || [] : [];
 
     if (!dayAppointments.length) {
@@ -1177,7 +1177,7 @@ export default function AdminCalendar() {
   const renderWeekView = () => (
     <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 lg:grid-cols-7">
       {weekDays.map((day) => {
-        const dateKey = formatLocalDateKey(day);
+        const dateKey = formatNycDateKey(day);
         const entries = dateKey ? appointmentsByDate.get(dateKey) || [] : [];
         const isToday = todayKey === dateKey;
         return (
@@ -1238,7 +1238,7 @@ export default function AdminCalendar() {
                 Schedule for
               </p>
               <p className="text-base font-semibold text-gray-900 dark:text-gray-100">
-                {formatInTimeZone(focusDate, 'EEEE, MMMM d, yyyy', TIMEZONE)}
+                {formatInTimeZone(focusDate, TIMEZONE, 'EEEE, MMMM d, yyyy')}
               </p>
             </div>
             <Button type="button" variant="ghost" onClick={() => openDayModal(focusDate)}>
@@ -1282,7 +1282,7 @@ export default function AdminCalendar() {
 
         <section className="space-y-4 rounded-3xl border border-gray-200 bg-white p-4 shadow-sm dark:border-gray-800 dark:bg-gray-950 sm:p-6 lg:max-w-md lg:justify-self-end">
           <div className="flex items-center justify-between text-sm font-semibold text-gray-900 dark:text-gray-100">
-            <span>{formatInTimeZone(focusDate, 'MMMM yyyy', TIMEZONE)}</span>
+            <span>{formatInTimeZone(focusDate, TIMEZONE, 'MMMM yyyy')}</span>
           </div>
           <div className="grid grid-cols-7 text-center text-[11px] font-semibold uppercase tracking-[0.2em] text-gray-500 dark:text-gray-400">
             {weekdayLabels.map((label) => (
@@ -1309,7 +1309,7 @@ export default function AdminCalendar() {
                         ? 'text-gray-700 hover:bg-gray-100 dark:text-gray-200 dark:hover:bg-gray-900'
                         : 'text-gray-400 dark:text-gray-600'
                     }`}
-                  aria-label={`View ${formatInTimeZone(day, 'MMMM d', TIMEZONE)}`}
+                  aria-label={`View ${formatInTimeZone(day, TIMEZONE, 'MMMM d')}`}
                 >
                   <span className="relative flex h-full w-full items-center justify-center">
                     {day.getDate()}
@@ -1330,7 +1330,7 @@ export default function AdminCalendar() {
     if (!dayModalDate) {
       return null;
     }
-    const modalDateLabel = formatInTimeZone(dayModalDate, 'EEEE, MMMM d, yyyy', TIMEZONE);
+    const modalDateLabel = formatInTimeZone(dayModalDate, TIMEZONE, 'EEEE, MMMM d, yyyy');
     const isToday = formatNycDateKey(dayModalDate) === todayKey;
 
     return (
@@ -1370,7 +1370,7 @@ export default function AdminCalendar() {
       ? new Date(selectedAppointment.scheduled_start)
       : null;
     const scheduledLabel = scheduledDate
-      ? formatInTimeZone(scheduledDate, 'PPP p', TIMEZONE)
+      ? formatInTimeZone(scheduledDate, TIMEZONE, 'PPP p')
       : 'Awaiting schedule';
     const durationLabel = selectedAppointment.duration_minutes
       ? `${selectedAppointment.duration_minutes} minutes`

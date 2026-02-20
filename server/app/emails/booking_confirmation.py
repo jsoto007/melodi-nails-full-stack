@@ -31,11 +31,14 @@ def _format_appointment_datetime(dt: datetime | None, duration_minutes: int | No
     if not dt:
         return "To be scheduled"
     try:
-        # Ensure we have a timezone-aware datetime, defaulting to UTC if missing
+        # Naive datetimes from the database are in NYC local time
+        # (build_available_slots creates them as NYC-local via datetime.combine
+        # with the studio's operating hours). Localize them to NYC rather than
+        # assuming UTC, so the displayed time matches what the user selected.
         if dt.tzinfo is None:
-            dt = dt.replace(tzinfo=timezone.utc)
-        
-        # Convert to NYC time
+            dt = dt.replace(tzinfo=NYC_TZ)
+
+        # Convert to NYC time (no-op when already NYC, correct when tz-aware UTC)
         start_nyc = dt.astimezone(NYC_TZ)
         date_part = start_nyc.strftime("%A, %B %d %Y")
         start_time_part = start_nyc.strftime("%I:%M %p")
@@ -47,8 +50,8 @@ def _format_appointment_datetime(dt: datetime | None, duration_minutes: int | No
             
         return f"{date_part} at {start_time_part} ET"
     except Exception:
-        # Fallback to simple UTC formatting if conversion fails
-        return dt.strftime("%A, %B %d %Y at %I:%M %p UTC")
+        # Fallback to simple formatting if conversion fails
+        return dt.strftime("%A, %B %d %Y at %I:%M %p")
 
 
 def _format_field_label(value: str | None) -> str:
@@ -106,6 +109,9 @@ def send_booking_confirmation_email(
     if appointment.scheduled_start:
         duration_minutes = appointment.duration_minutes or 60
         start_at = appointment.scheduled_start
+        # Naive datetimes are stored in NYC local time
+        if start_at.tzinfo is None:
+            start_at = start_at.replace(tzinfo=NYC_TZ)
         end_at = start_at + timedelta(minutes=duration_minutes)
         start_utc = start_at.astimezone(timezone.utc)
         end_utc = end_at.astimezone(timezone.utc)

@@ -16,11 +16,13 @@ def _format_appointment_datetime(dt: datetime | None, duration_minutes: int | No
     if not dt:
         return None
     try:
-        # Ensure we have a timezone-aware datetime, defaulting to UTC if missing
+        # Naive datetimes from the database are in NYC local time
+        # (build_available_slots creates them via datetime.combine with
+        # the studio's operating hours). Localize to NYC, not UTC.
         if dt.tzinfo is None:
-            dt = dt.replace(tzinfo=timezone.utc)
+            dt = dt.replace(tzinfo=NYC_TZ)
         
-        # Convert to NYC time
+        # Convert to NYC time (no-op when already NYC)
         start_nyc = dt.astimezone(NYC_TZ)
         date_part = start_nyc.strftime("%A, %B %d %Y")
         start_time_part = start_nyc.strftime("%I:%M %p")
