@@ -718,8 +718,9 @@ def _format_status_schedule_label(dt):
     if not dt:
         return None
     try:
+        # Naive datetimes from the DB are in NYC local time
         if dt.tzinfo is None:
-            dt = dt.replace(tzinfo=timezone.utc)
+            dt = dt.replace(tzinfo=NYC_TZ)
         dt = dt.astimezone(NYC_TZ)
         return dt.strftime("%A, %B %d %Y at %I:%M %p")
     except Exception:
@@ -4364,8 +4365,9 @@ def admin_update_appointment(appointment_id):
             parsed = parse_iso_datetime(scheduled_start_raw)
             if not parsed:
                 return jsonify({"error": "Invalid datetime format (use ISO 8601)."}), 400
+            # Convert to NYC local time (DB stores naive NYC datetimes)
             if parsed.tzinfo is not None:
-                parsed = parsed.astimezone(timezone.utc).replace(tzinfo=None)
+                parsed = parsed.astimezone(NYC_TZ).replace(tzinfo=None)
             if parsed.minute % DEFAULT_SLOT_INTERVAL_MINUTES != 0 or parsed.second or parsed.microsecond:
                 return jsonify({"error": "Start time must align with the hour."}), 400
             new_start = parsed

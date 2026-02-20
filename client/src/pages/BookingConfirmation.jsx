@@ -116,9 +116,9 @@ export default function BookingConfirmation() {
   const payment = bookingDetails?.payments?.[0] || null;
   const depositLabel = payment
     ? new Intl.NumberFormat('en-US', {
-        style: 'currency',
-        currency: payment.currency || 'USD'
-      }).format((payment.amount_cents || 0) / 100)
+      style: 'currency',
+      currency: payment.currency || 'USD'
+    }).format((payment.amount_cents || 0) / 100)
     : null;
   const contactName =
     bookingDetails?.contact_name ||
@@ -313,8 +313,14 @@ export default function BookingConfirmation() {
   );
 }
 
-const DAY_FORMATTER = new Intl.DateTimeFormat('en-US', { weekday: 'long', month: 'long', day: 'numeric' });
-const TIME_FORMATTER = new Intl.DateTimeFormat('en-US', { hour: 'numeric', minute: '2-digit' });
+const DAY_FORMATTER = new Intl.DateTimeFormat('en-US', {
+  weekday: 'long', month: 'long', day: 'numeric',
+  timeZone: 'America/New_York'
+});
+const TIME_FORMATTER = new Intl.DateTimeFormat('en-US', {
+  hour: 'numeric', minute: '2-digit',
+  timeZone: 'America/New_York'
+});
 
 function formatDuration(minutes) {
   if (!minutes || Number.isNaN(Number(minutes))) {
@@ -327,12 +333,8 @@ function formatDuration(minutes) {
   return `${minutes} minutes`;
 }
 
-function getTimeZoneLabel(date) {
-  if (!date) {
-    return null;
-  }
-  const parts = date.toLocaleTimeString(undefined, { timeZoneName: 'short' }).split(' ');
-  return parts[parts.length - 1] || null;
+function getTimeZoneLabel() {
+  return 'ET';
 }
 
 function DetailItem({ label, value, secondary }) {
