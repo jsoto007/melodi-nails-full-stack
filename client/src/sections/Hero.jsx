@@ -41,8 +41,8 @@ export default function Hero() {
       {/* Decorative gradient blobs */}
       <div className="pointer-events-none absolute inset-0">
         <div className="absolute left-0 top-0 h-80 w-80 rounded-full bg-[#c8af8f]/20 blur-3xl" />
-        <div className="absolute right-0 top-0 h-[28rem] w-[28rem] rounded-full bg-[#c0a0c8]/18 blur-3xl" />
-        <div className="absolute bottom-0 right-1/3 h-72 w-72 rounded-full bg-[#6f7863]/15 blur-3xl" />
+        <div className="absolute right-0 top-0 h-[32rem] w-[32rem] rounded-full bg-[#ff80b5]/20 blur-3xl" />
+        <div className="absolute bottom-0 right-1/3 h-72 w-72 rounded-full bg-[#ff80b5]/12 blur-3xl" />
       </div>
 
       <FadeIn
