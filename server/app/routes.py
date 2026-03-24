@@ -175,6 +175,7 @@ CSRF_EXEMPT_ENDPOINTS = {
     "api.auth_login",
     "api.auth_register",
     "api.auth_csrf",
+    "api.stripe_webhook",
 }
 
 SIZE_MULTIPLIERS = {
@@ -190,6 +191,18 @@ class MediaStorageError(Exception):
 
 class StripePaymentError(Exception):
     pass
+
+
+class StripePaymentPendingError(StripePaymentError):
+    pass
+
+
+def _stripe_get(value, key, default=None):
+    if value is None:
+        return default
+    if isinstance(value, dict):
+        return value.get(key, default)
+    return getattr(value, key, default)
 
 
 def _use_s3_uploads() -> bool:
@@ -800,6 +813,9 @@ def serialize_session_option(option):
     return {
         "id": option.id,
         "name": option.name,
+        "tagline": option.tagline,
+        "description": option.description,
+        "category": option.category,
         "duration_minutes": option.duration_minutes,
         "price_cents": option.price_cents,
         "is_active": bool(option.is_active),
@@ -836,6 +852,8 @@ def load_booking_fee_percent() -> int:
 def sync_checkout_payment_for_appointment(
     appointment: TattooAppointment,
     checkout_session_id: str | None,
+    *,
+    checkout_session: dict | None = None,
 ):
     if not appointment or not checkout_session_id:
         raise StripePaymentError("Stripe session is required.")
@@ -848,6 +866,11 @@ def sync_checkout_payment_for_appointment(
         ),
         None,
     )
+
+    if existing_payment and existing_payment.status == "paid":
+        if appointment.status == "awaiting_payment":
+            appointment.status = "pending"
+        return existing_payment
 
     if current_app.config.get("STRIPE_FAKE_PAYMENTS"):
         if existing_payment and existing_payment.status == "paid":
@@ -869,20 +892,30 @@ def sync_checkout_payment_for_appointment(
         appointment.status = "pending"
         return existing_payment
 
-    checkout = _stripe_client().checkout.Session.retrieve(checkout_session_id)
+    checkout = checkout_session or _stripe_client().checkout.Session.retrieve(checkout_session_id)
     if str(checkout.get("client_reference_id") or "") != str(appointment.id):
         raise StripePaymentError("Stripe session does not match this appointment.")
-    if checkout.get("payment_status") != "paid":
-        raise StripePaymentError("Stripe payment has not completed.")
 
     payment_intent_id = checkout.get("payment_intent")
     payment_intent = _stripe_client().PaymentIntent.retrieve(payment_intent_id) if payment_intent_id else None
+    payment_intent_status = _stripe_get(payment_intent, "status") if payment_intent else None
+    checkout_payment_status = (checkout.get("payment_status") or "").lower()
+    checkout_status = (checkout.get("status") or "").lower()
+
+    if checkout_payment_status != "paid" and payment_intent_status != "succeeded":
+        if checkout_status == "expired" or payment_intent_status in {"canceled", "requires_payment_method"}:
+            if existing_payment:
+                existing_payment.status = "failed"
+            raise StripePaymentError("Stripe payment was not completed.")
+        raise StripePaymentPendingError("Stripe payment is still processing.")
+
     amount_total = int(checkout.get("amount_total") or 0)
     receipt_url = None
-    if payment_intent and getattr(payment_intent, "charges", None):
-        charges = payment_intent.charges.data or []
-        if charges:
-            receipt_url = charges[0].receipt_url
+    charges_container = _stripe_get(payment_intent, "charges")
+    charges = _stripe_get(charges_container, "data", []) or []
+    if charges:
+        first_charge = charges[0]
+        receipt_url = _stripe_get(first_charge, "receipt_url")
 
     if not existing_payment:
         existing_payment = AppointmentPayment(
@@ -907,6 +940,46 @@ def sync_checkout_payment_for_appointment(
         appointment.status = "pending"
 
     return existing_payment
+
+
+def _load_appointment_for_payment(appointment_id: int | str | None):
+    if appointment_id in {None, ""}:
+        return None
+    try:
+        normalized_id = int(appointment_id)
+    except (TypeError, ValueError):
+        return None
+    return TattooAppointment.query.options(
+        joinedload(TattooAppointment.client),
+        joinedload(TattooAppointment.assigned_admin),
+        joinedload(TattooAppointment.assets).joinedload(AppointmentAsset.admin_uploader),
+        joinedload(TattooAppointment.assets).joinedload(AppointmentAsset.client_uploader),
+        joinedload(TattooAppointment.payments),
+        joinedload(TattooAppointment.session_option),
+    ).get(normalized_id)
+
+
+def _notify_for_paid_appointment(appointment: TattooAppointment, payment: AppointmentPayment):
+    booking_fee_percent = load_booking_fee_percent()
+    session_price_cents = appointment.session_option.price_cents if appointment.session_option else calculate_session_price_cents(appointment.duration_minutes)
+    charge_amount = payment.amount_cents
+    pay_full_amount = charge_amount >= session_price_cents if session_price_cents else False
+    send_booking_confirmation_email(
+        appointment,
+        charge_amount_cents=charge_amount,
+        session_price_cents=session_price_cents,
+        booking_fee_percent=booking_fee_percent,
+        pay_full_amount=pay_full_amount,
+        receipt_url=payment.receipt_url,
+    )
+    send_internal_booking_notification(
+        appointment,
+        charge_amount_cents=charge_amount,
+        session_price_cents=session_price_cents,
+        booking_fee_percent=booking_fee_percent,
+        pay_full_amount=pay_full_amount,
+        receipt_url=payment.receipt_url,
+    )
 
 
 def _hash_activation_token(token: str) -> str:
@@ -3203,6 +3276,9 @@ def admin_list_session_options():
 def admin_create_session_option():
     payload = request.get_json(silent=True) or {}
     name = (payload.get("name") or "").strip() or None
+    tagline = (payload.get("tagline") or "").strip() or None
+    description = (payload.get("description") or "").strip() or None
+    category = (payload.get("category") or "").strip() or None
     duration_raw = payload.get("duration_minutes")
     price_raw = payload.get("price_cents")
     is_active = parse_bool(payload.get("is_active"), default=True)
@@ -3228,6 +3304,9 @@ def admin_create_session_option():
 
     option = SessionOption(
         name=name,
+        tagline=tagline,
+        description=description,
+        category=category,
         duration_minutes=duration_minutes,
         price_cents=price_cents,
         is_active=is_active,
@@ -3261,6 +3340,12 @@ def admin_update_session_option(option_id):
 
     if name is not None:
         option.name = name.strip() or None
+    if "tagline" in payload:
+        option.tagline = (payload["tagline"] or "").strip() or None
+    if "description" in payload:
+        option.description = (payload["description"] or "").strip() or None
+    if "category" in payload:
+        option.category = (payload["category"] or "").strip() or None
     if duration_raw is not None:
         try:
             duration_minutes = int(duration_raw)
@@ -4273,14 +4358,7 @@ def verify_stripe_checkout_session():
     if not checkout_session_id:
         return jsonify({"error": "session_id is required."}), 400
 
-    appointment = TattooAppointment.query.options(
-        joinedload(TattooAppointment.client),
-        joinedload(TattooAppointment.assigned_admin),
-        joinedload(TattooAppointment.assets).joinedload(AppointmentAsset.admin_uploader),
-        joinedload(TattooAppointment.assets).joinedload(AppointmentAsset.client_uploader),
-        joinedload(TattooAppointment.payments),
-        joinedload(TattooAppointment.session_option),
-    ).get(appointment_id)
+    appointment = _load_appointment_for_payment(appointment_id)
     if not appointment:
         return jsonify({"error": "Appointment not found."}), 404
 
@@ -4288,6 +4366,19 @@ def verify_stripe_checkout_session():
     try:
         payment = sync_checkout_payment_for_appointment(appointment, checkout_session_id)
         db.session.commit()
+    except StripePaymentPendingError as exc:
+        db.session.rollback()
+        appointment = _load_appointment_for_payment(appointment_id)
+        return (
+            jsonify(
+                {
+                    "appointment": serialize_appointment(appointment) if appointment else None,
+                    "payment_status": "processing",
+                    "message": str(exc),
+                }
+            ),
+            202,
+        )
     except StripePaymentError as exc:
         db.session.rollback()
         return jsonify({"error": str(exc)}), 400
@@ -4298,38 +4389,69 @@ def verify_stripe_checkout_session():
         db.session.rollback()
         return jsonify({"error": "Unable to verify payment right now."}), 500
 
-    appointment = TattooAppointment.query.options(
-        joinedload(TattooAppointment.client),
-        joinedload(TattooAppointment.assigned_admin),
-        joinedload(TattooAppointment.assets).joinedload(AppointmentAsset.admin_uploader),
-        joinedload(TattooAppointment.assets).joinedload(AppointmentAsset.client_uploader),
-        joinedload(TattooAppointment.payments),
-        joinedload(TattooAppointment.session_option),
-    ).get(appointment.id)
+    appointment = _load_appointment_for_payment(appointment.id)
 
     if payment and not had_paid_payment:
-        booking_fee_percent = load_booking_fee_percent()
-        session_price_cents = appointment.session_option.price_cents if appointment.session_option else calculate_session_price_cents(appointment.duration_minutes)
-        charge_amount = payment.amount_cents
-        pay_full_amount = charge_amount >= session_price_cents if session_price_cents else False
-        send_booking_confirmation_email(
-            appointment,
-            charge_amount_cents=charge_amount,
-            session_price_cents=session_price_cents,
-            booking_fee_percent=booking_fee_percent,
-            pay_full_amount=pay_full_amount,
-            receipt_url=payment.receipt_url,
-        )
-        send_internal_booking_notification(
-            appointment,
-            charge_amount_cents=charge_amount,
-            session_price_cents=session_price_cents,
-            booking_fee_percent=booking_fee_percent,
-            pay_full_amount=pay_full_amount,
-            receipt_url=payment.receipt_url,
-        )
+        _notify_for_paid_appointment(appointment, payment)
 
     return jsonify(serialize_appointment(appointment)), 200
+
+
+@api_bp.route("/api/payments/stripe/webhook", methods=["POST"])
+def stripe_webhook():
+    payload = request.get_data(cache=False, as_text=False)
+    signature = request.headers.get("Stripe-Signature", "")
+    webhook_secret = (current_app.config.get("STRIPE_WEBHOOK_SECRET") or "").strip()
+
+    try:
+        if webhook_secret:
+            event = stripe.Webhook.construct_event(payload, signature, webhook_secret)
+        else:
+            current_app.logger.warning("STRIPE_WEBHOOK_SECRET is not configured; accepting unsigned Stripe webhook payload.")
+            event = json.loads(payload.decode("utf-8") or "{}")
+    except ValueError:
+        return jsonify({"error": "Invalid Stripe webhook payload."}), 400
+    except stripe.error.SignatureVerificationError:
+        return jsonify({"error": "Invalid Stripe webhook signature."}), 400
+
+    event_type = event.get("type") or ""
+    event_object = ((event.get("data") or {}).get("object")) or {}
+
+    if event_type not in {"checkout.session.completed", "checkout.session.async_payment_succeeded"}:
+        return jsonify({"received": True}), 200
+
+    checkout_session_id = (event_object.get("id") or "").strip()
+    appointment_id = event_object.get("client_reference_id") or (event_object.get("metadata") or {}).get("appointment_id")
+    if not checkout_session_id or not appointment_id:
+        current_app.logger.warning("Stripe webhook missing checkout session id or appointment id.")
+        return jsonify({"received": True}), 200
+
+    appointment = _load_appointment_for_payment(appointment_id)
+    if not appointment:
+        current_app.logger.warning("Stripe webhook referenced missing appointment %s.", appointment_id)
+        return jsonify({"received": True}), 200
+
+    had_paid_payment = any(payment.provider == "stripe" and payment.status == "paid" for payment in appointment.payments)
+    try:
+        payment = sync_checkout_payment_for_appointment(
+            appointment,
+            checkout_session_id,
+            checkout_session=event_object,
+        )
+        db.session.commit()
+    except StripePaymentPendingError:
+        db.session.rollback()
+        return jsonify({"received": True, "status": "processing"}), 200
+    except (StripePaymentError, stripe.error.StripeError, SQLAlchemyError) as exc:
+        db.session.rollback()
+        current_app.logger.exception("Unable to finalize Stripe checkout session %s: %s", checkout_session_id, exc)
+        return jsonify({"error": "Unable to process Stripe webhook."}), 500
+
+    appointment = _load_appointment_for_payment(appointment.id)
+    if payment and not had_paid_payment:
+        _notify_for_paid_appointment(appointment, payment)
+
+    return jsonify({"received": True}), 200
 
 
 @api_bp.route("/api/admin/appointments", methods=["GET"])

@@ -479,12 +479,15 @@ class SessionOption(TimestampMixin, db.Model):
 
     id = db.Column(db.Integer, primary_key=True)
     name = db.Column(db.String(120))
+    tagline = db.Column(db.String(120))
+    description = db.Column(db.Text)
+    category = db.Column(db.String(80))
     duration_minutes = db.Column(db.Integer, nullable=False)
     price_cents = db.Column(db.Integer, nullable=False)
     is_active = db.Column(db.Boolean, default=True, nullable=False)
 
     def __repr__(self) -> str:
-        return f"<SessionOption {self.id}: {self.duration_minutes}min>"
+        return f"<SessionOption {self.id}: {self.name or self.duration_minutes}>"
 
 
 class UserNotification(TimestampMixin, db.Model):

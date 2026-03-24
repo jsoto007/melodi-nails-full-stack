@@ -65,7 +65,7 @@ def _build_calendar_attachment(
 ) -> str:
     lines = [
         "BEGIN:VCALENDAR",
-        "PRODID:-//Black Work NYC//Booking Notification//EN",
+        "PRODID:-//Melodi Nails//Booking Notification//EN",
         "VERSION:2.0",
         "METHOD:REQUEST",
         "BEGIN:VEVENT",
@@ -157,9 +157,9 @@ def send_internal_booking_notification(
         manage_url,
     )
     appointment_location = current_app.config.get("BOOKING_LOCATION_NAME") or brand
-    organizer_email = current_app.config.get("MAILGUN_FROM") or f"no-reply@{current_app.config.get('MAILGUN_DOMAIN') or 'mail.blackworknyc.com'}"
+    organizer_email = current_app.config.get("MAILGUN_FROM") or f"no-reply@{current_app.config.get('MAILGUN_DOMAIN') or 'mail.melodinails.com'}"
     internal_email = (
-        current_app.config.get("INTERNAL_BOOKING_NOTIFICATION_EMAIL") or "booking@blackworknyc.com"
+        current_app.config.get("INTERNAL_BOOKING_NOTIFICATION_EMAIL") or "nailsmelodi@gmail.com"
     )
 
     calendar_invite_text: str | None = None

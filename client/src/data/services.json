@@ -1,44 +1,101 @@
 [
   {
-    "id": "service-russian-manicure",
-    "title": "Russian Manicure",
-    "tagline": "Clean finish",
-    "description": "Dry manicure focused on detailed cuticle care, skin refinement, gel polish, and calcium gel for a polished natural finish.",
-    "duration": "Approx. 60-90 minutes"
+    "id": "service-manicura-rusa",
+    "name": "Manicura Rusa",
+    "tagline": "Acabado limpio",
+    "description": "Manicure en seco enfocado en cuticula detallada, refinamiento de la piel, esmalte semipermanente y calcio gel para un acabado natural y pulido.",
+    "category": "Manicura",
+    "duration_minutes": 90,
+    "price_cents": 5000
   },
   {
-    "id": "service-gel-pedicure",
-    "title": "Gel Pedicure",
-    "tagline": "Soft care",
-    "description": "Nail and foot cleanup, exfoliation, hydration, and long-lasting semi-permanent gel color in your preferred shade.",
-    "duration": "Approx. 60 minutes"
+    "id": "service-unas-gel",
+    "name": "Uñas con Pintura en Gel",
+    "tagline": "Color duradero",
+    "description": "Uñas acrílicas transparentes terminadas con esmalte semipermanente en gel en el tono que elijas para un acabado brillante y de larga duración.",
+    "category": "Manicura",
+    "duration_minutes": 75,
+    "price_cents": 5000
   },
   {
-    "id": "service-acrylic-color",
-    "title": "Color Acrylic Set",
-    "tagline": "Bold color",
-    "description": "A full acrylic set in the color of your choice for durable, statement nails tailored to your preferred length and shape.",
-    "duration": "Approx. 90-120 minutes"
+    "id": "service-acrilico-color",
+    "name": "Acrílico de Color",
+    "tagline": "Color intenso",
+    "description": "Set completo de acrílico en el color de tu elección para uñas duraderas y llamativas adaptadas al largo y forma que prefieras.",
+    "category": "Manicura",
+    "duration_minutes": 120,
+    "price_cents": 6500
+  },
+  {
+    "id": "service-retoque-color",
+    "name": "Retoque en Acrílico de Color",
+    "tagline": "Color recargado",
+    "description": "Relleno de acrílico de color en el área de crecimiento para mantener tus uñas perfectas sin necesidad de hacer un set completo.",
+    "category": "Retoques",
+    "duration_minutes": 60,
+    "price_cents": 5500
+  },
+  {
+    "id": "service-retoque-cristal",
+    "name": "Retoque de Acrílico Cristal",
+    "tagline": "Cristal renovado",
+    "description": "Relleno de acrílico cristal con esmalte semipermanente para mantener el brillo y la estructura de tus uñas entre visitas.",
+    "category": "Retoques",
+    "duration_minutes": 60,
+    "price_cents": 4000
   },
   {
     "id": "service-baby-boomer",
-    "title": "Baby Boomer",
-    "tagline": "Soft blend",
-    "description": "A smooth acrylic fade between two tones for a soft, elevated look that stays classic and photo-ready.",
-    "duration": "Approx. 90-120 minutes"
+    "name": "Baby Boomer",
+    "tagline": "Difuminado suave",
+    "description": "Degradé en acrílico entre dos tonos para un look suave, elegante y siempre listo para foto. Ideal para quienes buscan un estilo atemporal.",
+    "category": "Diseños Premium",
+    "duration_minutes": 120,
+    "price_cents": 7000
   },
   {
-    "id": "service-french",
-    "title": "Perfect French",
-    "tagline": "Signature detail",
-    "description": "A precise French finish over a structured acrylic base, ideal for clients who want crisp lines and a timeless set.",
-    "duration": "Approx. 90-120 minutes"
+    "id": "service-french-perfecto",
+    "name": "French Perfecto",
+    "tagline": "Detalle distintivo",
+    "description": "Acabado francés preciso sobre una base acrílica estructurada, ideal para líneas limpias y un set atemporal que siempre luce impecable.",
+    "category": "Diseños Premium",
+    "duration_minutes": 120,
+    "price_cents": 9000
   },
   {
-    "id": "service-paraffin",
-    "title": "Paraffin Treatment",
-    "tagline": "Extra hydration",
-    "description": "A warm paraffin treatment for hands or feet to boost hydration, comfort, and circulation as an add-on to your visit.",
-    "duration": "Approx. 15 minutes"
+    "id": "service-acrilico-french",
+    "name": "Acrílico de Color + French",
+    "tagline": "Color con francés",
+    "description": "Acrílico de color con puntas en gel francés para un acabado elegante de doble impacto que combina color y el clásico estilo francés.",
+    "category": "Diseños Premium",
+    "duration_minutes": 105,
+    "price_cents": 7500
+  },
+  {
+    "id": "service-pedicura-gel",
+    "name": "Pedicura en Gel",
+    "tagline": "Cuidado suave",
+    "description": "Limpieza de uñas y pies, exfoliación, hidratación y color en gel semipermanente de larga duración en el tono que prefieras.",
+    "category": "Pedicura",
+    "duration_minutes": 60,
+    "price_cents": 4500
+  },
+  {
+    "id": "service-derretido",
+    "name": "Derretido de Uñas Acrílicas",
+    "tagline": "Remoción segura",
+    "description": "Remoción de uñas acrílicas con acetona pura y agua caliente para un proceso limpio, seguro y sin daño a la uña natural.",
+    "category": "Tratamientos",
+    "duration_minutes": 30,
+    "price_cents": 1000
+  },
+  {
+    "id": "service-parafina",
+    "name": "Tratamiento de Parafina",
+    "tagline": "Hidratación extra",
+    "description": "Tratamiento tibio de parafina para manos o pies que aporta hidratación, comodidad y mejora la circulación como complemento de tu visita.",
+    "category": "Tratamientos",
+    "duration_minutes": 15,
+    "price_cents": 1000
   }
 ]

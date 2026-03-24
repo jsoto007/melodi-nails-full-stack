@@ -47,10 +47,21 @@ function normalizeDecimalInput(value) {
 const INITIAL_SESSION_DRAFT = {
   id: null,
   name: '',
+  tagline: '',
+  description: '',
+  category: '',
   durationHours: '',
   price: '',
   is_active: true
 };
+
+const SERVICE_CATEGORIES = [
+  'Manicura',
+  'Retoques',
+  'Diseños Premium',
+  'Pedicura',
+  'Tratamientos',
+];
 
 function buildSessionPayload(input) {
   if (!input) {
@@ -68,6 +79,9 @@ function buildSessionPayload(input) {
   return {
     payload: {
       name: (input.name || '').trim() || null,
+      tagline: (input.tagline || '').trim() || null,
+      description: (input.description || '').trim() || null,
+      category: (input.category || '').trim() || null,
       duration_minutes: Math.max(1, Math.round(durationValue * 60)),
       price_cents: Math.round(priceValue * 100),
       is_active: Boolean(input.is_active)
@@ -388,6 +402,9 @@ export default function AdminSettings() {
     setSessionForm({
       id: option.id,
       name: option.name || '',
+      tagline: option.tagline || '',
+      description: option.description || '',
+      category: option.category || '',
       durationHours: toHoursInputValue(option.duration_minutes),
       price: option.price_cents ? (option.price_cents / 100).toFixed(2).replace(/\.?0+$/, '') : '',
       is_active: Boolean(option.is_active)
@@ -696,6 +713,7 @@ export default function AdminSettings() {
                     <div className="min-w-0">
                       <p className="text-sm font-semibold text-gray-900">{optionLabel}</p>
                       <p className="text-xs uppercase tracking-[0.3em] text-gray-500">
+                        {option.category ? `${option.category} · ` : ''}
                         {formatDurationLabel(option.duration_minutes)} ·{' '}
                         {pricingFormatter.format((option.price_cents ?? 0) / 100)}
                       </p>
@@ -741,51 +759,78 @@ export default function AdminSettings() {
                   {isEditing ? (
                     <div className="space-y-3 rounded-2xl border-t border-gray-200/70 pt-4 transition">
                       <div className="grid gap-3 sm:grid-cols-3 sm:items-end">
-                        <label
-                          htmlFor="inline-session-name-input"
-                          className="text-xs font-semibold uppercase tracking-[0.3em] text-gray-500"
-                        >
-                          Label (optional)
+                        <label className="text-xs font-semibold uppercase tracking-[0.3em] text-gray-500">
+                          Nombre del servicio
                         </label>
                         <div className="sm:col-span-2">
                           <input
-                            id="inline-session-name-input"
                             type="text"
                             value={sessionForm.name}
                             onChange={handleSessionFormChange('name')}
-                            placeholder="e.g. Two-hour sitting"
+                            placeholder="ej. Manicura Rusa"
                             className="w-full rounded-xl border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 transition focus:border-gray-900 focus:outline-none focus:ring-0"
                           />
                         </div>
-                        <label
-                          htmlFor="inline-session-duration-input"
-                          className="text-xs font-semibold uppercase tracking-[0.3em] text-gray-500"
-                        >
-                          Duration (hours)
+                        <label className="text-xs font-semibold uppercase tracking-[0.3em] text-gray-500">
+                          Tagline
                         </label>
                         <div className="sm:col-span-2">
                           <input
-                            id="inline-session-duration-input"
+                            type="text"
+                            value={sessionForm.tagline}
+                            onChange={handleSessionFormChange('tagline')}
+                            placeholder="ej. Acabado limpio"
+                            className="w-full rounded-xl border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 transition focus:border-gray-900 focus:outline-none focus:ring-0"
+                          />
+                        </div>
+                        <label className="self-start pt-2 text-xs font-semibold uppercase tracking-[0.3em] text-gray-500">
+                          Descripción
+                        </label>
+                        <div className="sm:col-span-2">
+                          <textarea
+                            rows={3}
+                            value={sessionForm.description}
+                            onChange={handleSessionFormChange('description')}
+                            placeholder="Describe el servicio para el cliente…"
+                            className="w-full rounded-xl border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 transition focus:border-gray-900 focus:outline-none focus:ring-0"
+                          />
+                        </div>
+                        <label className="text-xs font-semibold uppercase tracking-[0.3em] text-gray-500">
+                          Categoría
+                        </label>
+                        <div className="sm:col-span-2">
+                          <select
+                            value={sessionForm.category}
+                            onChange={handleSessionFormChange('category')}
+                            className="w-full rounded-xl border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 transition focus:border-gray-900 focus:outline-none focus:ring-0"
+                          >
+                            <option value="">Sin categoría</option>
+                            {SERVICE_CATEGORIES.map((cat) => (
+                              <option key={cat} value={cat}>{cat}</option>
+                            ))}
+                          </select>
+                        </div>
+                        <label className="text-xs font-semibold uppercase tracking-[0.3em] text-gray-500">
+                          Duración (horas)
+                        </label>
+                        <div className="sm:col-span-2">
+                          <input
                             type="text"
                             value={sessionForm.durationHours}
                             onChange={handleSessionFormChange('durationHours')}
-                            placeholder="e.g. 1.5"
+                            placeholder="ej. 1.5"
                             className="w-full rounded-xl border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 transition focus:border-gray-900 focus:outline-none focus:ring-0"
                           />
                         </div>
-                        <label
-                          htmlFor="inline-session-price-input"
-                          className="text-xs font-semibold uppercase tracking-[0.3em] text-gray-500"
-                        >
-                          Price (USD)
+                        <label className="text-xs font-semibold uppercase tracking-[0.3em] text-gray-500">
+                          Precio (USD)
                         </label>
                         <div className="sm:col-span-2">
                           <input
-                            id="inline-session-price-input"
                             type="text"
                             value={sessionForm.price}
                             onChange={handleSessionFormChange('price')}
-                            placeholder="e.g. 175.00 or 0 for consults"
+                            placeholder="ej. 65.00"
                             className="w-full rounded-xl border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 transition focus:border-gray-900 focus:outline-none focus:ring-0"
                           />
                         </div>
@@ -797,7 +842,7 @@ export default function AdminSettings() {
                               onChange={handleSessionFormChange('is_active')}
                               className="h-4 w-4 rounded border border-gray-400 text-gray-900 focus:ring-gray-900"
                             />
-                            Visible to clients
+                            Visible para clientes
                           </label>
                         </div>
                       </div>
@@ -806,10 +851,10 @@ export default function AdminSettings() {
                       ) : null}
                       <div className="flex flex-wrap gap-3">
                         <Button type="button" onClick={handleSessionSave} disabled={sessionSaving}>
-                          {sessionSaving ? 'Saving...' : 'Save changes'}
+                          {sessionSaving ? 'Guardando...' : 'Guardar cambios'}
                         </Button>
                         <Button type="button" variant="ghost" onClick={resetSessionForm} disabled={sessionSaving}>
-                          Cancel
+                          Cancelar
                         </Button>
                       </div>
                     </div>
@@ -843,40 +888,82 @@ export default function AdminSettings() {
         <div className="space-y-4 text-sm text-gray-700">
           <div className="space-y-1">
             <label htmlFor="session-modal-name" className="text-xs uppercase tracking-[0.3em] text-gray-500">
-              Label (optional)
+              Nombre del servicio
             </label>
             <input
               id="session-modal-name"
               type="text"
               value={modalForm.name}
               onChange={handleModalFormChange('name')}
-              placeholder="e.g. Two-hour sitting"
+              placeholder="ej. Manicura Rusa"
               className="w-full rounded-xl border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 transition focus:border-gray-900 focus:outline-none focus:ring-0"
             />
           </div>
           <div className="space-y-1">
+            <label htmlFor="session-modal-tagline" className="text-xs uppercase tracking-[0.3em] text-gray-500">
+              Tagline
+            </label>
+            <input
+              id="session-modal-tagline"
+              type="text"
+              value={modalForm.tagline}
+              onChange={handleModalFormChange('tagline')}
+              placeholder="ej. Acabado limpio"
+              className="w-full rounded-xl border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 transition focus:border-gray-900 focus:outline-none focus:ring-0"
+            />
+          </div>
+          <div className="space-y-1">
+            <label htmlFor="session-modal-description" className="text-xs uppercase tracking-[0.3em] text-gray-500">
+              Descripción
+            </label>
+            <textarea
+              id="session-modal-description"
+              rows={3}
+              value={modalForm.description}
+              onChange={handleModalFormChange('description')}
+              placeholder="Describe el servicio para el cliente…"
+              className="w-full rounded-xl border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 transition focus:border-gray-900 focus:outline-none focus:ring-0"
+            />
+          </div>
+          <div className="space-y-1">
+            <label htmlFor="session-modal-category" className="text-xs uppercase tracking-[0.3em] text-gray-500">
+              Categoría
+            </label>
+            <select
+              id="session-modal-category"
+              value={modalForm.category}
+              onChange={handleModalFormChange('category')}
+              className="w-full rounded-xl border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 transition focus:border-gray-900 focus:outline-none focus:ring-0"
+            >
+              <option value="">Sin categoría</option>
+              {SERVICE_CATEGORIES.map((cat) => (
+                <option key={cat} value={cat}>{cat}</option>
+              ))}
+            </select>
+          </div>
+          <div className="space-y-1">
             <label htmlFor="session-modal-duration" className="text-xs uppercase tracking-[0.3em] text-gray-500">
-              Duration (hours)
+              Duración (horas)
             </label>
             <input
               id="session-modal-duration"
               type="text"
               value={modalForm.durationHours}
               onChange={handleModalFormChange('durationHours')}
-              placeholder="e.g. 1.5"
+              placeholder="ej. 1.5"
               className="w-full rounded-xl border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 transition focus:border-gray-900 focus:outline-none focus:ring-0"
             />
           </div>
           <div className="space-y-1">
             <label htmlFor="session-modal-price" className="text-xs uppercase tracking-[0.3em] text-gray-500">
-              Price (USD)
+              Precio (USD)
             </label>
             <input
               id="session-modal-price"
               type="text"
               value={modalForm.price}
               onChange={handleModalFormChange('price')}
-              placeholder="e.g. 175.00 or 0 for consults"
+              placeholder="ej. 65.00"
               className="w-full rounded-xl border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 transition focus:border-gray-900 focus:outline-none focus:ring-0"
             />
           </div>
@@ -887,7 +974,7 @@ export default function AdminSettings() {
               onChange={handleModalFormChange('is_active')}
               className="h-4 w-4 rounded border border-gray-400 text-gray-900"
             />
-            Visible to clients
+            Visible para clientes
           </label>
         </div>
         {modalError ? (

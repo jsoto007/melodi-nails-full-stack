@@ -6,7 +6,7 @@ from typing import Any, Dict
 from flask import Flask
 from flask_sqlalchemy import SQLAlchemy
 
-_DEFAULT_DB_PATH = Path(__file__).resolve().parent.parent / "blackink_dev.db"
+_DEFAULT_DB_PATH = Path(__file__).resolve().parent.parent / "melodi_nails_dev.db"
 _DEFAULT_POOL_RECYCLE_SECONDS = 600
 
 db = SQLAlchemy()
@@ -60,7 +60,8 @@ def _resolve_database_uri(app: Flask) -> str:
         )
         return legacy_uri
 
-    return f"sqlite+pysqlite:///{_DEFAULT_DB_PATH}"
+    # Default to the known Render database to prevent accidental data wipes from ephemeral SQLite on redeploy
+    return "postgresql://melody_nails_db_user:dorBBpHD9Q8FTbzoE4OZ8qqvYHjsFPWD@dpg-d6u43rn5gffc739gs80g-a.ohio-postgres.render.com/melody_nails_db"
 
 
 def configure_app(app: Flask) -> SQLAlchemy:
@@ -128,6 +129,7 @@ def configure_app(app: Flask) -> SQLAlchemy:
 
     app.config["STRIPE_SECRET_KEY"] = os.getenv("STRIPE_SECRET_KEY")
     app.config["STRIPE_PUBLISHABLE_KEY"] = os.getenv("STRIPE_PUBLISHABLE_KEY")
+    app.config["STRIPE_WEBHOOK_SECRET"] = os.getenv("STRIPE_WEBHOOK_SECRET")
     app.config["STRIPE_CURRENCY"] = (os.getenv("STRIPE_CURRENCY") or "USD").upper()
     app.config["STRIPE_COUNTRY_CODE"] = (os.getenv("STRIPE_COUNTRY_CODE") or "US").upper()
     if app.config["FLASK_ENV"] == "production":
@@ -143,10 +145,10 @@ def configure_app(app: Flask) -> SQLAlchemy:
     app.config["MAILGUN_API_KEY"] = os.getenv("MAILGUN_API_KEY")
     app.config["MAILGUN_FROM"] = os.getenv("MAILGUN_FROM")
     app.config["INTERNAL_BOOKING_NOTIFICATION_EMAIL"] = os.getenv(
-        "INTERNAL_BOOKING_NOTIFICATION_EMAIL", "booking@blackworknyc.com"
+        "INTERNAL_BOOKING_NOTIFICATION_EMAIL", "nailsmelodi@gmail.com"
     )
     app.config["CLIENT_BASE_URL"] = os.getenv("CLIENT_BASE_URL")
-    app.config["BRAND_NAME"] = os.getenv("BRAND_NAME", "Black Work NYC")
+    app.config["BRAND_NAME"] = os.getenv("BRAND_NAME", "Melodi Nails")
     app.config["EMAIL_LOGO_URL"] = os.getenv("EMAIL_LOGO_URL")
     app.config["BOOKING_LOCATION_NAME"] = os.getenv("BOOKING_LOCATION_NAME") or app.config["BRAND_NAME"]
 

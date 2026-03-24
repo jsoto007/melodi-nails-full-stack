@@ -94,6 +94,70 @@ function SummaryRow({ label, value }) {
   );
 }
 
+function groupByCategory(products) {
+  const map = new Map();
+  for (const p of products) {
+    const cat = p.category || 'Otros';
+    if (!map.has(cat)) map.set(cat, []);
+    map.get(cat).push(p);
+  }
+  return map;
+}
+
+function ServiceCategoryGroups({ products, selectedId, currency, onSelect }) {
+  const groups = useMemo(() => groupByCategory(products), [products]);
+  return (
+    <div className="space-y-6">
+      {Array.from(groups.entries()).map(([category, items]) => (
+        <div key={category} className="space-y-3">
+          <div className="flex items-center gap-3">
+            <p className="shrink-0 text-[10px] font-semibold uppercase tracking-[0.35em] text-[#6f7863]">
+              {category}
+            </p>
+            <div className="h-px flex-1 bg-[#ede5d8]" />
+          </div>
+          <div className="grid gap-3 sm:grid-cols-2">
+            {items.map((product) => {
+              const selected = String(product.id) === String(selectedId);
+              return (
+                <button
+                  key={product.id}
+                  type="button"
+                  onClick={() => onSelect(product.id)}
+                  className={`rounded-2xl border p-4 text-left transition ${
+                    selected
+                      ? 'border-[#2a3923] bg-[#2a3923] text-white shadow-md'
+                      : 'border-[#d9cbbc] bg-white hover:border-[#2a3923] hover:shadow-sm'
+                  }`}
+                >
+                  {product.tagline ? (
+                    <p className={`mb-1 text-[10px] font-semibold uppercase tracking-[0.3em] ${selected ? 'text-white/70' : 'text-[#8d755a]'}`}>
+                      {product.tagline}
+                    </p>
+                  ) : null}
+                  <p className={`font-semibold ${selected ? 'text-white' : 'text-slate-900'}`}>
+                    {product.name || `Servicio ${product.id}`}
+                  </p>
+                  {product.description ? (
+                    <p className={`mt-1 text-xs leading-relaxed ${selected ? 'text-white/75' : 'text-[#6f7863]'}`}>
+                      {product.description}
+                    </p>
+                  ) : null}
+                  <div className={`mt-2 flex items-center gap-2 text-xs ${selected ? 'text-white/80' : 'text-[#6f7863]'}`}>
+                    <span>{formatDuration(product.duration_minutes)}</span>
+                    <span>·</span>
+                    <span className="font-semibold">{formatCurrency(product.price_cents, currency)}</span>
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 export default function ShareYourIdea() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
@@ -323,40 +387,20 @@ export default function ShareYourIdea() {
               </Card>
 
               {/* 2 — Service */}
-              <Card className="space-y-5 p-6 sm:p-8">
-                <SectionHeader number="2" title="Choose a service" />
+              <Card className="space-y-6 p-6 sm:p-8">
+                <SectionHeader number="2" title="Elige un servicio" />
                 {products.length === 0 ? (
-                  <p className="text-sm text-[#6f7863]">Loading services…</p>
+                  <p className="text-sm text-[#6f7863]">Cargando servicios…</p>
                 ) : (
-                  <div className="grid gap-3 sm:grid-cols-2">
-                    {products.map((product) => {
-                      const selected = String(product.id) === String(form.session_option_id);
-                      return (
-                        <button
-                          key={product.id}
-                          type="button"
-                          onClick={() => {
-                            setForm((c) => ({ ...c, session_option_id: String(product.id) }));
-                            setFormErrors((c) => ({ ...c, session_option_id: '' }));
-                          }}
-                          className={`rounded-2xl border p-4 text-left transition ${
-                            selected
-                              ? 'border-[#2a3923] bg-[#2a3923] text-white shadow-md'
-                              : 'border-[#d9cbbc] bg-white hover:border-[#2a3923] hover:shadow-sm'
-                          }`}
-                        >
-                          <p className={`font-semibold ${selected ? 'text-white' : 'text-slate-900'}`}>
-                            {product.name || `Service ${product.id}`}
-                          </p>
-                          <div className={`mt-1.5 flex items-center gap-2 text-xs ${selected ? 'text-white/80' : 'text-[#6f7863]'}`}>
-                            <span>{formatDuration(product.duration_minutes)}</span>
-                            <span>·</span>
-                            <span className="font-semibold">{formatCurrency(product.price_cents, paymentConfig?.currency || 'USD')}</span>
-                          </div>
-                        </button>
-                      );
-                    })}
-                  </div>
+                  <ServiceCategoryGroups
+                    products={products}
+                    selectedId={form.session_option_id}
+                    currency={paymentConfig?.currency || 'USD'}
+                    onSelect={(id) => {
+                      setForm((c) => ({ ...c, session_option_id: String(id) }));
+                      setFormErrors((c) => ({ ...c, session_option_id: '' }));
+                    }}
+                  />
                 )}
                 {formErrors.session_option_id ? (
                   <p className="text-xs font-medium text-red-600">{formErrors.session_option_id}</p>

@@ -38,6 +38,66 @@ function storeLatestAppointment(appointment) {
   }
 }
 
+const PRICE_FORMATTER = new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 });
+
+function RelatedServices({ currentServiceName, currentCategory }) {
+  const [services, setServices] = useState([]);
+  useEffect(() => {
+    const controller = new AbortController();
+    apiGet('/api/pricing/session-options', { signal: controller.signal })
+      .then((data) => { if (Array.isArray(data)) setServices(data); })
+      .catch(() => {});
+    return () => controller.abort();
+  }, []);
+
+  const related = useMemo(() => {
+    if (!currentCategory) return [];
+    return services.filter(
+      (s) => s.category === currentCategory && s.name !== currentServiceName
+    ).slice(0, 3);
+  }, [services, currentCategory, currentServiceName]);
+
+  if (!related.length) return null;
+
+  return (
+    <FadeIn className="mt-8">
+      <div className="mb-4 flex items-center gap-4">
+        <p className="shrink-0 text-xs font-semibold uppercase tracking-[0.35em] text-gray-500">
+          También en {currentCategory}
+        </p>
+        <div className="h-px flex-1 bg-gray-200" />
+      </div>
+      <div className="grid gap-4 sm:grid-cols-3">
+        {related.map((s) => (
+          <Card key={s.id} className="space-y-2 bg-white/80">
+            {s.tagline ? (
+              <p className="text-[10px] font-semibold uppercase tracking-[0.3em] text-[#8d755a]">{s.tagline}</p>
+            ) : null}
+            <p className="font-semibold text-slate-900">{s.name}</p>
+            {s.description ? (
+              <p className="text-xs leading-relaxed text-gray-500 line-clamp-2">{s.description}</p>
+            ) : null}
+            <div className="flex items-center justify-between gap-2 pt-1">
+              <span className="text-xs text-gray-400">
+                {s.duration_minutes ? `${s.duration_minutes} min` : ''}
+              </span>
+              <span className="rounded-full bg-[#2a3923] px-2.5 py-0.5 text-xs font-semibold text-[#f3e7d9]">
+                {s.price_cents ? PRICE_FORMATTER.format(s.price_cents / 100) : '—'}
+              </span>
+            </div>
+            <Link
+              to="/appointments/new"
+              className="mt-1 block text-center rounded-xl border border-[#2a3923] px-3 py-2 text-xs font-semibold text-[#2a3923] transition hover:bg-[#2a3923] hover:text-white"
+            >
+              Reservar
+            </Link>
+          </Card>
+        ))}
+      </div>
+    </FadeIn>
+  );
+}
+
 export default function BookingConfirmation() {
   const { isAuthenticated } = useAuth();
   const [appointment, setAppointment] = useState(() => readLatestAppointment());
@@ -58,32 +118,43 @@ export default function BookingConfirmation() {
       return;
     }
     let isActive = true;
+    let retryTimer = null;
     setIsFetchingRemote(true);
     setFetchError(null);
-    apiPost('/api/payments/stripe/verify-session', {
-      appointment_id: appointmentIdQuery,
-      session_id: sessionIdQuery
-    })
-      .then((payload) => {
-        if (!isActive) {
-          return;
-        }
-        setRemoteAppointment(payload);
-        storeLatestAppointment(payload);
+    const verifyPayment = (attempt = 0) => {
+      apiPost('/api/payments/stripe/verify-session', {
+        appointment_id: appointmentIdQuery,
+        session_id: sessionIdQuery
       })
-      .catch((error) => {
-        if (!isActive) {
-          return;
-        }
-        setFetchError(error.message || 'Unable to verify Stripe payment.');
-      })
-      .finally(() => {
-        if (isActive) {
+        .then((payload) => {
+          if (!isActive) {
+            return;
+          }
+          const appointmentPayload = payload?.appointment ?? payload;
+          if (appointmentPayload) {
+            setRemoteAppointment(appointmentPayload);
+            storeLatestAppointment(appointmentPayload);
+          }
+          if (payload?.payment_status === 'processing' && attempt < 6) {
+            retryTimer = window.setTimeout(() => verifyPayment(attempt + 1), 2000);
+            return;
+          }
           setIsFetchingRemote(false);
-        }
-      });
+        })
+        .catch((error) => {
+          if (!isActive) {
+            return;
+          }
+          setFetchError(error.message || 'Unable to verify Stripe payment.');
+          setIsFetchingRemote(false);
+        });
+    };
+    verifyPayment();
     return () => {
       isActive = false;
+      if (retryTimer) {
+        window.clearTimeout(retryTimer);
+      }
     };
   }, [appointmentIdQuery, sessionIdQuery]);
 
@@ -203,7 +274,7 @@ export default function BookingConfirmation() {
         </FadeIn>
         <FadeIn>
           <p className="text-sm text-gray-600">
-            If you don’t see the email, double-check spam or promotions. The confirmation includes Google and Apple calendar options so you can lock in the time.
+            If you don’t see the email, double-check your spam or promotions folder and look for an email from <span className="font-semibold">melodinails@mail.sotodev.com</span>. The confirmation includes Google and Apple calendar options so you can lock in the time.
           </p>
         </FadeIn>
 
@@ -311,6 +382,11 @@ export default function BookingConfirmation() {
                 </Button>
               )}
             </div>
+
+            <RelatedServices
+              currentServiceName={serviceLabel}
+              currentCategory={bookingDetails?.session_option?.category || null}
+            />
           </FadeIn>
         ) : isFetchingRemote ? (
           <FadeIn>
