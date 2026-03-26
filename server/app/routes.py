@@ -1941,41 +1941,22 @@ def public_availability_slots():
     day_minimum = _minimum_duration_for_weekday(weekday, hours_map=working_hours_map)
     day_label = INDEX_TO_DAY.get(weekday, "this day").capitalize()
 
-    def minimum_duration_error():
-        hours_value = day_minimum / 60
-        duration_desc = (
-            f"{int(hours_value)} hour{'s' if hours_value != 1 else ''}"
-            if hours_value.is_integer()
-            else f"{hours_value:.1f} hours"
-        )
-        return (
-            jsonify({"error": f"Minimum appointment duration on {day_label} is {duration_desc}."}),
-            400,
-        )
-
     duration_minutes = None
     if session_option:
         duration_minutes = session_option.duration_minutes
-        if not is_free_consultation and duration_minutes < day_minimum:
-            return minimum_duration_error()
     else:
-        if duration_param is not None and duration_param < day_minimum:
-            return minimum_duration_error()
-
         duration_minutes = duration_param or calculate_suggested_duration_minutes(placement, size)
         if duration_minutes % DEFAULT_SLOT_INTERVAL_MINUTES != 0:
             duration_minutes = int(
                 round(duration_minutes / DEFAULT_SLOT_INTERVAL_MINUTES) * DEFAULT_SLOT_INTERVAL_MINUTES
             )
-        duration_minutes = max(duration_minutes, day_minimum)
 
-    allow_shorter = is_free_consultation
     slots, window = build_available_slots(
         target_date,
         duration_minutes,
         minimum_duration_minutes=day_minimum,
         hours_map=working_hours_map,
-        allow_shorter_than_weekday_minimum=allow_shorter,
+        allow_shorter_than_weekday_minimum=True,
     )
     return jsonify(
         {
