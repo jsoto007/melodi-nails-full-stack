@@ -21,7 +21,7 @@ from flask import Blueprint, current_app, g, jsonify, request, send_file, send_f
 from flask_limiter.errors import RateLimitExceeded
 from flask_limiter.util import get_remote_address
 from cryptography.fernet import Fernet, InvalidToken
-from sqlalchemy import case, func, or_, select
+from sqlalchemy import case, func, or_, select, text
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import joinedload
 from werkzeug.exceptions import RequestEntityTooLarge
@@ -2718,6 +2718,42 @@ def payment_configuration():
     )
 
 
+@api_bp.route("/api/payments/health", methods=["GET"])
+def payment_health():
+    """Expose non-secret payment readiness diagnostics for deployment debugging."""
+    diagnostics = {
+        "stripe_secret_configured": _stripe_payments_active(),
+        "stripe_publishable_configured": _stripe_public_enabled(),
+        "currency": _payment_currency(),
+        "country_code": _payment_country_code(),
+        "client_base_url_configured": bool((current_app.config.get("CLIENT_BASE_URL") or "").strip()),
+    }
+
+    try:
+        alembic_version = db.session.execute(text("SELECT version_num FROM alembic_version")).scalar()
+        diagnostics["alembic_version"] = alembic_version
+    except Exception as exc:
+        diagnostics["alembic_version"] = None
+        diagnostics["alembic_error"] = str(getattr(exc, "orig", exc))
+
+    try:
+        db.session.execute(select(BookingDraft.id).limit(1)).scalar()
+        diagnostics["booking_drafts_accessible"] = True
+    except Exception as exc:
+        diagnostics["booking_drafts_accessible"] = False
+        diagnostics["booking_drafts_error"] = str(getattr(exc, "orig", exc))
+
+    try:
+        db.session.execute(select(SessionOption.id).limit(1)).scalar()
+        diagnostics["session_options_accessible"] = True
+    except Exception as exc:
+        diagnostics["session_options_accessible"] = False
+        diagnostics["session_options_error"] = str(getattr(exc, "orig", exc))
+
+    status_code = 200 if diagnostics["stripe_secret_configured"] and diagnostics["booking_drafts_accessible"] else 503
+    return jsonify(diagnostics), status_code
+
+
 @api_bp.route("/api/pricing/hourly-rate", methods=["GET"])
 def pricing_hourly_rate():
     return jsonify(
@@ -4553,9 +4589,14 @@ def initiate_stripe_booking():
     db.session.add(draft)
     try:
         db.session.flush()
-    except SQLAlchemyError:
+    except SQLAlchemyError as exc:
         db.session.rollback()
-        current_app.logger.exception("Unable to persist booking draft before Stripe checkout creation.")
+        current_app.logger.exception(
+            "Unable to persist booking draft before Stripe checkout creation. "
+            "SQLAlchemy error=%s, original error=%s",
+            exc,
+            getattr(exc, "orig", exc),
+        )
         return jsonify({"error": "Unable to start booking right now. Please try again soon."}), 503
 
     try:
@@ -4573,9 +4614,16 @@ def initiate_stripe_booking():
 
     try:
         db.session.commit()
-    except SQLAlchemyError:
+    except SQLAlchemyError as exc:
         db.session.rollback()
-        current_app.logger.exception("Unable to save Stripe checkout session %s for booking draft %s.", draft.stripe_session_id, draft.id)
+        current_app.logger.exception(
+            "Unable to save Stripe checkout session %s for booking draft %s. "
+            "SQLAlchemy error=%s, original error=%s",
+            draft.stripe_session_id,
+            draft.id,
+            exc,
+            getattr(exc, "orig", exc),
+        )
         return jsonify({"error": "Unable to initiate booking. Please try again."}), 500
 
     return jsonify({"checkout_client_secret": checkout.get("client_secret")}), 200
