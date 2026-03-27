@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { useNavigate, useSearchParams } from 'react-router-dom';
+import { useSearchParams } from 'react-router-dom';
 import FadeIn from '../components/FadeIn.jsx';
 import Button from '../components/Button.jsx';
 import Card from '../components/Card.jsx';
@@ -7,7 +7,6 @@ import { apiGet, apiPost } from '../lib/api.js';
 import { loadStripe } from '@stripe/stripe-js';
 import { EmbeddedCheckoutProvider, EmbeddedCheckout } from '@stripe/react-stripe-js';
 
-const BOOKING_RECEIPT_KEY = 'melodi-nails:last-booking';
 const MAX_FILE_SIZE_BYTES = 8 * 1024 * 1024;
 const ACCEPTED_TYPES = new Set(['image/png', 'image/jpeg', 'image/jpg', 'image/webp', 'image/heic', 'image/heif']);
 
@@ -36,13 +35,6 @@ function readFileAsDataUrl(file) {
     reader.onerror = () => reject(new Error('Unable to read image.'));
     reader.readAsDataURL(file);
   });
-}
-
-function storeLatestAppointment(appointment) {
-  if (!appointment) return;
-  try {
-    sessionStorage.setItem(BOOKING_RECEIPT_KEY, JSON.stringify({ appointment, savedAt: Date.now() }));
-  } catch { /* ignore */ }
 }
 
 const inputClasses =
@@ -161,7 +153,6 @@ function ServiceCategoryGroups({ products, selectedId, currency, onSelect }) {
 }
 
 export default function ShareYourIdea() {
-  const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const [products, setProducts] = useState([]);
   const [paymentConfig, setPaymentConfig] = useState(null);
@@ -292,8 +283,8 @@ export default function ShareYourIdea() {
   const handleSubmit = async (e) => {
     e.preventDefault();
     const errors = validate();
-    if (Object.keys(errors).length) { 
-      setFormErrors(errors); 
+    if (Object.keys(errors).length) {
+      setFormErrors(errors);
       setTimeout(() => {
         const firstErrorField = Object.keys(errors)[0];
         let element = document.querySelector(`[name="${firstErrorField}"]`);
@@ -307,7 +298,7 @@ export default function ShareYourIdea() {
           if (typeof element.focus === 'function') element.focus({ preventScroll: true });
         }
       }, 50);
-      return; 
+      return;
     }
     setSubmitting(true);
     setPageError('');
@@ -324,19 +315,12 @@ export default function ShareYourIdea() {
         inspiration_urls,
         pay_full_amount: form.pay_full_amount,
       };
-      const response = await apiPost('/api/appointments', payload);
-      const appointment = response?.appointment || null;
-      if (appointment) storeLatestAppointment(appointment);
-      if (response?.requires_payment) {
-        if (response.checkout_client_secret) {
-          setClientSecret(response.checkout_client_secret);
-          return;
-        } else if (response.checkout_url) {
-          window.location.assign(response.checkout_url);
-          return;
-        }
+      const response = await apiPost('/api/payments/stripe/initiate', payload);
+      if (response?.checkout_client_secret) {
+        setClientSecret(response.checkout_client_secret);
+        return;
       }
-      navigate('/booking/confirmation', { state: { appointment } });
+      setPageError('Unable to start checkout. Please try again.');
     } catch (error) {
       if (error.body?.errors?.length) {
         const fieldErrors = {};

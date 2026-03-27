@@ -547,6 +547,45 @@ class StudioWorkingHour(TimestampMixin, db.Model):
     minimum_duration_minutes = db.Column(db.Integer, default=60, nullable=False)
 
 
+class BookingDraft(db.Model):
+    """Temporary storage for booking data while the user completes Stripe payment.
+
+    A draft is created when the user initiates checkout and is fulfilled
+    (converted into a real TattooAppointment) once Stripe confirms payment.
+    Drafts expire after 2 hours if never fulfilled.
+    """
+
+    __tablename__ = "booking_drafts"
+
+    id = db.Column(db.String(64), primary_key=True, default=lambda: str(uuid4()))
+    stripe_session_id = db.Column(db.String(255), unique=True, nullable=True, index=True)
+    first_name = db.Column(db.String(120), nullable=False)
+    last_name = db.Column(db.String(120), nullable=False)
+    email = db.Column(db.String(255), nullable=False)
+    phone = db.Column(db.String(40), nullable=False)
+    session_option_id = db.Column(db.Integer, db.ForeignKey("session_options.id"), nullable=False)
+    scheduled_start = db.Column(db.DateTime, nullable=False)
+    notes = db.Column(db.Text)
+    inspiration_data = db.Column(db.Text)  # JSON array of base64 data URLs
+    pay_full_amount = db.Column(db.Boolean, default=False, nullable=False)
+    amount_cents = db.Column(db.Integer, nullable=False)
+    currency = db.Column(db.String(3), default="USD", nullable=False)
+    payment_note = db.Column(db.String(255))
+    expires_at = db.Column(db.DateTime, nullable=False)
+    fulfilled_appointment_id = db.Column(
+        db.Integer,
+        db.ForeignKey("tattoo_appointments.id"),
+        nullable=True,
+    )
+    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+
+    session_option = db.relationship("SessionOption")
+    fulfilled_appointment = db.relationship(
+        "TattooAppointment",
+        foreign_keys=[fulfilled_appointment_id],
+    )
+
+
 class StudioClosure(TimestampMixin, db.Model):
     __tablename__ = "studio_closures"
 

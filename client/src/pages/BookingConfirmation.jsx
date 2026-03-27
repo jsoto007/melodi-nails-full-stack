@@ -110,11 +110,10 @@ export default function BookingConfirmation() {
   const searchParams = useMemo(() => new URLSearchParams(location.search), [location.search]);
   const referenceQuery = searchParams.get('reference')?.trim();
   const emailQuery = searchParams.get('email')?.trim();
-  const appointmentIdQuery = searchParams.get('appointment_id')?.trim();
   const sessionIdQuery = searchParams.get('session_id')?.trim();
 
   useEffect(() => {
-    if (!appointmentIdQuery || !sessionIdQuery) {
+    if (!sessionIdQuery) {
       return;
     }
     let isActive = true;
@@ -123,8 +122,7 @@ export default function BookingConfirmation() {
     setFetchError(null);
     const verifyPayment = (attempt = 0) => {
       apiPost('/api/payments/stripe/verify-session', {
-        appointment_id: appointmentIdQuery,
-        session_id: sessionIdQuery
+        session_id: sessionIdQuery,
       })
         .then((payload) => {
           if (!isActive) {
