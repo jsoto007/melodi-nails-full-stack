@@ -71,7 +71,7 @@ The dev server proxies `/api/*` to `http://127.0.0.1:5000`, keeping credentialed
 | `STRIPE_FAKE_PAYMENTS` | `server/.env` | Set to `true` to bypass live Stripe checkout during development. |
 | `MAILGUN_DOMAIN` | `server/.env` | Mailgun domain used for outgoing confirmation & activation emails. |
 | `MAILGUN_API_KEY` | `server/.env` | Private Mailgun API key for delivering messages. |
-| `MAILGUN_FROM` | `server/.env` | Sender address for automated emails (e.g. `Black Ink Tattoo <noreply@mg.blackink.com>`). |
+| `MAILGUN_FROM` / `MAILGUN_FROM_EMAIL` | `server/.env` | Sender address for automated emails (e.g. `Melodi Nails <melodinails@mail.sotodev.com>`). `MAILGUN_FROM` takes priority; `MAILGUN_FROM_EMAIL` is accepted as a fallback. |
 | `CLIENT_BASE_URL` | `server/.env` | Frontend root URL used when generating activation links (default `http://localhost:5173`). |
 
 ### Payments & uploads

@@ -143,7 +143,7 @@ def configure_app(app: Flask) -> SQLAlchemy:
 
     app.config["MAILGUN_DOMAIN"] = os.getenv("MAILGUN_DOMAIN")
     app.config["MAILGUN_API_KEY"] = os.getenv("MAILGUN_API_KEY")
-    app.config["MAILGUN_FROM"] = os.getenv("MAILGUN_FROM")
+    app.config["MAILGUN_FROM"] = os.getenv("MAILGUN_FROM") or os.getenv("MAILGUN_FROM_EMAIL")
     app.config["INTERNAL_BOOKING_NOTIFICATION_EMAIL"] = os.getenv(
         "INTERNAL_BOOKING_NOTIFICATION_EMAIL", "nailsmelodi@gmail.com"
     )
