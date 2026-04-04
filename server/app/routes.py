@@ -155,7 +155,8 @@ NON_BLOCKING_APPOINTMENT_STATUSES = {
     "payment_failed",
     "payment_expired",
 }
-DEFAULT_SLOT_INTERVAL_MINUTES = 60
+DEFAULT_SLOT_INTERVAL_MINUTES = 5
+BOOKING_TURNAROUND_MINUTES = 5
 MINIMUM_APPOINTMENT_DURATION_MINUTES = 60
 
 ACTIVATION_TOKEN_TTL = timedelta(hours=24)
@@ -539,7 +540,7 @@ def _create_stripe_checkout_for_draft(draft: BookingDraft, contact_email: str | 
 def _fulfill_booking_draft(
     draft: BookingDraft,
     stripe_session: dict,
-) -> tuple[TattooAppointment, AppointmentPayment]:
+) -> tuple[TattooAppointment, AppointmentPayment, bool]:
     """Create a TattooAppointment and AppointmentPayment from a fulfilled BookingDraft.
 
     Idempotent: if the draft already has a fulfilled_appointment_id the existing
@@ -554,7 +555,7 @@ def _fulfill_booking_draft(
             (p for p in (appointment.payments or []) if p.provider == "stripe"),
             None,
         )
-        return appointment, payment
+        return appointment, payment, False
 
     email = (draft.email or "").strip().lower()
     existing_client = ClientAccount.query.filter(func.lower(ClientAccount.email) == email).first()
@@ -657,7 +658,7 @@ def _fulfill_booking_draft(
 
     draft.fulfilled_appointment_id = appointment.id
 
-    return appointment, payment
+    return appointment, payment, True
 
 
 def _latest_identity_assets_for_client(client: ClientAccount):
@@ -1121,6 +1122,23 @@ def _notify_for_paid_appointment(appointment: TattooAppointment, payment: Appoin
         pay_full_amount=pay_full_amount,
         receipt_url=payment.receipt_url,
     )
+
+
+def _stripe_checkout_payment_is_complete(stripe_session: dict) -> bool:
+    checkout_payment_status = (stripe_session.get("payment_status") or "").lower()
+    if checkout_payment_status == "paid":
+        return True
+
+    payment_intent_id = stripe_session.get("payment_intent")
+    if not payment_intent_id:
+        return False
+
+    try:
+        payment_intent = _stripe_client().PaymentIntent.retrieve(payment_intent_id)
+    except stripe.error.StripeError:
+        return False
+
+    return (_stripe_get(payment_intent, "status") or "").lower() == "succeeded"
 
 
 def _hash_activation_token(token: str) -> str:
@@ -1846,7 +1864,9 @@ def collect_blocked_intervals(day_start: datetime, day_end: datetime, *, ignore_
             now=now,
         ):
             continue
-        end = start + timedelta(minutes=duration_minutes)
+        # Keep a short turnaround buffer so the next booking does not start
+        # immediately at the previous appointment's end.
+        end = start + timedelta(minutes=duration_minutes + BOOKING_TURNAROUND_MINUTES)
         if end <= day_start or start >= day_end:
             continue
         intervals.append((start, end))
@@ -2110,6 +2130,7 @@ def public_availability_slots():
             "date": target_date.isoformat(),
             "duration_minutes": duration_minutes,
             "slot_interval_minutes": DEFAULT_SLOT_INTERVAL_MINUTES,
+            "turnaround_minutes": BOOKING_TURNAROUND_MINUTES,
             "minimum_duration_minutes": day_minimum,
             "working_window": window,
             "slots": [
@@ -4651,19 +4672,23 @@ def verify_stripe_checkout_session():
     if not booking_draft_id:
         return jsonify({"error": "Booking session not found."}), 400
 
-    draft = BookingDraft.query.get(booking_draft_id)
+    draft = (
+        BookingDraft.query.filter(BookingDraft.id == booking_draft_id)
+        .with_for_update()
+        .one_or_none()
+    )
     if not draft:
         return jsonify({"error": "Booking session not found or expired."}), 404
 
-    checkout_payment_status = (stripe_session.get("payment_status") or "").lower()
-    if checkout_payment_status != "paid":
+    if not _stripe_checkout_payment_is_complete(stripe_session):
+        checkout_payment_status = (stripe_session.get("payment_status") or "").lower()
         checkout_status = (stripe_session.get("status") or "").lower()
         if checkout_status == "expired":
             return jsonify({"error": "Payment session expired. Please start a new booking.", "payment_status": "expired"}), 400
         return jsonify({"payment_status": "processing", "message": "Payment is still processing."}), 202
 
     try:
-        appointment, payment = _fulfill_booking_draft(draft, stripe_session)
+        appointment, payment, should_notify = _fulfill_booking_draft(draft, stripe_session)
         db.session.commit()
     except SQLAlchemyError:
         db.session.rollback()
@@ -4677,7 +4702,7 @@ def verify_stripe_checkout_session():
         joinedload(TattooAppointment.payments),
     ).get(appointment.id)
 
-    if payment and not draft.fulfilled_appointment_id:
+    if payment and should_notify:
         _notify_for_paid_appointment(appointment, payment)
 
     return jsonify(serialize_appointment(appointment)), 200
@@ -4721,17 +4746,20 @@ def stripe_webhook():
         current_app.logger.warning("Stripe webhook session %s has no booking_draft_id metadata.", checkout_session_id)
         return jsonify({"received": True}), 200
 
-    draft = BookingDraft.query.get(booking_draft_id)
+    draft = (
+        BookingDraft.query.filter(BookingDraft.id == booking_draft_id)
+        .with_for_update()
+        .one_or_none()
+    )
     if not draft:
         current_app.logger.warning("Stripe webhook referenced missing or expired draft %s.", booking_draft_id)
         return jsonify({"received": True}), 200
 
-    checkout_payment_status = (event_object.get("payment_status") or "").lower()
-    if checkout_payment_status != "paid":
+    if not _stripe_checkout_payment_is_complete(event_object):
         return jsonify({"received": True, "status": "processing"}), 200
 
     try:
-        appointment, payment = _fulfill_booking_draft(draft, event_object)
+        appointment, payment, should_notify = _fulfill_booking_draft(draft, event_object)
         db.session.commit()
     except SQLAlchemyError as exc:
         db.session.rollback()
@@ -4742,7 +4770,7 @@ def stripe_webhook():
         joinedload(TattooAppointment.client),
         joinedload(TattooAppointment.payments),
     ).get(appointment.id)
-    if payment:
+    if payment and should_notify:
         _notify_for_paid_appointment(appointment, payment)
 
     return jsonify({"received": True}), 200

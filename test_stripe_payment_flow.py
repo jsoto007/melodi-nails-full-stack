@@ -9,7 +9,7 @@ sys.path.insert(0, "./server")
 
 from app import create_app
 from app.config import db
-from app.models import AppointmentPayment, SessionOption, TattooAppointment
+from app.models import AppointmentPayment, BookingDraft, SessionOption, TattooAppointment
 
 
 class FakeStripeObject(dict):
@@ -41,7 +41,33 @@ def client(app):
     return app.test_client()
 
 
-def _create_appointment(status="awaiting_payment", payment_status="pending", provider_payment_id="cs_test_123"):
+def _create_booking_draft():
+    session_option = SessionOption(name="Test service", duration_minutes=60, price_cents=100)
+    draft = BookingDraft(
+        first_name="Test",
+        last_name="Customer",
+        email="test@example.com",
+        phone="5555555555",
+        session_option=session_option,
+        scheduled_start=datetime.utcnow() + timedelta(days=1),
+        amount_cents=95,
+        currency="USD",
+        payment_note="Stripe Checkout payment",
+        expires_at=datetime.utcnow() + timedelta(hours=2),
+    )
+    db.session.add_all([session_option, draft])
+    db.session.commit()
+    return draft
+
+
+def _create_appointment(
+    status="awaiting_payment",
+    payment_status="pending",
+    provider_payment_id="cs_test_123",
+    *,
+    scheduled_start=None,
+    duration_minutes=60,
+):
     session_option = SessionOption(name="Test service", duration_minutes=60, price_cents=100)
     appointment = TattooAppointment(
         reference_code="TEST-123",
@@ -50,7 +76,8 @@ def _create_appointment(status="awaiting_payment", payment_status="pending", pro
         contact_phone="5555555555",
         client_description="Test order",
         status=status,
-        duration_minutes=60,
+        scheduled_start=scheduled_start,
+        duration_minutes=duration_minutes,
         session_option=session_option,
     )
     payment = AppointmentPayment(
@@ -74,18 +101,20 @@ def _set_csrf(client):
 
 
 def test_verify_session_accepts_succeeded_payment_intent_before_checkout_status_updates(app, client, monkeypatch):
+    notifications = {"client": 0, "internal": 0}
+
     with app.app_context():
-        appointment = _create_appointment()
-        appointment_id = appointment.id
+        draft = _create_booking_draft()
+        booking_draft_id = draft.id
 
     fake_checkout = {
         "id": "cs_test_123",
-        "client_reference_id": str(appointment_id),
         "payment_status": "unpaid",
         "status": "complete",
         "payment_intent": "pi_test_123",
         "amount_total": 95,
         "currency": "usd",
+        "metadata": {"booking_draft_id": booking_draft_id},
     }
     fake_payment_intent = FakeStripeObject(
         status="succeeded",
@@ -94,12 +123,18 @@ def test_verify_session_accepts_succeeded_payment_intent_before_checkout_status_
 
     monkeypatch.setattr("app.routes.stripe.checkout.Session.retrieve", lambda session_id: fake_checkout)
     monkeypatch.setattr("app.routes.stripe.PaymentIntent.retrieve", lambda payment_intent_id: fake_payment_intent)
-    monkeypatch.setattr("app.routes.send_booking_confirmation_email", lambda *args, **kwargs: True)
-    monkeypatch.setattr("app.routes.send_internal_booking_notification", lambda *args, **kwargs: True)
+    monkeypatch.setattr(
+        "app.routes.send_booking_confirmation_email",
+        lambda *args, **kwargs: notifications.__setitem__("client", notifications["client"] + 1) or True,
+    )
+    monkeypatch.setattr(
+        "app.routes.send_internal_booking_notification",
+        lambda *args, **kwargs: notifications.__setitem__("internal", notifications["internal"] + 1) or True,
+    )
 
     response = client.post(
         "/api/payments/stripe/verify-session",
-        json={"appointment_id": appointment_id, "session_id": "cs_test_123"},
+        json={"session_id": "cs_test_123"},
         headers=_set_csrf(client),
     )
 
@@ -107,27 +142,28 @@ def test_verify_session_accepts_succeeded_payment_intent_before_checkout_status_
     payload = response.get_json()
     assert payload["status"] == "pending"
     assert payload["payments"][0]["status"] == "paid"
+    assert notifications["client"] == 1
+    assert notifications["internal"] == 1
 
 
 def test_stripe_webhook_finalizes_payment_once(app, client, monkeypatch):
     notifications = {"client": 0, "internal": 0}
 
     with app.app_context():
-        appointment = _create_appointment()
-        appointment_id = appointment.id
+        draft = _create_booking_draft()
+        booking_draft_id = draft.id
 
     fake_event = {
         "type": "checkout.session.completed",
         "data": {
             "object": {
                 "id": "cs_test_123",
-                "client_reference_id": str(appointment_id),
                 "payment_status": "paid",
                 "status": "complete",
                 "payment_intent": "pi_test_123",
                 "amount_total": 95,
                 "currency": "usd",
-                "metadata": {"appointment_id": str(appointment_id)},
+                "metadata": {"booking_draft_id": booking_draft_id},
             }
         },
     }
@@ -157,7 +193,8 @@ def test_stripe_webhook_finalizes_payment_once(app, client, monkeypatch):
         assert response.status_code == 200
 
     with app.app_context():
-        appointment = TattooAppointment.query.get(appointment_id)
+        appointment = TattooAppointment.query.first()
+        assert appointment is not None
         assert appointment.status == "pending"
         assert appointment.payments[0].status == "paid"
 
@@ -167,17 +204,17 @@ def test_stripe_webhook_finalizes_payment_once(app, client, monkeypatch):
 
 def test_verify_session_marks_failed_payment_as_not_booked(app, client, monkeypatch):
     with app.app_context():
-        appointment = _create_appointment()
-        appointment_id = appointment.id
+        draft = _create_booking_draft()
+        booking_draft_id = draft.id
 
     fake_checkout = {
         "id": "cs_test_123",
-        "client_reference_id": str(appointment_id),
         "payment_status": "unpaid",
         "status": "expired",
         "payment_intent": "pi_test_123",
         "amount_total": 95,
         "currency": "usd",
+        "metadata": {"booking_draft_id": booking_draft_id},
     }
     fake_payment_intent = FakeStripeObject(status="requires_payment_method", charges=SimpleNamespace(data=[]))
 
@@ -186,16 +223,15 @@ def test_verify_session_marks_failed_payment_as_not_booked(app, client, monkeypa
 
     response = client.post(
         "/api/payments/stripe/verify-session",
-        json={"appointment_id": appointment_id, "session_id": "cs_test_123"},
+        json={"session_id": "cs_test_123"},
         headers=_set_csrf(client),
     )
 
     assert response.status_code == 400
 
     with app.app_context():
-        appointment = TattooAppointment.query.get(appointment_id)
-        assert appointment.status == "payment_expired"
-        assert appointment.payments[0].status == "failed"
+        assert TattooAppointment.query.count() == 0
+        assert BookingDraft.query.get(booking_draft_id).fulfilled_appointment_id is None
 
 
 def test_stale_awaiting_payment_hold_does_not_block_availability(app):
@@ -213,3 +249,36 @@ def test_stale_awaiting_payment_hold_does_not_block_availability(app):
         intervals = collect_blocked_intervals(day_start, day_end)
 
         assert intervals == []
+
+
+def test_short_appointment_leaves_turnaround_buffer_before_next_slot(app):
+    from app.routes import build_available_slots, collect_blocked_intervals
+
+    with app.app_context():
+        base_date = datetime.utcnow().date() + timedelta(days=1)
+        while base_date.weekday() == 6:
+            base_date += timedelta(days=1)
+        base_start = datetime.combine(base_date, datetime.min.time()).replace(hour=15, minute=0, second=0, microsecond=0)
+        appointment = _create_appointment(
+            status="pending",
+            payment_status="paid",
+            scheduled_start=base_start,
+            duration_minutes=15,
+        )
+
+        day_start = appointment.scheduled_start.replace(hour=0, minute=0, second=0, microsecond=0)
+        day_end = day_start + timedelta(days=1)
+
+        blocked = collect_blocked_intervals(day_start, day_end)
+        assert blocked == [(appointment.scheduled_start, appointment.scheduled_start + timedelta(minutes=20))]
+
+        slots, _window = build_available_slots(
+            appointment.scheduled_start.date(),
+            15,
+            minimum_duration_minutes=15,
+            allow_shorter_than_weekday_minimum=True,
+        )
+        starts = {slot["start"] for slot in slots}
+
+        assert appointment.scheduled_start + timedelta(minutes=15) not in starts
+        assert appointment.scheduled_start + timedelta(minutes=20) in starts
