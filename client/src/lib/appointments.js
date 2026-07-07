@@ -24,6 +24,14 @@ export function getAppointmentTypeLabel(appointment) {
   if (!appointment) {
     return DEFAULT_APPOINTMENT_TYPE_LABEL;
   }
+  const sessionNames = Array.isArray(appointment.session_options)
+    ? appointment.session_options
+      .map((option) => option?.name?.trim())
+      .filter(Boolean)
+    : [];
+  if (sessionNames.length) {
+    return sessionNames.join(' + ');
+  }
   const sessionName = appointment.session_option?.name?.trim();
   if (sessionName) {
     return sessionName;
@@ -77,10 +85,19 @@ export function sanitizeAppointmentForConfirmation(appointment) {
       : null,
     service: appointment.service
       ? {
-          name: appointment.service.name || appointment.session_option?.name || null,
+          name: appointment.service.name || appointment.session_options?.map((option) => option?.name).filter(Boolean).join(' + ') || appointment.session_option?.name || null,
           notes: appointment.service.notes || appointment.client_description || null
         }
       : null,
+    session_options: Array.isArray(appointment.session_options)
+      ? appointment.session_options.map((option) => ({
+          id: option.id,
+          name: option.name,
+          category: option.category,
+          duration_minutes: option.duration_minutes,
+          price_cents: option.price_cents
+        }))
+      : [],
     session_option: appointment.session_option
       ? {
           id: appointment.session_option.id,

@@ -98,8 +98,9 @@ function groupByCategory(products) {
   return map;
 }
 
-function ServiceCategoryGroups({ products, selectedId, currency, onSelect }) {
+function ServiceCategoryGroups({ products, selectedIds, currency, onSelect, onRemove }) {
   const groups = useMemo(() => groupByCategory(products), [products]);
+  const selectedSet = useMemo(() => new Set(selectedIds.map((id) => String(id))), [selectedIds]);
   return (
     <div className="space-y-6">
       {Array.from(groups.entries()).map(([category, items]) => (
@@ -112,37 +113,50 @@ function ServiceCategoryGroups({ products, selectedId, currency, onSelect }) {
           </div>
           <div className="grid gap-3 sm:grid-cols-2">
             {items.map((product) => {
-              const selected = String(product.id) === String(selectedId);
+              const selected = selectedSet.has(String(product.id));
               return (
-                <button
+                <div
                   key={product.id}
-                  type="button"
-                  onClick={() => onSelect(product.id)}
                   className={`rounded-2xl border p-4 text-left transition ${
                     selected
                       ? 'border-[#2a3923] bg-[#2a3923] text-white shadow-md'
                       : 'border-[#d9cbbc] bg-white hover:border-[#2a3923] hover:shadow-sm'
                   }`}
                 >
-                  {product.tagline ? (
-                    <p className={`mb-1 text-[10px] font-semibold uppercase tracking-[0.3em] ${selected ? 'text-white/70' : 'text-[#8d755a]'}`}>
-                      {product.tagline}
+                  <button
+                    type="button"
+                    onClick={() => onSelect(product)}
+                    className="block w-full text-left"
+                  >
+                    {product.tagline ? (
+                      <p className={`mb-1 text-[10px] font-semibold uppercase tracking-[0.3em] ${selected ? 'text-white/70' : 'text-[#8d755a]'}`}>
+                        {product.tagline}
+                      </p>
+                    ) : null}
+                    <p className={`font-semibold ${selected ? 'text-white' : 'text-slate-900'}`}>
+                      {product.name || `Servicio ${product.id}`}
                     </p>
+                    {product.description ? (
+                      <p className={`mt-1 text-xs leading-relaxed ${selected ? 'text-white/75' : 'text-[#6f7863]'}`}>
+                        {product.description}
+                      </p>
+                    ) : null}
+                    <div className={`mt-2 flex items-center gap-2 text-xs ${selected ? 'text-white/80' : 'text-[#6f7863]'}`}>
+                      <span>{formatDuration(product.duration_minutes)}</span>
+                      <span>·</span>
+                      <span className="font-semibold">{formatCurrency(product.price_cents, currency)}</span>
+                    </div>
+                  </button>
+                  {selected ? (
+                    <button
+                      type="button"
+                      onClick={() => onRemove(product.id)}
+                      className="mt-3 rounded-lg border border-white/40 px-3 py-1.5 text-xs font-semibold uppercase tracking-[0.2em] text-white transition hover:bg-white hover:text-[#2a3923]"
+                    >
+                      Remove
+                    </button>
                   ) : null}
-                  <p className={`font-semibold ${selected ? 'text-white' : 'text-slate-900'}`}>
-                    {product.name || `Servicio ${product.id}`}
-                  </p>
-                  {product.description ? (
-                    <p className={`mt-1 text-xs leading-relaxed ${selected ? 'text-white/75' : 'text-[#6f7863]'}`}>
-                      {product.description}
-                    </p>
-                  ) : null}
-                  <div className={`mt-2 flex items-center gap-2 text-xs ${selected ? 'text-white/80' : 'text-[#6f7863]'}`}>
-                    <span>{formatDuration(product.duration_minutes)}</span>
-                    <span>·</span>
-                    <span className="font-semibold">{formatCurrency(product.price_cents, currency)}</span>
-                  </div>
-                </button>
+                </div>
               );
             })}
           </div>
@@ -177,7 +191,7 @@ export default function ShareYourIdea() {
     last_name: '',
     email: '',
     phone: '',
-    session_option_id: '',
+    session_option_ids: [],
     notes: '',
     selected_date: toDateInputValue(new Date()),
     scheduled_start: '',
@@ -200,13 +214,20 @@ export default function ShareYourIdea() {
     return () => { active = false; };
   }, []);
 
-  const selectedProduct = useMemo(
-    () => products.find((p) => String(p.id) === String(form.session_option_id)) || null,
-    [products, form.session_option_id]
+  const selectedProducts = useMemo(
+    () => form.session_option_ids
+      .map((id) => products.find((p) => String(p.id) === String(id)))
+      .filter(Boolean),
+    [products, form.session_option_ids]
   );
+  const selectedProductIdsKey = useMemo(
+    () => form.session_option_ids.map((id) => String(id)).join(','),
+    [form.session_option_ids]
+  );
+  const hasSelectedProducts = selectedProducts.length > 0;
 
   useEffect(() => {
-    if (!form.selected_date || !selectedProduct?.id) {
+    if (!form.selected_date || !selectedProducts.length) {
       setAvailability([]);
       setAvailabilityMeta(null);
       return;
@@ -214,7 +235,7 @@ export default function ShareYourIdea() {
     let active = true;
     setLoadingSlots(true);
     setForm((c) => ({ ...c, scheduled_start: '' }));
-    apiGet(`/api/availability?date=${encodeURIComponent(form.selected_date)}&session_option_id=${encodeURIComponent(selectedProduct.id)}`)
+    apiGet(`/api/availability?date=${encodeURIComponent(form.selected_date)}&session_option_ids=${encodeURIComponent(selectedProductIdsKey)}`)
       .then((payload) => {
         if (!active) return;
         setAvailability(Array.isArray(payload?.slots) ? payload.slots : []);
@@ -228,10 +249,11 @@ export default function ShareYourIdea() {
       })
       .finally(() => { if (active) setLoadingSlots(false); });
     return () => { active = false; };
-  }, [form.selected_date, selectedProduct?.id]);
+  }, [form.selected_date, selectedProductIdsKey, selectedProducts.length]);
 
   const pricing = useMemo(() => {
-    const totalCents = selectedProduct?.price_cents || 0;
+    const totalCents = selectedProducts.reduce((sum, product) => sum + (Number(product.price_cents) || 0), 0);
+    const durationMinutes = selectedProducts.reduce((sum, product) => sum + (Number(product.duration_minutes) || 0), 0);
     const bookingFeePercent = paymentConfig?.booking_fee_percent || 20;
     const depositCents = totalCents
       ? Math.min(totalCents, Math.max(1, Math.ceil((totalCents * bookingFeePercent) / 100)))
@@ -240,10 +262,42 @@ export default function ShareYourIdea() {
       currency: paymentConfig?.currency || 'USD',
       totalCents,
       depositCents,
+      durationMinutes,
       bookingFeePercent,
       amountDueToday: form.pay_full_amount ? totalCents : depositCents,
     };
-  }, [paymentConfig, selectedProduct, form.pay_full_amount]);
+  }, [paymentConfig, selectedProducts, form.pay_full_amount]);
+
+  const handleProductSelect = (product) => {
+    setForm((current) => {
+      const productId = String(product.id);
+      const alreadySelected = current.session_option_ids.some((id) => String(id) === productId);
+      const productCategory = product.category || 'Otros';
+      const withoutCategory = current.session_option_ids.filter((id) => {
+        const selectedProduct = products.find((entry) => String(entry.id) === String(id));
+        return (selectedProduct?.category || 'Otros') !== productCategory;
+      });
+      return {
+        ...current,
+        session_option_ids: alreadySelected ? withoutCategory : [...withoutCategory, productId],
+        scheduled_start: '',
+      };
+    });
+    setFormErrors((current) => ({ ...current, session_option_ids: '', session_option_id: '', scheduled_start: '' }));
+    setPageError('');
+    setNotice('');
+  };
+
+  const handleProductRemove = (productId) => {
+    setForm((current) => ({
+      ...current,
+      session_option_ids: current.session_option_ids.filter((id) => String(id) !== String(productId)),
+      scheduled_start: '',
+    }));
+    setFormErrors((current) => ({ ...current, session_option_ids: '', session_option_id: '', scheduled_start: '' }));
+    setPageError('');
+    setNotice('');
+  };
 
   const handleChange = (e) => {
     const { name, value } = e.target;
@@ -274,7 +328,7 @@ export default function ShareYourIdea() {
     if (!form.last_name.trim()) e.last_name = 'Last name is required.';
     if (!form.email.trim()) e.email = 'Email is required.';
     if (!form.phone.trim()) e.phone = 'Phone is required.';
-    if (!form.session_option_id) e.session_option_id = 'Choose a service.';
+    if (!form.session_option_ids.length) e.session_option_ids = 'Choose at least one service.';
     if (!form.selected_date) e.selected_date = 'Choose a date.';
     if (!form.scheduled_start) e.scheduled_start = 'Choose a time slot.';
     return e;
@@ -288,7 +342,7 @@ export default function ShareYourIdea() {
       setTimeout(() => {
         const firstErrorField = Object.keys(errors)[0];
         let element = document.querySelector(`[name="${firstErrorField}"]`);
-        if (!element && firstErrorField === 'session_option_id') {
+        if (!element && (firstErrorField === 'session_option_ids' || firstErrorField === 'session_option_id')) {
           element = document.getElementById('service-selection-section');
         } else if (!element && firstErrorField === 'scheduled_start') {
           element = document.getElementById('time-selection-section');
@@ -309,7 +363,7 @@ export default function ShareYourIdea() {
         last_name: form.last_name.trim(),
         email: form.email.trim(),
         phone: form.phone.trim(),
-        session_option_id: Number(form.session_option_id),
+        session_option_ids: form.session_option_ids.map((id) => Number(id)),
         scheduled_start: form.scheduled_start,
         notes: form.notes.trim(),
         inspiration_urls,
@@ -334,7 +388,7 @@ export default function ShareYourIdea() {
   };
 
   const step1Done = !!(form.first_name && form.last_name && form.email && form.phone);
-  const step2Done = !!selectedProduct;
+  const step2Done = hasSelectedProducts;
   const step3Done = !!form.scheduled_start;
 
   if (clientSecret && stripePromise) {
@@ -424,16 +478,40 @@ export default function ShareYourIdea() {
                 ) : (
                   <ServiceCategoryGroups
                     products={products}
-                    selectedId={form.session_option_id}
+                    selectedIds={form.session_option_ids}
                     currency={paymentConfig?.currency || 'USD'}
-                    onSelect={(id) => {
-                      setForm((c) => ({ ...c, session_option_id: String(id) }));
-                      setFormErrors((c) => ({ ...c, session_option_id: '' }));
-                    }}
+                    onSelect={handleProductSelect}
+                    onRemove={handleProductRemove}
                   />
                 )}
-                {formErrors.session_option_id ? (
-                  <p className="text-xs font-medium text-red-600">{formErrors.session_option_id}</p>
+                {hasSelectedProducts ? (
+                  <div className="rounded-2xl border border-[#d9cbbc] bg-white p-4">
+                    <p className="mb-3 text-xs font-semibold uppercase tracking-[0.25em] text-[#6f7863]">
+                      Selected services
+                    </p>
+                    <div className="space-y-2">
+                      {selectedProducts.map((product) => (
+                        <div key={product.id} className="flex items-center justify-between gap-3 rounded-xl bg-[#f5f0ea] px-3 py-2">
+                          <div>
+                            <p className="text-sm font-semibold text-slate-900">{product.name}</p>
+                            <p className="text-xs text-[#6f7863]">
+                              {product.category || 'Otros'} · {formatDuration(product.duration_minutes)} · {formatCurrency(product.price_cents, pricing.currency)}
+                            </p>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => handleProductRemove(product.id)}
+                            className="rounded-lg border border-[#d9cbbc] px-3 py-1.5 text-xs font-semibold uppercase tracking-[0.2em] text-[#2a3923] transition hover:border-[#2a3923] hover:bg-white"
+                          >
+                            Remove
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ) : null}
+                {formErrors.session_option_ids || formErrors.session_option_id ? (
+                  <p className="text-xs font-medium text-red-600">{formErrors.session_option_ids || formErrors.session_option_id}</p>
                 ) : null}
               </Card>
 
@@ -465,9 +543,9 @@ export default function ShareYourIdea() {
                     ) : null}
                   </div>
 
-                  {!selectedProduct ? (
+                  {!hasSelectedProducts ? (
                     <p className="rounded-xl border border-dashed border-[#d9cbbc] bg-white/60 py-6 text-center text-sm text-[#6f7863]">
-                      Select a service above to see available times
+                      Select at least one service above to see available times
                     </p>
                   ) : !loadingSlots && !availability.length ? (
                     <p className="rounded-xl border border-dashed border-[#d9cbbc] bg-white/60 py-6 text-center text-sm text-[#6f7863]">
@@ -540,13 +618,14 @@ export default function ShareYourIdea() {
                     <input
                       type="radio"
                       name="payment_choice"
+                      aria-label="Pay deposit"
                       checked={!form.pay_full_amount}
                       onChange={() => setForm((c) => ({ ...c, pay_full_amount: false }))}
                       className="mt-0.5 accent-[#2a3923]"
                     />
                     <div>
                       <p className="font-semibold text-slate-900">
-                        Pay deposit — {selectedProduct ? formatCurrency(pricing.depositCents, pricing.currency) : '—'}
+                        Pay deposit — {hasSelectedProducts ? formatCurrency(pricing.depositCents, pricing.currency) : '—'}
                       </p>
                       <p className="mt-0.5 text-sm text-[#6f7863]">
                         Secure your slot with a {pricing.bookingFeePercent}% deposit. Pay the rest at the studio.
@@ -559,13 +638,14 @@ export default function ShareYourIdea() {
                     <input
                       type="radio"
                       name="payment_choice"
+                      aria-label="Pay in full"
                       checked={form.pay_full_amount}
                       onChange={() => setForm((c) => ({ ...c, pay_full_amount: true }))}
                       className="mt-0.5 accent-[#2a3923]"
                     />
                     <div>
                       <p className="font-semibold text-slate-900">
-                        Pay in full — {selectedProduct ? formatCurrency(pricing.totalCents, pricing.currency) : '—'}
+                        Pay in full — {hasSelectedProducts ? formatCurrency(pricing.totalCents, pricing.currency) : '—'}
                       </p>
                       <p className="mt-0.5 text-sm text-[#6f7863]">
                         Complete payment now via Stripe. Nothing more to pay at the studio.
@@ -576,10 +656,10 @@ export default function ShareYourIdea() {
 
                 <div className="flex flex-col gap-4 border-t border-[#ede5d8] pt-5 sm:flex-row sm:items-center sm:justify-between">
                   <p className="text-xs text-[#6f7863]">No account required. Payment processed securely by Stripe.</p>
-                  <Button type="submit" disabled={submitting || !selectedProduct} className="w-full sm:w-auto">
+                  <Button type="submit" disabled={submitting || !hasSelectedProducts} className="w-full sm:w-auto">
                     {submitting
                       ? 'Processing…'
-                      : selectedProduct
+                      : hasSelectedProducts
                         ? `Continue to payment · ${formatCurrency(pricing.amountDueToday, pricing.currency)}`
                         : 'Continue to payment'}
                   </Button>
@@ -592,10 +672,13 @@ export default function ShareYourIdea() {
               <Card className="space-y-5 p-6">
                 <p className="text-xs font-semibold uppercase tracking-[0.3em] text-[#6f7863]">Booking summary</p>
                 <div className="space-y-3">
-                  <SummaryRow label="Service" value={selectedProduct?.name || 'Not selected'} />
+                  <SummaryRow
+                    label="Services"
+                    value={hasSelectedProducts ? `${selectedProducts.length} selected` : 'Not selected'}
+                  />
                   <SummaryRow
                     label="Duration"
-                    value={selectedProduct ? formatDuration(selectedProduct.duration_minutes) : '—'}
+                    value={hasSelectedProducts ? formatDuration(pricing.durationMinutes) : '—'}
                   />
                   <SummaryRow
                     label="Date"
@@ -611,7 +694,29 @@ export default function ShareYourIdea() {
                   />
                 </div>
 
-                {selectedProduct ? (
+                {hasSelectedProducts ? (
+                  <div className="space-y-4">
+                    <div className="space-y-2">
+                      {selectedProducts.map((product) => (
+                        <div key={product.id} className="rounded-2xl bg-[#f5f0ea] p-3">
+                          <div className="flex items-start justify-between gap-3">
+                            <div>
+                              <p className="text-sm font-semibold text-slate-900">{product.name}</p>
+                              <p className="text-xs text-[#6f7863]">
+                                {formatDuration(product.duration_minutes)} · {formatCurrency(product.price_cents, pricing.currency)}
+                              </p>
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => handleProductRemove(product.id)}
+                              className="rounded-md px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.15em] text-[#6f7863] transition hover:bg-white hover:text-[#2a3923]"
+                            >
+                              Remove
+                            </button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
                   <div className="space-y-2 rounded-2xl bg-[#f5f0ea] p-4">
                     <div className="flex justify-between text-sm">
                       <span className="text-[#6f7863]">Total</span>
@@ -626,6 +731,7 @@ export default function ShareYourIdea() {
                         Remaining {formatCurrency(pricing.totalCents - pricing.depositCents, pricing.currency)} paid at studio.
                       </p>
                     ) : null}
+                  </div>
                   </div>
                 ) : (
                   <div className="rounded-2xl bg-[#f5f0ea] p-4 text-center text-xs text-[#6f7863]">

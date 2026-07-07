@@ -45,7 +45,9 @@ from .models import (
     AdminActivityLog,
     AppointmentAsset,
     AppointmentPayment,
+    AppointmentSessionOption,
     BookingDraft,
+    BookingDraftSessionOption,
     ClientAccount,
     AccountActivationToken,
     EmailVerificationToken,
@@ -514,6 +516,11 @@ def _create_stripe_checkout_for_draft(draft: BookingDraft, contact_email: str | 
     The draft ID is stored in session metadata so it can be retrieved on fulfillment.
     """
     base_url = _public_client_base_url()
+    selected_items = list(getattr(draft, "session_option_items", None) or [])
+    product_description = _session_options_label(
+        selected_items,
+        fallback=draft.session_option.name if draft.session_option and draft.session_option.name else "Nail appointment",
+    )
     checkout = _stripe_client().checkout.Session.create(
         mode="payment",
         ui_mode="embedded",
@@ -528,7 +535,7 @@ def _create_stripe_checkout_for_draft(draft: BookingDraft, contact_email: str | 
                     "unit_amount": draft.amount_cents,
                     "product_data": {
                         "name": draft.payment_note or "Nail appointment",
-                        "description": draft.session_option.name if draft.session_option else "Nail appointment",
+                        "description": product_description,
                     },
                 },
             }
@@ -550,6 +557,7 @@ def _fulfill_booking_draft(
         appointment = TattooAppointment.query.options(
             joinedload(TattooAppointment.client),
             joinedload(TattooAppointment.payments),
+            joinedload(TattooAppointment.session_option_items),
         ).get(draft.fulfilled_appointment_id)
         payment = next(
             (p for p in (appointment.payments or []) if p.provider == "stripe"),
@@ -579,7 +587,20 @@ def _fulfill_booking_draft(
         db.session.add(client_account)
         db.session.flush()
 
+    draft_items = list(getattr(draft, "session_option_items", None) or [])
+    if not draft_items and draft.session_option:
+        draft_items = [
+            BookingDraftSessionOption(
+                session_option_id=draft.session_option.id,
+                position=0,
+                name=draft.session_option.name,
+                category=draft.session_option.category,
+                duration_minutes=draft.session_option.duration_minutes,
+                price_cents=draft.session_option.price_cents,
+            )
+        ]
     session_option = SessionOption.query.get(draft.session_option_id)
+    total_duration_minutes = _session_options_total_duration(draft_items)
     contact_name = f"{draft.first_name} {draft.last_name}".strip()
 
     appointment = TattooAppointment(
@@ -587,8 +608,8 @@ def _fulfill_booking_draft(
         client=client_account,
         client_description=draft.notes or None,
         scheduled_start=draft.scheduled_start,
-        duration_minutes=session_option.duration_minutes if session_option else None,
-        suggested_duration_minutes=session_option.duration_minutes if session_option else None,
+        duration_minutes=total_duration_minutes or (session_option.duration_minutes if session_option else None),
+        suggested_duration_minutes=total_duration_minutes or (session_option.duration_minutes if session_option else None),
         status="pending",
         placement_notes=draft.notes or None,
         session_option=session_option,
@@ -603,6 +624,21 @@ def _fulfill_booking_draft(
 
     db.session.add(appointment)
     db.session.flush()
+
+    appointment_items = [
+        AppointmentSessionOption(
+            appointment=appointment,
+            session_option_id=item.session_option_id,
+            position=item.position,
+            name=item.name,
+            category=item.category,
+            duration_minutes=item.duration_minutes,
+            price_cents=item.price_cents,
+        )
+        for item in draft_items
+    ]
+    if appointment_items:
+        db.session.add_all(appointment_items)
 
     assets = []
     if draft.inspiration_data:
@@ -956,6 +992,134 @@ def load_active_session_options():
     )
 
 
+def _session_option_category_key(option: SessionOption | None) -> str:
+    return ((option.category if option else None) or "Otros").strip().casefold()
+
+
+def _coerce_session_option_ids(raw_value) -> tuple[list[int], str | None]:
+    if raw_value is None or raw_value == "":
+        return [], None
+
+    raw_items = raw_value if isinstance(raw_value, list) else [raw_value]
+    option_ids: list[int] = []
+    for item in raw_items:
+        if isinstance(item, str) and "," in item:
+            candidates = item.split(",")
+        else:
+            candidates = [item]
+        for candidate in candidates:
+            if candidate in {None, ""}:
+                continue
+            try:
+                option_id = int(candidate)
+            except (TypeError, ValueError):
+                return [], "Session options must be whole numbers."
+            option_ids.append(option_id)
+    return option_ids, None
+
+
+def _load_selected_session_options_from_payload(payload: dict) -> tuple[list[SessionOption], list[dict]]:
+    raw_ids = payload.get("session_option_ids")
+    if raw_ids is None or raw_ids == "":
+        raw_ids = payload.get("session_option_id")
+    option_ids, error = _coerce_session_option_ids(raw_ids)
+    if error:
+        return [], [{"field": "session_option_ids", "message": error}]
+    return _load_selected_session_options(option_ids)
+
+
+def _load_selected_session_options_from_request_args() -> tuple[list[SessionOption], tuple[dict, int] | None]:
+    raw_ids = request.args.getlist("session_option_ids")
+    if not raw_ids:
+        raw_ids = request.args.get("session_option_ids") or request.args.get("session_option_id")
+    option_ids, error = _coerce_session_option_ids(raw_ids)
+    if error:
+        return [], ({"error": error}, 400)
+    options, errors = _load_selected_session_options(option_ids)
+    if errors:
+        status = 404 if any(error["message"] == "Session option not found." for error in errors) else 400
+        return [], ({"errors": errors, "error": errors[0]["message"]}, status)
+    return options, None
+
+
+def _load_selected_session_options(option_ids: list[int]) -> tuple[list[SessionOption], list[dict]]:
+    errors: list[dict] = []
+    if not option_ids:
+        return [], [{"field": "session_option_ids", "message": "Please choose at least one nail service."}]
+    if len(option_ids) != len(set(option_ids)):
+        errors.append({"field": "session_option_ids", "message": "Choose each nail service only once."})
+
+    options_by_id = {
+        option.id: option
+        for option in SessionOption.query.filter(SessionOption.id.in_(set(option_ids))).all()
+    }
+    selected_options: list[SessionOption] = []
+    for option_id in option_ids:
+        option = options_by_id.get(option_id)
+        if not option or not option.is_active:
+            errors.append({"field": "session_option_ids", "message": "Session option not found."})
+            continue
+        selected_options.append(option)
+
+    seen_categories: set[str] = set()
+    for option in selected_options:
+        category_key = _session_option_category_key(option)
+        if category_key in seen_categories:
+            errors.append({
+                "field": "session_option_ids",
+                "message": "Choose only one nail service per category.",
+            })
+            break
+        seen_categories.add(category_key)
+
+    if errors:
+        return [], errors
+    return selected_options, []
+
+
+def _session_options_total_duration(options) -> int:
+    return sum(max(0, int(option.duration_minutes or 0)) for option in options)
+
+
+def _session_options_total_price(options) -> int:
+    return sum(max(0, int(option.price_cents or 0)) for option in options)
+
+
+def _session_options_label(options, fallback: str = "Nail appointment") -> str:
+    names = [
+        (getattr(option, "name", None) or f"Service {getattr(option, 'session_option_id', '')}").strip()
+        for option in options
+        if option
+    ]
+    names = [name for name in names if name]
+    if not names:
+        return fallback
+    return " + ".join(names)
+
+
+def _serialize_session_option_snapshot(item):
+    if not item:
+        return None
+    return {
+        "id": item.session_option_id,
+        "name": item.name,
+        "category": item.category,
+        "duration_minutes": item.duration_minutes,
+        "price_cents": item.price_cents,
+    }
+
+
+def _build_session_option_snapshot(option: SessionOption, position: int) -> dict:
+    return {
+        "session_option_id": option.id,
+        "position": position,
+        "name": option.name,
+        "category": option.category,
+        "duration_minutes": option.duration_minutes,
+        "price_cents": option.price_cents,
+    }
+
+
 def calculate_booking_fee_amount(total_cents: int, percent: int) -> int:
     if total_cents <= 0:
         return 0
@@ -1098,12 +1262,22 @@ def _load_appointment_for_payment(appointment_id: int | str | None):
         joinedload(TattooAppointment.assets).joinedload(AppointmentAsset.client_uploader),
         joinedload(TattooAppointment.payments),
         joinedload(TattooAppointment.session_option),
+        joinedload(TattooAppointment.session_option_items),
     ).get(normalized_id)
 
 
 def _notify_for_paid_appointment(appointment: TattooAppointment, payment: AppointmentPayment):
     booking_fee_percent = load_booking_fee_percent()
-    session_price_cents = appointment.session_option.price_cents if appointment.session_option else calculate_session_price_cents(appointment.duration_minutes)
+    appointment_items = list(getattr(appointment, "session_option_items", None) or [])
+    session_price_cents = (
+        _session_options_total_price(appointment_items)
+        if appointment_items
+        else (
+            appointment.session_option.price_cents
+            if appointment.session_option
+            else calculate_session_price_cents(appointment.duration_minutes)
+        )
+    )
     charge_amount = payment.amount_cents
     pay_full_amount = charge_amount >= session_price_cents if session_price_cents else False
     send_booking_confirmation_email(
@@ -1312,15 +1486,32 @@ def serialize_appointment(appointment, *, include_assets=True):
     client = appointment.client
     assigned_admin = appointment.assigned_admin
     session_option_data = serialize_session_option(appointment.session_option) if appointment.session_option else None
+    session_option_items = list(getattr(appointment, "session_option_items", None) or [])
+    session_option_snapshots = [
+        _serialize_session_option_snapshot(item)
+        for item in session_option_items
+    ]
+    session_option_snapshots = [item for item in session_option_snapshots if item]
+    if not session_option_snapshots and session_option_data:
+        session_option_snapshots = [session_option_data]
+    service_name = _session_options_label(session_option_items, fallback=session_option_data["name"] if session_option_data else None)
     pricing_duration_minutes = (
-        appointment.session_option.duration_minutes
-        if appointment.session_option
-        else (appointment.suggested_duration_minutes or appointment.duration_minutes)
+        _session_options_total_duration(session_option_items)
+        if session_option_items
+        else (
+            appointment.session_option.duration_minutes
+            if appointment.session_option
+            else (appointment.suggested_duration_minutes or appointment.duration_minutes)
+        )
     )
     session_price_cents = (
-        appointment.session_option.price_cents
-        if appointment.session_option
-        else calculate_session_price_cents(pricing_duration_minutes)
+        _session_options_total_price(session_option_items)
+        if session_option_items
+        else (
+            appointment.session_option.price_cents
+            if appointment.session_option
+            else calculate_session_price_cents(pricing_duration_minutes)
+        )
     )
     assets = []
     if include_assets:
@@ -1372,11 +1563,12 @@ def serialize_appointment(appointment, *, include_assets=True):
             "notes": appointment.placement_notes,
         },
         "service": {
-            "name": session_option_data["name"] if session_option_data else None,
+            "name": service_name,
             "notes": appointment.client_description,
         },
         "product": session_option_data,
         "session_option": session_option_data,
+        "session_options": session_option_snapshots,
         "session_price_cents": session_price_cents,
         "client": {
             "id": client.id,
@@ -2087,18 +2279,16 @@ def public_availability_slots():
         return jsonify({"error": "Invalid date format; use YYYY-MM-DD."}), 400
 
     duration_param = request.args.get("duration_minutes", type=int)
-    session_option_id_raw = request.args.get("session_option_id")
-    session_option = None
-    is_free_consultation = False
-    if session_option_id_raw is not None:
-        try:
-            session_option_id = int(session_option_id_raw)
-        except (TypeError, ValueError):
-            return jsonify({"error": "session_option_id must be a whole number."}), 400
-        session_option = SessionOption.query.filter_by(id=session_option_id, is_active=True).first()
-        if not session_option:
-            return jsonify({"error": "Session option not found."}), 404
-        is_free_consultation = session_option.price_cents == 0
+    session_options, selection_error = _load_selected_session_options_from_request_args()
+    if selection_error:
+        payload, status = selection_error
+        has_explicit_session_selection = bool(
+            request.args.get("session_option_id")
+            or request.args.get("session_option_ids")
+            or request.args.getlist("session_option_ids")
+        )
+        if has_explicit_session_selection:
+            return jsonify(payload), status
 
     placement = request.args.get("placement")
     size = request.args.get("size")
@@ -2109,8 +2299,8 @@ def public_availability_slots():
     day_label = INDEX_TO_DAY.get(weekday, "this day").capitalize()
 
     duration_minutes = None
-    if session_option:
-        duration_minutes = session_option.duration_minutes
+    if session_options:
+        duration_minutes = _session_options_total_duration(session_options)
     else:
         duration_minutes = duration_param or calculate_suggested_duration_minutes(placement, size)
         if duration_minutes % DEFAULT_SLOT_INTERVAL_MINUTES != 0:
@@ -2133,6 +2323,7 @@ def public_availability_slots():
             "turnaround_minutes": BOOKING_TURNAROUND_MINUTES,
             "minimum_duration_minutes": day_minimum,
             "working_window": window,
+            "session_options": [serialize_session_option(option) for option in session_options],
             "slots": [
                 {
                     "start": slot["start"].isoformat(),
@@ -4471,6 +4662,7 @@ def create_appointment():
         joinedload(TattooAppointment.assets).joinedload(AppointmentAsset.admin_uploader),
         joinedload(TattooAppointment.assets).joinedload(AppointmentAsset.client_uploader),
         joinedload(TattooAppointment.payments),
+        joinedload(TattooAppointment.session_option_items),
     ).get(appointment.id)
 
     send_booking_confirmation_email(
@@ -4544,26 +4736,14 @@ def initiate_stripe_booking():
     else:
         booking_hours_map = fetch_working_hours_map()
 
-    session_option = None
-    session_option_id = payload.get("session_option_id")
-    if session_option_id is not None:
-        try:
-            session_option_id = int(session_option_id)
-        except (TypeError, ValueError):
-            errors.append({"field": "session_option_id", "message": "Session option must be a whole number."})
-        else:
-            option = SessionOption.query.get(session_option_id)
-            if not option or not option.is_active:
-                errors.append({"field": "session_option_id", "message": "Session option not found."})
-            else:
-                session_option = option
-    if not session_option:
-        errors.append({"field": "session_option_id", "message": "Please choose a nail service."})
+    session_options, session_option_errors = _load_selected_session_options_from_payload(payload)
+    errors.extend(session_option_errors)
 
     if errors:
         return jsonify({"errors": errors}), 400
 
-    duration_minutes = session_option.duration_minutes
+    primary_session_option = session_options[0]
+    duration_minutes = _session_options_total_duration(session_options)
     available_slots, _ = build_available_slots(
         scheduled_start.date(),
         duration_minutes,
@@ -4579,17 +4759,18 @@ def initiate_stripe_booking():
         return jsonify({"errors": [{"field": "scheduled_start", "message": "The selected time is no longer available. Please choose another slot."}]}), 400
 
     booking_fee_percent = load_booking_fee_percent()
-    session_price_cents = session_option.price_cents
+    session_price_cents = _session_options_total_price(session_options)
     pay_full_amount = parse_bool(payload.get("pay_full_amount"), default=False)
     charge_amount = session_price_cents if pay_full_amount else calculate_booking_fee_amount(session_price_cents, booking_fee_percent)
 
     if charge_amount <= 0:
         return jsonify({"error": "Payment amount is invalid."}), 400
 
+    service_label = _session_options_label(session_options)
     payment_note = (
-        f"{session_option.name} - full payment"
+        f"{service_label} - full payment"
         if pay_full_amount
-        else f"{session_option.name} - {booking_fee_percent}% deposit"
+        else f"{service_label} - {booking_fee_percent}% deposit"
     )
 
     draft = BookingDraft(
@@ -4597,7 +4778,7 @@ def initiate_stripe_booking():
         last_name=last_name,
         email=email,
         phone=phone,
-        session_option_id=session_option.id,
+        session_option_id=primary_session_option.id,
         scheduled_start=scheduled_start,
         notes=description or None,
         inspiration_data=json.dumps(inspiration_urls) if inspiration_urls else None,
@@ -4607,6 +4788,10 @@ def initiate_stripe_booking():
         payment_note=payment_note,
         expires_at=datetime.utcnow() + timedelta(hours=2),
     )
+    draft.session_option_items = [
+        BookingDraftSessionOption(**_build_session_option_snapshot(option, index))
+        for index, option in enumerate(session_options)
+    ]
     db.session.add(draft)
     try:
         db.session.flush()
@@ -4700,6 +4885,7 @@ def verify_stripe_checkout_session():
         joinedload(TattooAppointment.assets).joinedload(AppointmentAsset.admin_uploader),
         joinedload(TattooAppointment.assets).joinedload(AppointmentAsset.client_uploader),
         joinedload(TattooAppointment.payments),
+        joinedload(TattooAppointment.session_option_items),
     ).get(appointment.id)
 
     if payment and should_notify:
@@ -4769,6 +4955,7 @@ def stripe_webhook():
     appointment = TattooAppointment.query.options(
         joinedload(TattooAppointment.client),
         joinedload(TattooAppointment.payments),
+        joinedload(TattooAppointment.session_option_items),
     ).get(appointment.id)
     if payment and should_notify:
         _notify_for_paid_appointment(appointment, payment)
@@ -4828,6 +5015,7 @@ def admin_get_appointment(appointment_id):
             joinedload(TattooAppointment.assets).joinedload(AppointmentAsset.admin_uploader),
             joinedload(TattooAppointment.assets).joinedload(AppointmentAsset.client_uploader),
             joinedload(TattooAppointment.payments),
+            joinedload(TattooAppointment.session_option_items),
         )
         .get_or_404(appointment_id)
     )
@@ -4849,6 +5037,7 @@ def public_lookup_appointment():
             joinedload(TattooAppointment.assets).joinedload(AppointmentAsset.admin_uploader),
             joinedload(TattooAppointment.assets).joinedload(AppointmentAsset.client_uploader),
             joinedload(TattooAppointment.payments),
+            joinedload(TattooAppointment.session_option_items),
         )
         .outerjoin(ClientAccount)
         .filter(
@@ -5055,6 +5244,7 @@ def admin_update_appointment(appointment_id):
         joinedload(TattooAppointment.assets).joinedload(AppointmentAsset.admin_uploader),
         joinedload(TattooAppointment.assets).joinedload(AppointmentAsset.client_uploader),
         joinedload(TattooAppointment.payments),
+        joinedload(TattooAppointment.session_option_items),
     ).get(appointment.id)
 
     if status_changed:

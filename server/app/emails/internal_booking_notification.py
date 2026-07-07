@@ -94,6 +94,23 @@ def _compute_end_time(appointment: "TattooAppointment") -> datetime | None:
     duration = appointment.duration_minutes or appointment.suggested_duration_minutes or 60
     return appointment.scheduled_start + timedelta(minutes=duration)
 
+
+def _appointment_service_name(appointment: "TattooAppointment") -> str:
+    items = list(getattr(appointment, "session_option_items", None) or [])
+    names = [
+        (getattr(item, "name", None) or "").strip()
+        for item in items
+        if getattr(item, "name", None)
+    ]
+    if names:
+        return " + ".join(names)
+    return (
+        appointment.session_option.name
+        if getattr(appointment, "session_option", None) and appointment.session_option.name
+        else "Nail appointment"
+    )
+
+
 def _detail_lines(
     reference: str,
     appointment: "TattooAppointment",
@@ -112,7 +129,7 @@ def _detail_lines(
         f"Contact: {appointment.display_contact_email or 'n/a'}",
         f"Scheduled: {scheduled_label}",
         f"Duration: {duration_label}",
-        f"Service: {appointment.session_option.name if getattr(appointment, 'session_option', None) and appointment.session_option.name else 'Nail appointment'}",
+        f"Service: {_appointment_service_name(appointment)}",
         f"Payment: {payment_label} ({_format_currency(charge_amount_cents, payment_currency)})",
     ]
     if session_price_cents:

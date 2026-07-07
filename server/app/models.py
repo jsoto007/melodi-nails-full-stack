@@ -375,6 +375,12 @@ class TattooAppointment(TimestampMixin, db.Model):
         cascade="all, delete-orphan",
         order_by="AppointmentPayment.created_at",
     )
+    session_option_items = db.relationship(
+        "AppointmentSessionOption",
+        back_populates="appointment",
+        cascade="all, delete-orphan",
+        order_by="AppointmentSessionOption.position",
+    )
 
     session_option = db.relationship("SessionOption", passive_deletes=True)
 
@@ -490,6 +496,60 @@ class SessionOption(TimestampMixin, db.Model):
         return f"<SessionOption {self.id}: {self.name or self.duration_minutes}>"
 
 
+class AppointmentSessionOption(TimestampMixin, db.Model):
+    __tablename__ = "appointment_session_options"
+    __table_args__ = (
+        db.Index("ix_appointment_session_options_appointment_id", "appointment_id"),
+        db.Index("ix_appointment_session_options_session_option_id", "session_option_id"),
+    )
+
+    id = db.Column(db.Integer, primary_key=True)
+    appointment_id = db.Column(
+        db.Integer,
+        db.ForeignKey("tattoo_appointments.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    session_option_id = db.Column(
+        db.Integer,
+        db.ForeignKey("session_options.id", ondelete="SET NULL"),
+    )
+    position = db.Column(db.Integer, default=0, nullable=False)
+    name = db.Column(db.String(120))
+    category = db.Column(db.String(80))
+    duration_minutes = db.Column(db.Integer, nullable=False)
+    price_cents = db.Column(db.Integer, nullable=False)
+
+    appointment = db.relationship("TattooAppointment", back_populates="session_option_items")
+    session_option = db.relationship("SessionOption", passive_deletes=True)
+
+
+class BookingDraftSessionOption(TimestampMixin, db.Model):
+    __tablename__ = "booking_draft_session_options"
+    __table_args__ = (
+        db.Index("ix_booking_draft_session_options_draft_id", "booking_draft_id"),
+        db.Index("ix_booking_draft_session_options_session_option_id", "session_option_id"),
+    )
+
+    id = db.Column(db.Integer, primary_key=True)
+    booking_draft_id = db.Column(
+        db.String(64),
+        db.ForeignKey("booking_drafts.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    session_option_id = db.Column(
+        db.Integer,
+        db.ForeignKey("session_options.id", ondelete="SET NULL"),
+    )
+    position = db.Column(db.Integer, default=0, nullable=False)
+    name = db.Column(db.String(120))
+    category = db.Column(db.String(80))
+    duration_minutes = db.Column(db.Integer, nullable=False)
+    price_cents = db.Column(db.Integer, nullable=False)
+
+    booking_draft = db.relationship("BookingDraft", back_populates="session_option_items")
+    session_option = db.relationship("SessionOption", passive_deletes=True)
+
+
 class UserNotification(TimestampMixin, db.Model):
     __tablename__ = "user_notifications"
 
@@ -580,6 +640,12 @@ class BookingDraft(db.Model):
     created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
 
     session_option = db.relationship("SessionOption")
+    session_option_items = db.relationship(
+        "BookingDraftSessionOption",
+        back_populates="booking_draft",
+        cascade="all, delete-orphan",
+        order_by="BookingDraftSessionOption.position",
+    )
     fulfilled_appointment = db.relationship(
         "TattooAppointment",
         foreign_keys=[fulfilled_appointment_id],

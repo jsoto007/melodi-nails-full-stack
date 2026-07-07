@@ -239,8 +239,18 @@ export default function BookingConfirmation() {
     bookingDetails?.contact_email || bookingDetails?.contact?.email || bookingDetails?.client?.email || '—';
   const contactPhone =
     bookingDetails?.contact_phone || bookingDetails?.contact?.phone || bookingDetails?.client?.phone || '—';
+  const selectedServiceNames = Array.isArray(bookingDetails?.session_options)
+    ? bookingDetails.session_options.map((option) => option?.name).filter(Boolean)
+    : [];
   const serviceLabel =
-    bookingDetails?.service?.name || bookingDetails?.session_option?.name || 'Service pending';
+    bookingDetails?.service?.name ||
+    (selectedServiceNames.length ? selectedServiceNames.join(' + ') : null) ||
+    bookingDetails?.session_option?.name ||
+    'Service pending';
+  const currentServiceCategory =
+    bookingDetails?.session_option?.category ||
+    bookingDetails?.session_options?.find((option) => option?.category)?.category ||
+    null;
   const placementNotes =
     bookingDetails?.service?.notes || bookingDetails?.client_description || bookingDetails?.tattoo?.notes || '';
   const descriptionCopy = bookingDetails?.client_description || '';
@@ -404,7 +414,7 @@ export default function BookingConfirmation() {
 
             <RelatedServices
               currentServiceName={serviceLabel}
-              currentCategory={bookingDetails?.session_option?.category || null}
+              currentCategory={currentServiceCategory}
             />
           </FadeIn>
         ) : isFetchingRemote ? (

@@ -61,6 +61,22 @@ def _format_field_label(value: str | None) -> str:
     return cleaned.capitalize()
 
 
+def _appointment_service_name(appointment: "TattooAppointment") -> str:
+    items = list(getattr(appointment, "session_option_items", None) or [])
+    names = [
+        (getattr(item, "name", None) or "").strip()
+        for item in items
+        if getattr(item, "name", None)
+    ]
+    if names:
+        return " + ".join(names)
+    return (
+        appointment.session_option.name
+        if getattr(appointment, "session_option", None) and appointment.session_option.name
+        else "Nail appointment"
+    )
+
+
 def send_booking_confirmation_email(
     appointment: "TattooAppointment",
     *,
@@ -81,11 +97,7 @@ def send_booking_confirmation_email(
     payment_currency = payments[0].currency if payments else _default_currency()
     reference = appointment.reference_code or f"Appointment #{appointment.id}"
     scheduled_label = _format_appointment_datetime(appointment.scheduled_start, appointment.duration_minutes)
-    service_name = (
-        appointment.session_option.name
-        if getattr(appointment, "session_option", None) and appointment.session_option.name
-        else "Nail appointment"
-    )
+    service_name = _appointment_service_name(appointment)
     if appointment.duration_minutes:
         hours = appointment.duration_minutes / 60.0
         duration_label = f"{hours:.1f}h" if not hours.is_integer() else f"{int(hours)}h"
