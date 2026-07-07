@@ -2956,13 +2956,32 @@ def payment_health():
         diagnostics["booking_drafts_error"] = str(getattr(exc, "orig", exc))
 
     try:
+        db.session.execute(select(BookingDraftSessionOption.id).limit(1)).scalar()
+        diagnostics["booking_draft_session_options_accessible"] = True
+    except Exception as exc:
+        diagnostics["booking_draft_session_options_accessible"] = False
+        diagnostics["booking_draft_session_options_error"] = str(getattr(exc, "orig", exc))
+
+    try:
+        db.session.execute(select(AppointmentSessionOption.id).limit(1)).scalar()
+        diagnostics["appointment_session_options_accessible"] = True
+    except Exception as exc:
+        diagnostics["appointment_session_options_accessible"] = False
+        diagnostics["appointment_session_options_error"] = str(getattr(exc, "orig", exc))
+
+    try:
         db.session.execute(select(SessionOption.id).limit(1)).scalar()
         diagnostics["session_options_accessible"] = True
     except Exception as exc:
         diagnostics["session_options_accessible"] = False
         diagnostics["session_options_error"] = str(getattr(exc, "orig", exc))
 
-    status_code = 200 if diagnostics["stripe_secret_configured"] and diagnostics["booking_drafts_accessible"] else 503
+    status_code = 200 if (
+        diagnostics["stripe_secret_configured"]
+        and diagnostics["booking_drafts_accessible"]
+        and diagnostics["booking_draft_session_options_accessible"]
+        and diagnostics["appointment_session_options_accessible"]
+    ) else 503
     return jsonify(diagnostics), status_code
 
 
