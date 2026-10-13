@@ -517,7 +517,11 @@ class AppointmentSessionOption(TimestampMixin, db.Model):
     name = db.Column(db.String(120))
     category = db.Column(db.String(80))
     duration_minutes = db.Column(db.Integer, nullable=False)
+    # price_cents is what the client is charged for this item; list_price_cents is the
+    # catalogue price at booking time and discount_percent how it was reduced (add-ons).
     price_cents = db.Column(db.Integer, nullable=False)
+    list_price_cents = db.Column(db.Integer)
+    discount_percent = db.Column(db.Integer, default=0, server_default="0", nullable=False)
 
     appointment = db.relationship("TattooAppointment", back_populates="session_option_items")
     session_option = db.relationship("SessionOption", passive_deletes=True)
@@ -545,6 +549,8 @@ class BookingDraftSessionOption(TimestampMixin, db.Model):
     category = db.Column(db.String(80))
     duration_minutes = db.Column(db.Integer, nullable=False)
     price_cents = db.Column(db.Integer, nullable=False)
+    list_price_cents = db.Column(db.Integer)
+    discount_percent = db.Column(db.Integer, default=0, server_default="0", nullable=False)
 
     booking_draft = db.relationship("BookingDraft", back_populates="session_option_items")
     session_option = db.relationship("SessionOption", passive_deletes=True)

@@ -137,6 +137,10 @@ DEFAULT_OPERATING_HOURS = [
 HOURLY_RATE_SETTING_KEY = "studio_hourly_rate_cents"
 DEFAULT_HOURLY_RATE_CENTS = 20000
 BOOKING_FEE_SETTING_KEY = "booking_fee_percent"
+# Services added from the pre-checkout add-ons step (a category the client has not
+# booked from yet) are discounted by this much. Enforced here, never trusted from the client.
+ADDON_DISCOUNT_PERCENT = 10
+STRIPE_MINIMUM_CHARGE_CENTS = 50
 DEFAULT_BOOKING_FEE_PERCENT = 20
 MINIMUM_BOOKING_FEE_PERCENT = 20
 PAYMENT_HOLD_TTL = timedelta(minutes=30)
@@ -597,6 +601,8 @@ def _fulfill_booking_draft(
                 category=draft.session_option.category,
                 duration_minutes=draft.session_option.duration_minutes,
                 price_cents=draft.session_option.price_cents,
+                list_price_cents=draft.session_option.price_cents,
+                discount_percent=0,
             )
         ]
     session_option = SessionOption.query.get(draft.session_option_id)
@@ -634,6 +640,8 @@ def _fulfill_booking_draft(
             category=item.category,
             duration_minutes=item.duration_minutes,
             price_cents=item.price_cents,
+            list_price_cents=item.list_price_cents if item.list_price_cents is not None else item.price_cents,
+            discount_percent=int(item.discount_percent or 0),
         )
         for item in draft_items
     ]
@@ -1106,18 +1114,70 @@ def _serialize_session_option_snapshot(item):
         "category": item.category,
         "duration_minutes": item.duration_minutes,
         "price_cents": item.price_cents,
+        # Rows written before add-ons existed have no list price: it equals the charged price.
+        "list_price_cents": item.list_price_cents if getattr(item, "list_price_cents", None) is not None else item.price_cents,
+        "discount_percent": int(getattr(item, "discount_percent", 0) or 0),
     }
 
 
-def _build_session_option_snapshot(option: SessionOption, position: int) -> dict:
+def _discounted_price_cents(price_cents: int, percent: int) -> int:
+    """Integer-cent price after a percentage discount; the discount is rounded half up."""
+    price = max(0, int(price_cents or 0))
+    pct = max(0, min(100, int(percent or 0)))
+    if not pct:
+        return price
+    discount = (price * pct + 50) // 100
+    return max(0, price - discount)
+
+
+def _build_session_option_snapshot(option: SessionOption, position: int, discount_percent: int = 0) -> dict:
+    list_price = max(0, int(option.price_cents or 0))
     return {
         "session_option_id": option.id,
         "position": position,
         "name": option.name,
         "category": option.category,
         "duration_minutes": option.duration_minutes,
-        "price_cents": option.price_cents,
+        "price_cents": _discounted_price_cents(list_price, discount_percent),
+        "list_price_cents": list_price,
+        "discount_percent": int(discount_percent or 0),
     }
+
+
+def _load_selected_addon_options(payload: dict, main_options: list[SessionOption]) -> tuple[list[SessionOption], list[dict]]:
+    """Add-ons are optional extra services, each from a category the main selection
+    does not already cover. They get ADDON_DISCOUNT_PERCENT off."""
+    option_ids, error = _coerce_session_option_ids(payload.get("addon_session_option_ids"))
+    if error:
+        return [], [{"field": "addon_session_option_ids", "message": error}]
+    if not option_ids:
+        return [], []
+    if len(option_ids) != len(set(option_ids)):
+        return [], [{"field": "addon_session_option_ids", "message": "Choose each add-on only once."}]
+
+    main_ids = {option.id for option in main_options}
+    main_categories = {_session_option_category_key(option) for option in main_options}
+    options_by_id = {
+        option.id: option
+        for option in SessionOption.query.filter(SessionOption.id.in_(set(option_ids))).all()
+    }
+    addons: list[SessionOption] = []
+    seen_categories: set[str] = set()
+    for option_id in option_ids:
+        option = options_by_id.get(option_id)
+        if not option or not option.is_active:
+            return [], [{"field": "addon_session_option_ids", "message": "Add-on not found."}]
+        if option.id in main_ids:
+            return [], [{"field": "addon_session_option_ids", "message": "That service is already in your booking."}]
+        category_key = _session_option_category_key(option)
+        if category_key in main_categories or category_key in seen_categories:
+            return [], [{
+                "field": "addon_session_option_ids",
+                "message": "Add-ons must come from a category you have not booked from yet.",
+            }]
+        seen_categories.add(category_key)
+        addons.append(option)
+    return addons, []
 
 
 def calculate_booking_fee_amount(total_cents: int, percent: int) -> int:
@@ -2922,6 +2982,7 @@ def payment_configuration():
                 "publishable_key": current_app.config.get("STRIPE_PUBLISHABLE_KEY") if enabled else None,
                 "booking_fee_percent": load_booking_fee_percent(),
                 "minimum_booking_fee_percent": MINIMUM_BOOKING_FEE_PERCENT,
+                "addon_discount_percent": ADDON_DISCOUNT_PERCENT,
                 "supports_full_payment": True,
                 "currency": _payment_currency(),
                 "country_code": _payment_country_code(),
@@ -4757,12 +4818,24 @@ def initiate_stripe_booking():
 
     session_options, session_option_errors = _load_selected_session_options_from_payload(payload)
     errors.extend(session_option_errors)
+    addon_options: list[SessionOption] = []
+    if session_options:
+        addon_options, addon_errors = _load_selected_addon_options(payload, session_options)
+        errors.extend(addon_errors)
 
     if errors:
         return jsonify({"errors": errors}), 400
 
     primary_session_option = session_options[0]
-    duration_minutes = _session_options_total_duration(session_options)
+    item_snapshots = [
+        _build_session_option_snapshot(option, index)
+        for index, option in enumerate(session_options)
+    ] + [
+        _build_session_option_snapshot(option, len(session_options) + index, ADDON_DISCOUNT_PERCENT)
+        for index, option in enumerate(addon_options)
+    ]
+    all_options = session_options + addon_options
+    duration_minutes = _session_options_total_duration(all_options)
     available_slots, _ = build_available_slots(
         scheduled_start.date(),
         duration_minutes,
@@ -4778,19 +4851,45 @@ def initiate_stripe_booking():
         return jsonify({"errors": [{"field": "scheduled_start", "message": "The selected time is no longer available. Please choose another slot."}]}), 400
 
     booking_fee_percent = load_booking_fee_percent()
-    session_price_cents = _session_options_total_price(session_options)
+    # Charge from the snapshots so add-on discounts are reflected in the total.
+    session_price_cents = sum(snapshot["price_cents"] for snapshot in item_snapshots)
     pay_full_amount = parse_bool(payload.get("pay_full_amount"), default=False)
     charge_amount = session_price_cents if pay_full_amount else calculate_booking_fee_amount(session_price_cents, booking_fee_percent)
 
     if charge_amount <= 0:
         return jsonify({"error": "Payment amount is invalid."}), 400
+    # Stripe refuses charges under 50 cents (USD); a tiny discounted total could
+    # otherwise produce a deposit it rejects. Never exceed the full price.
+    if not pay_full_amount and charge_amount < STRIPE_MINIMUM_CHARGE_CENTS:
+        charge_amount = min(session_price_cents, STRIPE_MINIMUM_CHARGE_CENTS)
+
+    # The client shows a total computed from the catalogue it loaded; if prices changed
+    # since, refuse rather than charge an amount the client never displayed.
+    expected_raw = payload.get("expected_amount_cents")
+    if expected_raw not in (None, ""):
+        try:
+            expected_amount = int(expected_raw)
+        except (TypeError, ValueError):
+            return jsonify({"errors": [{"field": "expected_amount_cents", "message": "expected_amount_cents must be a whole number."}]}), 400
+        if expected_amount != charge_amount:
+            return jsonify({
+                "error": "Prices have changed since you started. Please review the updated total.",
+                "code": "amount_mismatch",
+                "expected_amount_cents": charge_amount,
+                "total_cents": session_price_cents,
+            }), 409
 
     service_label = _session_options_label(session_options)
+    if addon_options:
+        service_label = (
+            f"{service_label} + "
+            + " + ".join(f"{option.name} ({ADDON_DISCOUNT_PERCENT}% add-on)" for option in addon_options)
+        )
     payment_note = (
         f"{service_label} - full payment"
         if pay_full_amount
         else f"{service_label} - {booking_fee_percent}% deposit"
-    )
+    )[:255]  # column width; add-ons can make the label long
 
     draft = BookingDraft(
         first_name=first_name,
@@ -4807,10 +4906,7 @@ def initiate_stripe_booking():
         payment_note=payment_note,
         expires_at=datetime.utcnow() + timedelta(hours=2),
     )
-    draft.session_option_items = [
-        BookingDraftSessionOption(**_build_session_option_snapshot(option, index))
-        for index, option in enumerate(session_options)
-    ]
+    draft.session_option_items = [BookingDraftSessionOption(**snapshot) for snapshot in item_snapshots]
     db.session.add(draft)
     try:
         db.session.flush()
