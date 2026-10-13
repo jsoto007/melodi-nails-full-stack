@@ -1,5 +1,6 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
+import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
 import FadeIn from '../components/FadeIn.jsx';
 import Button from '../components/Button.jsx';
 import Card from '../components/Card.jsx';
@@ -26,6 +27,13 @@ const STEP_LABELS = {
   [STEP_ADDONS]: 'Add-ons',
   [STEP_DETAILS]: 'Your details',
   [STEP_REVIEW]: 'Review & pay',
+};
+
+// Steps slide in from the side the client is moving towards.
+const stepVariants = {
+  enter: (direction) => ({ opacity: 0, x: direction > 0 ? 28 : -28 }),
+  center: { opacity: 1, x: 0 },
+  exit: (direction) => ({ opacity: 0, x: direction > 0 ? -28 : 28 }),
 };
 
 function formatCurrency(amountCents, currency = 'USD') {
@@ -58,33 +66,80 @@ function readFileAsDataUrl(file) {
 const inputClasses =
   'w-full rounded-xl border border-[#d9cbbc] bg-white px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-[#2a3923] focus:ring-2 focus:ring-[#2a3923]/10 placeholder:text-slate-400';
 
-function StepBadge({ number, label, active, done }) {
+function CheckIcon({ className = 'h-3.5 w-3.5' }) {
   return (
-    <div className={`flex items-center gap-2 ${active ? 'opacity-100' : done ? 'opacity-70' : 'opacity-40'}`} aria-current={active ? 'step' : undefined}>
-      <div className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-xs font-bold ${
-        done || active ? 'bg-[#2a3923] text-white' : 'border-2 border-[#d9cbbc] text-[#6f7863]'
-      }`}>
-        {done ? (
-          <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M20 6L9 17l-5-5" />
-          </svg>
-        ) : number}
-      </div>
-      <span className={`hidden text-xs font-semibold uppercase tracking-[0.2em] sm:block ${active ? 'text-[#2a3923]' : 'text-[#6f7863]'}`}>{label}</span>
-    </div>
+    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="M20 6L9 17l-5-5" />
+    </svg>
   );
 }
 
-function SectionHeader({ number, title, subtitle }) {
+function LockIcon({ className = 'h-3.5 w-3.5' }) {
   return (
-    <div className="flex items-start gap-3 border-b border-[#ede5d8] pb-4">
-      <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[#2a3923] text-sm font-bold text-white">
-        {number}
+    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <rect x="4" y="11" width="16" height="10" rx="2" />
+      <path d="M8 11V7a4 4 0 0 1 8 0v4" />
+    </svg>
+  );
+}
+
+/**
+ * Progress for the wizard: a slim animated track on every screen, a
+ * "Step n of m" line on phones and labelled, clickable milestones on wider
+ * screens. Completed steps can be revisited with one tap.
+ */
+function StepProgress({ steps, stepIndex, onJump }) {
+  const prefersReduced = useReducedMotion();
+  const percent = ((stepIndex + 1) / steps.length) * 100;
+  return (
+    <nav className="mb-6 sm:mb-8" aria-label="Booking progress">
+      <div className="mb-2.5 flex items-center justify-between sm:hidden">
+        <span className="text-xs font-semibold uppercase tracking-[0.2em] text-[#2a3923]">{STEP_LABELS[steps[stepIndex]]}</span>
+        <span className="text-xs text-[#6f7863]">Step {stepIndex + 1} of {steps.length}</span>
       </div>
-      <div>
-        <h2 className="font-serif text-lg text-[#2a3923]">{title}</h2>
-        {subtitle ? <p className="mt-0.5 text-sm text-[#6f7863]">{subtitle}</p> : null}
+      <div className="h-1.5 overflow-hidden rounded-full bg-[#d9cbbc]/60" role="progressbar" aria-valuemin={1} aria-valuemax={steps.length} aria-valuenow={stepIndex + 1}>
+        <motion.div
+          className="h-full rounded-full bg-[#2a3923]"
+          initial={false}
+          animate={{ width: `${percent}%` }}
+          transition={prefersReduced ? { duration: 0 } : { type: 'spring', stiffness: 170, damping: 26 }}
+        />
       </div>
+      <ol className="mt-3 hidden items-center justify-between gap-2 sm:flex">
+        {steps.map((key, index) => {
+          const done = index < stepIndex;
+          const active = index === stepIndex;
+          return (
+            <li key={key} className="min-w-0">
+              <button
+                type="button"
+                onClick={() => onJump(key)}
+                disabled={!done}
+                aria-current={active ? 'step' : undefined}
+                className={`flex items-center gap-2 rounded-full py-1 pr-2 text-left transition ${
+                  active ? 'text-[#2a3923]' : done ? 'text-[#5e6755] hover:text-[#2a3923]' : 'cursor-default text-[#6f7863]/60'
+                }`}
+              >
+                <span className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-[11px] font-bold ${
+                  done || active ? 'bg-[#2a3923] text-white' : 'border-2 border-[#d9cbbc] text-[#6f7863]'
+                }`}>
+                  {done ? <CheckIcon className="h-3 w-3" /> : index + 1}
+                </span>
+                <span className="truncate text-[11px] font-semibold uppercase tracking-[0.18em]">{STEP_LABELS[key]}</span>
+              </button>
+            </li>
+          );
+        })}
+      </ol>
+    </nav>
+  );
+}
+
+function SectionHeader({ title, subtitle }) {
+  return (
+    <div className="border-b border-[#ede5d8] pb-4">
+      <h2 className="font-serif text-xl text-[#2a3923] sm:text-2xl">{title}</h2>
+      {subtitle ? <p className="mt-1 text-sm text-[#6f7863]">{subtitle}</p> : null}
     </div>
   );
 }
@@ -117,26 +172,50 @@ function EditLink({ onClick, children = 'Edit' }) {
   );
 }
 
+function PaymentChoice({ checked, onSelect, title, description }) {
+  return (
+    <label className={`flex cursor-pointer items-start gap-4 rounded-2xl border p-4 transition ${
+      checked ? 'border-[#2a3923] bg-[#2a3923]/5 shadow-[0_0_0_1px_#2a3923]' : 'border-[#d9cbbc] bg-white hover:border-[#2a3923]'
+    }`}>
+      <input type="radio" name="payment_choice" aria-label={title} checked={checked} onChange={onSelect} className="sr-only" />
+      <span className={`mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full border-2 transition ${
+        checked ? 'border-[#2a3923] bg-[#2a3923] text-white' : 'border-[#d9cbbc] bg-white'
+      }`} aria-hidden="true">
+        {checked ? <CheckIcon className="h-3 w-3" /> : null}
+      </span>
+      <span>
+        <span className="block font-semibold text-slate-900">{title}</span>
+        <span className="mt-0.5 block text-sm text-[#6f7863]">{description}</span>
+      </span>
+    </label>
+  );
+}
+
 export default function ShareYourIdea() {
   const [searchParams] = useSearchParams();
+  const prefersReduced = useReducedMotion();
   const [products, setProducts] = useState([]);
   const [paymentConfig, setPaymentConfig] = useState(null);
   const [clientSecret, setClientSecret] = useState(null);
   const [step, setStep] = useState(STEP_SERVICE);
   const stepCardRef = useRef(null);
   const isFirstStepRender = useRef(true);
+  const directionRef = useRef(1);
 
-  // The form is replaced by the (shorter) checkout view, so the browser would keep
-  // the old scroll offset and land on the footer. Reset to the top of the checkout.
+  // The form and the checkout replace each other, and each is a different
+  // height: start either one from the top instead of wherever the other ended.
+  const wasCheckoutRef = useRef(false);
   useLayoutEffect(() => {
-    if (clientSecret) window.scrollTo({ top: 0, left: 0, behavior: 'instant' });
+    const isCheckout = Boolean(clientSecret);
+    if (isCheckout || wasCheckoutRef.current) window.scrollTo({ top: 0, left: 0, behavior: 'instant' });
+    wasCheckoutRef.current = isCheckout;
   }, [clientSecret]);
 
   // Each step is its own screen: bring it into view when it changes.
   useEffect(() => {
     if (isFirstStepRender.current) { isFirstStepRender.current = false; return; }
-    stepCardRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-  }, [step]);
+    stepCardRef.current?.scrollIntoView({ behavior: prefersReduced ? 'instant' : 'smooth', block: 'start' });
+  }, [step, prefersReduced]);
 
   const stripePromise = useMemo(() => {
     return paymentConfig?.publishable_key ? loadStripe(paymentConfig.publishable_key) : null;
@@ -195,6 +274,7 @@ export default function ShareYourIdea() {
     [products, form.addon_session_option_ids] // eslint-disable-line react-hooks/exhaustive-deps
   );
   const hasSelectedProducts = selectedProducts.length > 0;
+  const serviceCount = selectedProducts.length + addonProducts.length;
 
   // Add-on candidates: every service in a category the client has not booked from.
   const addonCandidates = useMemo(() => {
@@ -363,9 +443,8 @@ export default function ShareYourIdea() {
     return e;
   };
 
-  const stepDone = (key) => Object.keys(validateStep(key)).length === 0;
-
   const goTo = (key) => {
+    directionRef.current = steps.indexOf(key) >= stepIndex ? 1 : -1;
     setStep(key);
     setPageError('');
   };
@@ -374,6 +453,7 @@ export default function ShareYourIdea() {
     const errors = validateStep(step);
     if (Object.keys(errors).length) {
       setFormErrors((current) => ({ ...current, ...errors }));
+      setPageError(Object.values(errors)[0]);
       return;
     }
     // A time cleared by a duration change sends the client back to re-pick it.
@@ -402,6 +482,7 @@ export default function ShareYourIdea() {
       if (Object.keys(errors).length) {
         setFormErrors((current) => ({ ...current, ...errors }));
         goTo(key);
+        setPageError(Object.values(errors)[0]);
         return;
       }
     }
@@ -452,7 +533,7 @@ export default function ShareYourIdea() {
         const firstField = error.body.errors[0]?.field;
         const target = stepForField(firstField === 'inspiration_urls' ? 'inspiration' : firstField);
         if (target) goTo(target);
-        // The banner always carries the message, even when the step cannot render that field.
+        // The action bar always carries the message, even when the step cannot render that field.
         setPageError(error.body.errors[0]?.message || 'Please review your booking.');
       } else {
         setPageError(error.body?.error || error.message || 'Unable to start checkout. Please try again.');
@@ -462,71 +543,101 @@ export default function ShareYourIdea() {
     }
   };
 
-  if (clientSecret && stripePromise) {
-    return (
-      <main className="min-h-screen bg-[#ECE7E2] py-12">
-        <div className="mx-auto max-w-5xl px-4 sm:px-6">
-          <FadeIn className="text-center mb-10">
-            <p className="mb-2 text-xs font-semibold uppercase tracking-[0.4em] text-[#6f7863]">Secure Checkout</p>
-            <h1 className="font-serif text-3xl text-[#2a3923] sm:text-4xl">Complete your booking</h1>
-          </FadeIn>
-          <Card className="p-0 overflow-hidden bg-white shadow-xl max-w-2xl mx-auto rounded-3xl min-h-[600px] relative">
-            <EmbeddedCheckoutProvider stripe={stripePromise} options={{ clientSecret }}>
-              <EmbeddedCheckout className="py-8" />
-            </EmbeddedCheckoutProvider>
-          </Card>
-        </div>
-      </main>
-    );
-  }
-
   const dateLabel = form.selected_date
     ? new Date(form.selected_date + 'T00:00:00').toLocaleDateString([], { weekday: 'short', month: 'short', day: 'numeric' })
     : '—';
   const timeLabel = form.scheduled_start
     ? new Date(form.scheduled_start).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })
     : '—';
+  const serviceNames = [...selectedProducts, ...addonProducts].map((p) => p.name).join(' + ');
+
+  if (clientSecret && stripePromise) {
+    return (
+      <main className="min-h-screen bg-[#ECE7E2] py-8 sm:py-12">
+        <div className="mx-auto max-w-5xl px-4 sm:px-6">
+          <div className="mb-6 flex items-center justify-between gap-4">
+            <button
+              type="button"
+              onClick={() => setClientSecret(null)}
+              className="inline-flex items-center gap-1.5 text-xs font-semibold uppercase tracking-[0.2em] text-[#6f7863] transition hover:text-[#2a3923]"
+            >
+              <span aria-hidden="true">←</span> Back to review
+            </button>
+            <span className="inline-flex items-center gap-1.5 text-xs text-[#6f7863]">
+              <LockIcon /> Secure checkout by Stripe
+            </span>
+          </div>
+          <FadeIn className="mb-8 text-center">
+            <p className="mb-2 text-xs font-semibold uppercase tracking-[0.4em] text-[#6f7863]">Almost there</p>
+            <h1 className="font-serif text-3xl text-[#2a3923] sm:text-4xl">Complete your booking</h1>
+          </FadeIn>
+          <div className="mx-auto max-w-2xl space-y-4">
+            <div className="flex flex-wrap items-center justify-between gap-x-6 gap-y-2 rounded-2xl border border-[#d9cbbc] bg-[#fffdf9] px-5 py-4 text-sm">
+              <div className="min-w-0">
+                <p className="truncate font-semibold text-slate-900">{serviceNames}</p>
+                <p className="text-xs text-[#6f7863]">{dateLabel} · {timeLabel} · {formatDuration(pricing.durationMinutes)}</p>
+              </div>
+              <div className="sm:text-right">
+                <p className="text-xs uppercase tracking-[0.2em] text-[#6f7863]">Due today</p>
+                <p className="text-lg font-bold text-[#2a3923]">{formatCurrency(pricing.amountDueToday, pricing.currency)}</p>
+                {!form.pay_full_amount && pricing.totalCents > pricing.amountDueToday ? (
+                  <p className="text-xs text-[#6f7863]">{formatCurrency(pricing.totalCents - pricing.amountDueToday, pricing.currency)} at the studio</p>
+                ) : null}
+              </div>
+            </div>
+            <Card className="relative min-h-[600px] overflow-hidden rounded-3xl bg-white p-0 shadow-xl sm:p-0">
+              {/* Sits behind the Stripe frame; the frame covers it once it has loaded. */}
+              <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 text-sm text-[#6f7863]" aria-hidden="true">
+                <span className="h-6 w-6 animate-spin rounded-full border-2 border-[#d9cbbc] border-t-[#2a3923]" />
+                Loading secure checkout…
+              </div>
+              <div className="relative z-10 bg-white">
+                <EmbeddedCheckoutProvider stripe={stripePromise} options={{ clientSecret }}>
+                  <EmbeddedCheckout className="py-8" />
+                </EmbeddedCheckoutProvider>
+              </div>
+            </Card>
+          </div>
+        </div>
+      </main>
+    );
+  }
+
   const isLastStep = step === STEP_REVIEW;
+  const checkingTimes = loadingSlots && (step === STEP_TIME || step === STEP_ADDONS);
+  const continueDisabled = isLastStep ? submitting || !hasSelectedProducts : checkingTimes;
+  let continueLabel;
+  if (isLastStep) {
+    continueLabel = submitting ? (
+      'Processing…'
+    ) : (
+      <>
+        <span className="sm:hidden">Pay {formatCurrency(pricing.amountDueToday, pricing.currency)}</span>
+        <span className="hidden sm:inline">Continue to payment</span>
+      </>
+    );
+  } else if (checkingTimes) {
+    continueLabel = 'Checking times…';
+  } else if (step === STEP_ADDONS && !addonProducts.length) {
+    continueLabel = 'Skip';
+  } else {
+    continueLabel = 'Continue';
+  }
 
   return (
-    <main className="min-h-screen bg-[#ECE7E2] py-12">
+    <main className="min-h-screen bg-[#ECE7E2] py-8 sm:py-12">
       <div className="mx-auto max-w-5xl px-4 sm:px-6">
 
         {/* Header */}
-        <FadeIn className="mb-10 text-center">
+        <FadeIn className="mb-6 text-center sm:mb-10">
           <p className="mb-2 text-xs font-semibold uppercase tracking-[0.4em] text-[#6f7863]">Book your visit</p>
-          <h1 className="font-serif text-4xl text-[#2a3923] sm:text-5xl">Reserve your appointment</h1>
-          <p className="mx-auto mt-3 max-w-md text-sm leading-relaxed text-[#5e6755]">
+          <h1 className="font-serif text-3xl text-[#2a3923] sm:text-5xl">Reserve your appointment</h1>
+          <p className="mx-auto mt-3 hidden max-w-md text-sm leading-relaxed text-[#5e6755] sm:block">
             Pick a service, choose a time, then pay a deposit or the full amount to secure your slot.
           </p>
         </FadeIn>
 
-        {/* Step progress */}
-        <FadeIn className="mb-8 flex items-center justify-center gap-3 sm:gap-6">
-          {steps.map((key, index) => (
-            <div key={key} className="flex items-center gap-3 sm:gap-6">
-              {index > 0 ? <div className="h-px w-6 bg-[#d9cbbc] sm:w-10" /> : null}
-              <StepBadge
-                number={index + 1}
-                label={STEP_LABELS[key]}
-                active={key === step}
-                done={index < stepIndex && stepDone(key)}
-              />
-            </div>
-          ))}
-        </FadeIn>
-
-        {/* Alerts */}
-        {notice ? (
-          <FadeIn role="status" className="mb-6 rounded-2xl border border-amber-200 bg-amber-50 px-5 py-4 text-sm text-amber-900">
-            {notice}
-          </FadeIn>
-        ) : null}
-        {pageError ? (
-          <FadeIn role="alert" className="mb-6 rounded-2xl border border-red-200 bg-red-50 px-5 py-4 text-sm text-red-700">
-            {pageError}
-          </FadeIn>
-        ) : null}
+        <StepProgress steps={steps} stepIndex={stepIndex} onJump={goTo} />
 
         <form onSubmit={handleSubmit}>
           {/* A disabled default button turns off implicit (Enter-key) submission before the review step. */}
@@ -535,249 +646,261 @@ export default function ShareYourIdea() {
 
             {/* Current step */}
             <div ref={stepCardRef} className="min-w-0 scroll-mt-24">
-              <Card className="space-y-6 p-6 sm:p-8">
-
-                {step === STEP_SERVICE ? (
-                  <>
-                    <SectionHeader number={stepIndex + 1} title="Elige un servicio" subtitle="Tap a category, then a service. You can pick one service per category." />
-                    <ServiceAccordionPicker
-                      products={products}
-                      selectedIds={form.session_option_ids}
-                      onSelect={handleProductSelect}
-                      onRemove={handleProductRemove}
-                      currency={pricing.currency}
-                    />
-                    {formErrors.session_option_ids || formErrors.session_option_id ? (
-                      <p className="text-xs font-medium text-red-600">{formErrors.session_option_ids || formErrors.session_option_id}</p>
-                    ) : null}
-                  </>
-                ) : null}
-
-                {step === STEP_TIME ? (
-                  <div id="time-selection-section" className="space-y-6">
-                    <SectionHeader number={stepIndex + 1} title="Date & time" subtitle={`${formatDuration(pricing.durationMinutes)} · ${[...selectedProducts, ...addonProducts].map((p) => p.name).join(' + ')}`} />
-                    <AppointmentTimePicker
-                      date={form.selected_date}
-                      onDateChange={(value) => handleChange({ target: { name: 'selected_date', value } })}
-                      slots={availability}
-                      selectedStart={form.scheduled_start}
-                      onSelectSlot={(start) => {
-                        setForm((c) => ({ ...c, scheduled_start: start }));
-                        setFormErrors((c) => ({ ...c, scheduled_start: '' }));
-                        setNotice('');
-                      }}
-                      loading={loadingSlots}
-                      hasServices={hasSelectedProducts}
-                      isClosed={Boolean(availabilityMeta?.is_closed)}
-                      dateError={formErrors.selected_date}
-                      timeError={formErrors.scheduled_start}
-                    />
+              <Card className="overflow-hidden p-5 sm:p-8">
+                {notice ? (
+                  <div role="status" className="mb-5 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+                    {notice}
                   </div>
                 ) : null}
-
-                {step === STEP_ADDONS ? (
-                  <>
-                    <SectionHeader
-                      number={stepIndex + 1}
-                      title="Add something extra?"
-                      subtitle={`Save ${addonDiscountPercent}% on any extra service when you add it to this visit. Optional — skip if you're all set.`}
-                    />
-                    <div className="flex items-center gap-3 rounded-2xl bg-[#eef1ea] px-4 py-3">
-                      <span className="shrink-0 rounded-full bg-[#2a3923] px-2.5 py-1 text-[11px] font-bold uppercase tracking-[0.15em] text-white">
-                        -{addonDiscountPercent}%
-                      </span>
-                      <p className="text-sm text-[#2a3923]">
-                        Prices below already include the discount. Your time slot updates to fit the longer visit.
-                      </p>
-                    </div>
-                    <ServiceAccordionPicker
-                      products={addonCandidates}
-                      selectedIds={form.addon_session_option_ids}
-                      onSelect={handleAddonSelect}
-                      onRemove={handleAddonRemove}
-                      currency={pricing.currency}
-                      discountPercent={addonDiscountPercent}
-                    />
-                    {formErrors.addon_session_option_ids ? (
-                      <p className="text-xs font-medium text-red-600">{formErrors.addon_session_option_ids}</p>
+                <AnimatePresence mode="wait" initial={false} custom={directionRef.current}>
+                  <motion.div
+                    key={step}
+                    custom={directionRef.current}
+                    variants={stepVariants}
+                    initial="enter"
+                    animate="center"
+                    exit="exit"
+                    transition={prefersReduced ? { duration: 0 } : { duration: 0.22, ease: 'easeOut' }}
+                    className="space-y-6"
+                  >
+                    {step === STEP_SERVICE ? (
+                      <>
+                        <SectionHeader title="Elige un servicio" subtitle="Tap a category, then a service. You can pick one service per category." />
+                        <ServiceAccordionPicker
+                          products={products}
+                          selectedIds={form.session_option_ids}
+                          onSelect={handleProductSelect}
+                          onRemove={handleProductRemove}
+                          currency={pricing.currency}
+                        />
+                        {formErrors.session_option_ids || formErrors.session_option_id ? (
+                          <p className="text-xs font-medium text-red-600">{formErrors.session_option_ids || formErrors.session_option_id}</p>
+                        ) : null}
+                      </>
                     ) : null}
-                  </>
-                ) : null}
 
-                {step === STEP_DETAILS ? (
-                  <>
-                    <SectionHeader number={stepIndex + 1} title="Your details" subtitle="We'll send your confirmation here. No account needed." />
-                    <div className="grid gap-4 sm:grid-cols-2">
-                      <Field label="First name" error={formErrors.first_name}>
-                        <input name="first_name" autoComplete="given-name" value={form.first_name} onChange={handleChange} placeholder="First name" className={inputClasses} />
-                      </Field>
-                      <Field label="Last name" error={formErrors.last_name}>
-                        <input name="last_name" autoComplete="family-name" value={form.last_name} onChange={handleChange} placeholder="Last name" className={inputClasses} />
-                      </Field>
-                      <Field label="Email address" error={formErrors.email}>
-                        <input name="email" type="email" autoComplete="email" inputMode="email" value={form.email} onChange={handleChange} placeholder="you@example.com" className={inputClasses} />
-                      </Field>
-                      <Field label="Phone number" error={formErrors.phone}>
-                        <input name="phone" type="tel" autoComplete="tel" inputMode="tel" value={form.phone} onChange={handleChange} placeholder="(929) 000-0000" className={inputClasses} />
-                      </Field>
-                    </div>
-                    <div className="space-y-5 border-t border-[#ede5d8] pt-5">
-                      <p className="text-xs font-semibold uppercase tracking-[0.3em] text-[#6f7863]">Optional</p>
-                      <Field label="Notes for your nail tech" hint="Anything you'd like them to know before the visit.">
-                        <textarea
-                          name="notes"
-                          rows="3"
-                          value={form.notes}
-                          onChange={handleChange}
-                          placeholder="e.g. I want a minimalist look, short nails…"
-                          className={inputClasses}
+                    {step === STEP_TIME ? (
+                      <div id="time-selection-section" className="space-y-6">
+                        <SectionHeader title="Date & time" subtitle={`${formatDuration(pricing.durationMinutes)} · ${serviceNames}`} />
+                        <AppointmentTimePicker
+                          date={form.selected_date}
+                          onDateChange={(value) => handleChange({ target: { name: 'selected_date', value } })}
+                          slots={availability}
+                          selectedStart={form.scheduled_start}
+                          onSelectSlot={(start) => {
+                            setForm((c) => ({ ...c, scheduled_start: start }));
+                            setFormErrors((c) => ({ ...c, scheduled_start: '' }));
+                            setPageError('');
+                            setNotice('');
+                          }}
+                          loading={loadingSlots}
+                          hasServices={hasSelectedProducts}
+                          isClosed={Boolean(availabilityMeta?.is_closed)}
+                          dateError={formErrors.selected_date}
+                          timeError={formErrors.scheduled_start}
                         />
-                      </Field>
-                      <Field label="Inspiration image" error={formErrors.inspiration} hint="JPG, PNG, WEBP, HEIC — max 8 MB.">
-                        <input
-                          type="file"
-                          accept="image/*"
-                          onChange={handleFileChange}
-                          className="block w-full cursor-pointer rounded-xl border border-dashed border-[#d9cbbc] bg-white px-4 py-5 text-sm text-[#6f7863] transition file:mr-4 file:cursor-pointer file:rounded-lg file:border-0 file:bg-[#2a3923] file:px-3 file:py-1.5 file:text-xs file:font-semibold file:uppercase file:tracking-wide file:text-white hover:border-[#2a3923]"
+                      </div>
+                    ) : null}
+
+                    {step === STEP_ADDONS ? (
+                      <>
+                        <SectionHeader
+                          title="Add something extra?"
+                          subtitle={`Save ${addonDiscountPercent}% on any extra service when you add it to this visit. Optional — skip if you're all set.`}
                         />
-                        {inspoFile ? <p className="mt-1.5 text-xs text-[#6f7863]">✓ {inspoFile.name}</p> : null}
-                      </Field>
-                    </div>
-                  </>
-                ) : null}
+                        <div className="flex items-center gap-3 rounded-2xl bg-[#eef1ea] px-4 py-3">
+                          <span className="shrink-0 rounded-full bg-[#2a3923] px-2.5 py-1 text-[11px] font-bold uppercase tracking-[0.15em] text-white">
+                            -{addonDiscountPercent}%
+                          </span>
+                          <p className="text-sm text-[#2a3923]">
+                            Prices below already include the discount. Your time slot updates to fit the longer visit.
+                          </p>
+                        </div>
+                        <ServiceAccordionPicker
+                          products={addonCandidates}
+                          selectedIds={form.addon_session_option_ids}
+                          onSelect={handleAddonSelect}
+                          onRemove={handleAddonRemove}
+                          currency={pricing.currency}
+                          discountPercent={addonDiscountPercent}
+                        />
+                        {formErrors.addon_session_option_ids ? (
+                          <p className="text-xs font-medium text-red-600">{formErrors.addon_session_option_ids}</p>
+                        ) : null}
+                      </>
+                    ) : null}
 
-                {step === STEP_REVIEW ? (
-                  <>
-                    <SectionHeader number={stepIndex + 1} title="Review & pay" subtitle="Check everything, then choose how you'd like to pay." />
+                    {step === STEP_DETAILS ? (
+                      <>
+                        <SectionHeader title="Your details" subtitle="We'll send your confirmation here. No account needed." />
+                        <div className="grid gap-4 sm:grid-cols-2">
+                          <Field label="First name" error={formErrors.first_name}>
+                            <input name="first_name" autoComplete="given-name" value={form.first_name} onChange={handleChange} placeholder="First name" className={inputClasses} />
+                          </Field>
+                          <Field label="Last name" error={formErrors.last_name}>
+                            <input name="last_name" autoComplete="family-name" value={form.last_name} onChange={handleChange} placeholder="Last name" className={inputClasses} />
+                          </Field>
+                          <Field label="Email address" error={formErrors.email}>
+                            <input name="email" type="email" autoComplete="email" inputMode="email" value={form.email} onChange={handleChange} placeholder="you@example.com" className={inputClasses} />
+                          </Field>
+                          <Field label="Phone number" error={formErrors.phone}>
+                            <input name="phone" type="tel" autoComplete="tel" inputMode="tel" value={form.phone} onChange={handleChange} placeholder="(929) 000-0000" className={inputClasses} />
+                          </Field>
+                        </div>
+                        <div className="space-y-5 border-t border-[#ede5d8] pt-5">
+                          <p className="text-xs font-semibold uppercase tracking-[0.3em] text-[#6f7863]">Optional</p>
+                          <Field label="Notes for your nail tech" hint="Anything you'd like them to know before the visit.">
+                            <textarea
+                              name="notes"
+                              rows="3"
+                              value={form.notes}
+                              onChange={handleChange}
+                              placeholder="e.g. I want a minimalist look, short nails…"
+                              className={inputClasses}
+                            />
+                          </Field>
+                          <Field label="Inspiration image" error={formErrors.inspiration} hint="JPG, PNG, WEBP, HEIC — max 8 MB.">
+                            <input
+                              type="file"
+                              accept="image/*"
+                              onChange={handleFileChange}
+                              className="block w-full cursor-pointer rounded-xl border border-dashed border-[#d9cbbc] bg-white px-4 py-5 text-sm text-[#6f7863] transition file:mr-4 file:cursor-pointer file:rounded-lg file:border-0 file:bg-[#2a3923] file:px-3 file:py-1.5 file:text-xs file:font-semibold file:uppercase file:tracking-wide file:text-white hover:border-[#2a3923]"
+                            />
+                            {inspoFile ? <p className="mt-1.5 text-xs text-[#6f7863]">✓ {inspoFile.name}</p> : null}
+                          </Field>
+                        </div>
+                      </>
+                    ) : null}
 
-                    <div className="divide-y divide-[#ede5d8] rounded-2xl border border-[#d9cbbc] bg-white">
-                      <div className="flex items-start justify-between gap-3 p-4">
-                        <div className="min-w-0 space-y-2">
-                          <p className="text-xs font-semibold uppercase tracking-[0.25em] text-[#6f7863]">Services</p>
-                          {selectedProducts.map((product) => (
-                            <div key={product.id} className="flex items-baseline justify-between gap-3 text-sm">
-                              <span className="font-semibold text-slate-900">{product.name}</span>
-                              <span className="shrink-0 text-[#5e6755]">{formatDuration(product.duration_minutes)} · <span className="font-semibold text-[#2a3923]">{formatCurrency(product.price_cents, pricing.currency)}</span></span>
+                    {step === STEP_REVIEW ? (
+                      <>
+                        <SectionHeader title="Review & pay" subtitle="Check everything, then choose how you'd like to pay." />
+
+                        <div className="divide-y divide-[#ede5d8] rounded-2xl border border-[#d9cbbc] bg-white">
+                          <div className="flex items-start justify-between gap-3 p-4">
+                            <div className="min-w-0 flex-1 space-y-2">
+                              <p className="text-xs font-semibold uppercase tracking-[0.25em] text-[#6f7863]">Services</p>
+                              {selectedProducts.map((product) => (
+                                <div key={product.id} className="flex items-baseline justify-between gap-3 text-sm">
+                                  <span className="font-semibold text-slate-900">{product.name}</span>
+                                  <span className="shrink-0 text-[#5e6755]">{formatDuration(product.duration_minutes)} · <span className="font-semibold text-[#2a3923]">{formatCurrency(product.price_cents, pricing.currency)}</span></span>
+                                </div>
+                              ))}
+                              {addonProducts.map((product) => (
+                                <div key={product.id} className="flex items-start justify-between gap-3 text-sm">
+                                  <span className="flex flex-col items-start gap-1">
+                                    <span className="font-semibold text-slate-900">{product.name}</span>
+                                    <span className="whitespace-nowrap rounded-full bg-[#eef1ea] px-2 py-0.5 text-[10px] font-bold uppercase tracking-[0.12em] text-[#2a3923]">Add-on -{addonDiscountPercent}%</span>
+                                  </span>
+                                  <span className="shrink-0 text-right text-[#5e6755]">
+                                    {formatDuration(product.duration_minutes)} ·{' '}
+                                    <span className="line-through">{formatCurrency(product.price_cents, pricing.currency)}</span>{' '}
+                                    <span className="font-semibold text-[#2a3923]">{formatCurrency(discountedPriceCents(product.price_cents, addonDiscountPercent), pricing.currency)}</span>
+                                  </span>
+                                </div>
+                              ))}
                             </div>
-                          ))}
-                          {addonProducts.map((product) => (
-                            <div key={product.id} className="flex items-start justify-between gap-3 text-sm">
-                              <span className="flex flex-col items-start gap-1">
-                                <span className="font-semibold text-slate-900">{product.name}</span>
-                                <span className="rounded-full bg-[#eef1ea] px-2 py-0.5 text-[10px] font-bold uppercase tracking-[0.12em] text-[#2a3923]">Add-on -{addonDiscountPercent}%</span>
-                              </span>
-                              <span className="shrink-0 text-right text-[#5e6755]">
-                                {formatDuration(product.duration_minutes)} ·{' '}
-                                <span className="line-through">{formatCurrency(product.price_cents, pricing.currency)}</span>{' '}
-                                <span className="font-semibold text-[#2a3923]">{formatCurrency(discountedPriceCents(product.price_cents, addonDiscountPercent), pricing.currency)}</span>
-                              </span>
+                            <EditLink onClick={() => goTo(STEP_SERVICE)} />
+                          </div>
+                          <div className="flex items-start justify-between gap-3 p-4">
+                            <div>
+                              <p className="text-xs font-semibold uppercase tracking-[0.25em] text-[#6f7863]">When</p>
+                              <p className="mt-1 text-sm font-semibold text-slate-900">{dateLabel} · {timeLabel}</p>
+                              <p className="text-xs text-[#6f7863]">{formatDuration(pricing.durationMinutes)} total</p>
                             </div>
-                          ))}
+                            <EditLink onClick={() => goTo(STEP_TIME)} />
+                          </div>
+                          <div className="flex items-start justify-between gap-3 p-4">
+                            <div className="min-w-0">
+                              <p className="text-xs font-semibold uppercase tracking-[0.25em] text-[#6f7863]">Who</p>
+                              <p className="mt-1 text-sm font-semibold text-slate-900">{form.first_name} {form.last_name}</p>
+                              <p className="break-words text-xs text-[#6f7863]">{form.email} · {form.phone}</p>
+                            </div>
+                            <EditLink onClick={() => goTo(STEP_DETAILS)} />
+                          </div>
                         </div>
-                        <EditLink onClick={() => goTo(STEP_SERVICE)} />
-                      </div>
-                      <div className="flex items-start justify-between gap-3 p-4">
-                        <div>
-                          <p className="text-xs font-semibold uppercase tracking-[0.25em] text-[#6f7863]">When</p>
-                          <p className="mt-1 text-sm font-semibold text-slate-900">{dateLabel} · {timeLabel}</p>
-                          <p className="text-xs text-[#6f7863]">{formatDuration(pricing.durationMinutes)} total</p>
-                        </div>
-                        <EditLink onClick={() => goTo(STEP_TIME)} />
-                      </div>
-                      <div className="flex items-start justify-between gap-3 p-4">
-                        <div>
-                          <p className="text-xs font-semibold uppercase tracking-[0.25em] text-[#6f7863]">Who</p>
-                          <p className="mt-1 text-sm font-semibold text-slate-900">{form.first_name} {form.last_name}</p>
-                          <p className="text-xs text-[#6f7863]">{form.email} · {form.phone}</p>
-                        </div>
-                        <EditLink onClick={() => goTo(STEP_DETAILS)} />
-                      </div>
-                    </div>
 
-                    <fieldset className="space-y-3">
-                      <legend className="sr-only">How would you like to pay?</legend>
-                      <label className={`flex cursor-pointer items-start gap-4 rounded-2xl border p-4 transition ${
-                        !form.pay_full_amount ? 'border-[#2a3923] bg-[#2a3923]/5' : 'border-[#d9cbbc] bg-white hover:border-[#2a3923]'
-                      }`}>
-                        <input
-                          type="radio"
-                          name="payment_choice"
-                          aria-label="Pay deposit"
-                          checked={!form.pay_full_amount}
-                          onChange={() => setForm((c) => ({ ...c, pay_full_amount: false }))}
-                          className="mt-0.5 accent-[#2a3923]"
-                        />
-                        <div>
-                          <p className="font-semibold text-slate-900">
-                            Pay deposit — {formatCurrency(pricing.depositCents, pricing.currency)}
-                          </p>
-                          <p className="mt-0.5 text-sm text-[#6f7863]">
-                            Secure your slot with a {pricing.bookingFeePercent}% deposit. Pay the rest at the studio.
-                          </p>
-                        </div>
-                      </label>
-                      <label className={`flex cursor-pointer items-start gap-4 rounded-2xl border p-4 transition ${
-                        form.pay_full_amount ? 'border-[#2a3923] bg-[#2a3923]/5' : 'border-[#d9cbbc] bg-white hover:border-[#2a3923]'
-                      }`}>
-                        <input
-                          type="radio"
-                          name="payment_choice"
-                          aria-label="Pay in full"
-                          checked={form.pay_full_amount}
-                          onChange={() => setForm((c) => ({ ...c, pay_full_amount: true }))}
-                          className="mt-0.5 accent-[#2a3923]"
-                        />
-                        <div>
-                          <p className="font-semibold text-slate-900">
-                            Pay in full — {formatCurrency(pricing.totalCents, pricing.currency)}
-                          </p>
-                          <p className="mt-0.5 text-sm text-[#6f7863]">
-                            Complete payment now via Stripe. Nothing more to pay at the studio.
-                          </p>
-                        </div>
-                      </label>
-                    </fieldset>
-                  </>
-                ) : null}
-
-                {/* Step footer: running total on small screens + navigation */}
-                <div className="space-y-4 border-t border-[#ede5d8] pt-5">
-                  {hasSelectedProducts ? (
-                    <div className="flex items-center justify-between text-sm lg:hidden">
-                      <span className="text-[#6f7863]">
-                        {selectedProducts.length + addonProducts.length} {selectedProducts.length + addonProducts.length === 1 ? 'service' : 'services'} · {formatDuration(pricing.durationMinutes)}
-                      </span>
-                      <span className="font-semibold text-[#2a3923]">{formatCurrency(pricing.totalCents, pricing.currency)}</span>
-                    </div>
-                  ) : null}
-                  <div className="flex flex-col-reverse gap-3 sm:flex-row sm:items-center sm:justify-between">
-                    {stepIndex > 0 ? (
-                      <Button type="button" variant="ghost" onClick={goBack} className="w-full sm:w-auto">
-                        ← Back
-                      </Button>
-                    ) : <span />}
-                    {isLastStep ? (
-                      <Button type="submit" disabled={submitting || !hasSelectedProducts} className="w-full sm:w-auto">
-                        {submitting ? 'Processing…' : `Continue to payment · ${formatCurrency(pricing.amountDueToday, pricing.currency)}`}
-                      </Button>
-                    ) : (
-                      <Button
-                        type="button"
-                        onClick={goNext}
-                        disabled={loadingSlots && (step === STEP_TIME || step === STEP_ADDONS)}
-                        className="w-full disabled:opacity-60 sm:w-auto"
-                      >
-                        {loadingSlots && (step === STEP_TIME || step === STEP_ADDONS)
-                          ? 'Checking times…'
-                          : step === STEP_ADDONS && !addonProducts.length ? 'No thanks, continue' : 'Continue'}
-                      </Button>
-                    )}
-                  </div>
-                  {isLastStep ? (
-                    <p className="text-center text-xs text-[#6f7863] sm:text-left">No account required. Payment processed securely by Stripe.</p>
-                  ) : null}
-                </div>
+                        <fieldset className="space-y-3">
+                          <legend className="mb-3 text-xs font-semibold uppercase tracking-[0.25em] text-[#6f7863]">How would you like to pay?</legend>
+                          <PaymentChoice
+                            checked={!form.pay_full_amount}
+                            onSelect={() => setForm((c) => ({ ...c, pay_full_amount: false }))}
+                            title={`Pay deposit — ${formatCurrency(pricing.depositCents, pricing.currency)}`}
+                            description={`Secure your slot with a ${pricing.bookingFeePercent}% deposit. Pay the rest at the studio.`}
+                          />
+                          <PaymentChoice
+                            checked={form.pay_full_amount}
+                            onSelect={() => setForm((c) => ({ ...c, pay_full_amount: true }))}
+                            title={`Pay in full — ${formatCurrency(pricing.totalCents, pricing.currency)}`}
+                            description="Complete payment now via Stripe. Nothing more to pay at the studio."
+                          />
+                        </fieldset>
+                        <p className="inline-flex items-center gap-1.5 text-xs text-[#6f7863]">
+                          <LockIcon /> No account required. Payment processed securely by Stripe.
+                        </p>
+                      </>
+                    ) : null}
+                  </motion.div>
+                </AnimatePresence>
               </Card>
+
+              {/* Sticky action bar: the next step is always one tap away, however long the step is. */}
+              <div className="sticky bottom-0 z-30 -mx-4 mt-4 sm:mx-0">
+                <div className="border-t border-[#d9cbbc] bg-[#ECE7E2]/90 px-4 pt-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] shadow-[0_-12px_30px_rgba(42,57,35,0.08)] backdrop-blur-md sm:rounded-2xl sm:border sm:px-5 sm:py-4">
+                  {pageError ? (
+                    <p role="alert" className="mb-2.5 flex items-start gap-2 text-sm font-medium text-red-700">
+                      <svg className="mt-0.5 h-4 w-4 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                        <circle cx="12" cy="12" r="10" /><path d="M12 8v4M12 16h.01" />
+                      </svg>
+                      <span>{pageError}</span>
+                    </p>
+                  ) : null}
+                  <div className="flex items-center gap-3">
+                    {stepIndex > 0 ? (
+                      <button
+                        type="button"
+                        onClick={goBack}
+                        className="shrink-0 rounded-full px-2 py-2 text-xs font-semibold uppercase tracking-[0.2em] text-[#6f7863] transition hover:text-[#2a3923] sm:px-3"
+                      >
+                        <span aria-hidden="true">←</span> Back
+                      </button>
+                    ) : null}
+                    <div className="min-w-0 flex-1 leading-tight">
+                      {hasSelectedProducts ? (
+                        isLastStep ? (
+                          <>
+                            <p className="truncate text-xs text-[#6f7863]">Due today</p>
+                            <p className="truncate text-sm font-bold text-[#2a3923]">
+                              {formatCurrency(pricing.amountDueToday, pricing.currency)}
+                              {!form.pay_full_amount && pricing.totalCents > pricing.amountDueToday ? (
+                                <span className="hidden font-normal text-[#6f7863] sm:inline"> · {formatCurrency(pricing.totalCents - pricing.amountDueToday, pricing.currency)} at studio</span>
+                              ) : null}
+                            </p>
+                          </>
+                        ) : (
+                          <>
+                            <p className="truncate text-xs text-[#6f7863]">
+                              {serviceCount} {serviceCount === 1 ? 'service' : 'services'} · {formatDuration(pricing.durationMinutes)}
+                            </p>
+                            <p className="truncate text-sm font-bold text-[#2a3923]">{formatCurrency(pricing.totalCents, pricing.currency)}</p>
+                          </>
+                        )
+                      ) : (
+                        <p className="truncate text-xs text-[#6f7863]">Select a service to continue</p>
+                      )}
+                    </div>
+                    <Button
+                      type={isLastStep ? 'submit' : 'button'}
+                      onClick={isLastStep ? undefined : goNext}
+                      disabled={continueDisabled}
+                      className="shrink-0 disabled:cursor-not-allowed disabled:opacity-60"
+                    >
+                      {continueLabel}
+                      {!isLastStep && !checkingTimes ? <span aria-hidden="true">→</span> : null}
+                    </Button>
+                  </div>
+                </div>
+              </div>
             </div>
 
             {/* Sticky sidebar (desktop) */}
@@ -787,7 +910,7 @@ export default function ShareYourIdea() {
                 <div className="space-y-3">
                   <SummaryRow
                     label="Services"
-                    value={hasSelectedProducts ? `${selectedProducts.length + addonProducts.length} selected` : 'Not selected'}
+                    value={hasSelectedProducts ? `${serviceCount} selected` : 'Not selected'}
                   />
                   <SummaryRow label="Duration" value={hasSelectedProducts ? formatDuration(pricing.durationMinutes) : '—'} />
                   <SummaryRow label="Date" value={dateLabel} />

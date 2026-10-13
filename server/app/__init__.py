@@ -9,7 +9,12 @@ from dotenv import load_dotenv
 
 from .config import configure_app, db
 from .extensions import limiter
+from .schema_sync import register_schema_sync
+
 migrate = Migrate()
+
+# Absolute so `flask db upgrade` and the automatic schema sync work from any cwd.
+MIGRATIONS_DIR = str(Path(__file__).resolve().parent.parent / "migrations")
 
 
 def create_app():
@@ -34,7 +39,7 @@ def create_app():
     configure_app(app)
     app.config.setdefault("RATELIMIT_STORAGE_URI", os.getenv("RATELIMIT_STORAGE_URI", "memory://"))
     limiter.init_app(app)
-    migrate.init_app(app, db)
+    migrate.init_app(app, db, directory=MIGRATIONS_DIR)
 
     from .routes import api_bp
 
@@ -54,6 +59,10 @@ def create_app():
     if os.getenv("FLASK_RUN_CREATE_ALL", "").lower() in {"1", "true", "yes"}:
         with app.app_context():
             db.create_all()
+
+    # A deploy whose start command skips `flask db upgrade` must not leave the
+    # schema behind the code: pending migrations are applied before the first request.
+    register_schema_sync(app, MIGRATIONS_DIR)
 
     app.register_blueprint(api_bp)
 
