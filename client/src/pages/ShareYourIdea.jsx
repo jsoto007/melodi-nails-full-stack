@@ -449,7 +449,11 @@ export default function ShareYourIdea() {
     setPageError('');
   };
 
-  const goNext = () => {
+  const goNext = (event) => {
+    // The same button becomes the submit button on the review step. React
+    // re-renders it before the browser runs the click's default action, so
+    // without this one tap on the last Continue would also start checkout.
+    event?.preventDefault?.();
     const errors = validateStep(step);
     if (Object.keys(errors).length) {
       setFormErrors((current) => ({ ...current, ...errors }));
@@ -890,6 +894,7 @@ export default function ShareYourIdea() {
                       )}
                     </div>
                     <Button
+                      key={isLastStep ? 'pay' : 'next'}
                       type={isLastStep ? 'submit' : 'button'}
                       onClick={isLastStep ? undefined : goNext}
                       disabled={continueDisabled}
