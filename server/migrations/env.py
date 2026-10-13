@@ -11,7 +11,9 @@ config = context.config
 
 # Interpret the config file for Python logging.
 # This line sets up loggers basically.
-fileConfig(config.config_file_name)
+# Migrations also run in-process at app startup (see app/schema_sync.py); leave
+# the application's own loggers enabled when Alembic's logging config loads.
+fileConfig(config.config_file_name, disable_existing_loggers=False)
 logger = logging.getLogger('alembic.env')
 
 

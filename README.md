@@ -31,7 +31,7 @@ The Flask server now serves the built Vite bundle from `client/dist`. Run `npm r
 1. Install PostgreSQL 17 (macOS Homebrew: `brew install postgresql@17`) and ensure the service is running (`brew services start postgresql@17`).
 2. Create the development database: `createdb blackink_dev`.
 3. Copy `.env.example` to `.env` inside `server/` and adjust `DATABASE_URI` if your credentials differ. The example points to `postgresql+psycopg2://postgres:postgres@127.0.0.1:5432/blackink_dev`.
-4. Apply migrations (or allow `db.create_all()` on first boot): `pipenv run flask db upgrade`.
+4. Apply migrations (or allow `db.create_all()` on first boot): `pipenv run flask db upgrade`. The app also applies any pending migrations itself before it serves its first request (see `AUTO_MIGRATE` below), so a forgotten upgrade cannot leave the schema behind the code.
 5. Seed demo data: `pipenv run python seed.py`.
 
 ### Client
@@ -96,6 +96,7 @@ The dev server proxies `/api/*` to `http://127.0.0.1:5000`, keeping credentialed
 
 - Frontend: deploy `client/` build output to Netlify or Vercel with `VITE_API_BASE_URL` pointing to the live API.
 - Backend: deploy `server/` to Render, Fly.io, or Heroku; provision a persistent database via `DATABASE_URI` and ensure `npm run build --prefix client` runs before Gunicorn boots so the SPA bundle is available.
+- Schema changes: `AUTO_MIGRATE` (default `1`) makes each deploy apply pending Alembic migrations before the first request, serialised across Gunicorn workers with a PostgreSQL advisory lock. A database that was bootstrapped with `db.create_all()` and never stamped gets any missing model columns added instead; run `flask --app wsgi db stamp head` once on such a database so future deploys use migrations. Set `AUTO_MIGRATE=0` to manage the schema by hand with `flask --app wsgi db upgrade`.
 - Automated tests force `DATABASE_URI` to an in-memory SQLite instance so test runs stay isolated from shared databases.
 - Update CORS origins in `app/__init__.py` if production hosts differ from local defaults.
 # black-work-tattoo
