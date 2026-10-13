@@ -1,8 +1,9 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import FadeIn from '../components/FadeIn.jsx';
 import Button from '../components/Button.jsx';
 import Card from '../components/Card.jsx';
+import AppointmentTimePicker, { toDateInputValue } from '../components/AppointmentTimePicker.jsx';
 import { apiGet, apiPost } from '../lib/api.js';
 import { loadStripe } from '@stripe/stripe-js';
 import { EmbeddedCheckoutProvider, EmbeddedCheckout } from '@stripe/react-stripe-js';
@@ -22,10 +23,6 @@ function formatDuration(minutes) {
   if (hours) parts.push(`${hours}h`);
   if (remainder) parts.push(`${remainder}m`);
   return parts.join(' ') || '0m';
-}
-
-function toDateInputValue(date) {
-  return date.toISOString().slice(0, 10);
 }
 
 function readFileAsDataUrl(file) {
@@ -171,6 +168,12 @@ export default function ShareYourIdea() {
   const [products, setProducts] = useState([]);
   const [paymentConfig, setPaymentConfig] = useState(null);
   const [clientSecret, setClientSecret] = useState(null);
+
+  // The form is replaced by the (shorter) checkout view, so the browser would keep
+  // the old scroll offset and land on the footer. Reset to the top of the checkout.
+  useLayoutEffect(() => {
+    if (clientSecret) window.scrollTo({ top: 0, left: 0, behavior: 'instant' });
+  }, [clientSecret]);
 
   const stripePromise = useMemo(() => {
     return paymentConfig?.publishable_key ? loadStripe(paymentConfig.publishable_key) : null;
@@ -449,7 +452,7 @@ export default function ShareYourIdea() {
           <div className="grid gap-6 lg:grid-cols-[1fr_300px] lg:items-start">
 
             {/* Left column */}
-            <div className="space-y-6">
+            <div className="min-w-0 space-y-6">
 
               {/* 1 — Contact info */}
               <Card className="space-y-5 p-6 sm:p-8">
@@ -518,70 +521,21 @@ export default function ShareYourIdea() {
               {/* 3 — Date & time */}
               <Card id="time-selection-section" className="space-y-5 p-6 sm:p-8">
                 <SectionHeader number="3" title="Date & time" />
-                <Field label="Preferred date" error={formErrors.selected_date}>
-                  <input
-                    name="selected_date"
-                    type="date"
-                    min={toDateInputValue(new Date())}
-                    value={form.selected_date}
-                    onChange={handleChange}
-                    className={inputClasses}
-                  />
-                </Field>
-
-                <div className="space-y-3">
-                  <div className="flex items-center justify-between">
-                    <p className="text-sm font-semibold text-[#2a3923]">Available times</p>
-                    {loadingSlots ? (
-                      <span className="flex items-center gap-1.5 text-xs text-[#6f7863]">
-                        <svg className="h-3 w-3 animate-spin" viewBox="0 0 24 24" fill="none">
-                          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z" />
-                        </svg>
-                        Loading…
-                      </span>
-                    ) : null}
-                  </div>
-
-                  {!hasSelectedProducts ? (
-                    <p className="rounded-xl border border-dashed border-[#d9cbbc] bg-white/60 py-6 text-center text-sm text-[#6f7863]">
-                      Select at least one service above to see available times
-                    </p>
-                  ) : !loadingSlots && !availability.length ? (
-                    <p className="rounded-xl border border-dashed border-[#d9cbbc] bg-white/60 py-6 text-center text-sm text-[#6f7863]">
-                      {availabilityMeta?.is_closed
-                        ? 'The studio is closed on this date.'
-                        : 'No times available — try a different date.'}
-                    </p>
-                  ) : (
-                    <div className="grid grid-cols-3 gap-2 sm:grid-cols-4">
-                      {availability.map((slot) => {
-                        const selected = form.scheduled_start === slot.start;
-                        const label = new Date(slot.start).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
-                        return (
-                          <button
-                            key={slot.start}
-                            type="button"
-                            onClick={() => {
-                              setForm((c) => ({ ...c, scheduled_start: slot.start }));
-                              setFormErrors((c) => ({ ...c, scheduled_start: '' }));
-                            }}
-                            className={`rounded-xl border py-2.5 text-sm font-semibold transition ${
-                              selected
-                                ? 'border-[#2a3923] bg-[#2a3923] text-white shadow-sm'
-                                : 'border-[#d9cbbc] bg-white text-slate-900 hover:border-[#2a3923]'
-                            }`}
-                          >
-                            {label}
-                          </button>
-                        );
-                      })}
-                    </div>
-                  )}
-                  {formErrors.scheduled_start ? (
-                    <p className="text-xs font-medium text-red-600">{formErrors.scheduled_start}</p>
-                  ) : null}
-                </div>
+                <AppointmentTimePicker
+                  date={form.selected_date}
+                  onDateChange={(value) => handleChange({ target: { name: 'selected_date', value } })}
+                  slots={availability}
+                  selectedStart={form.scheduled_start}
+                  onSelectSlot={(start) => {
+                    setForm((c) => ({ ...c, scheduled_start: start }));
+                    setFormErrors((c) => ({ ...c, scheduled_start: '' }));
+                  }}
+                  loading={loadingSlots}
+                  hasServices={hasSelectedProducts}
+                  isClosed={Boolean(availabilityMeta?.is_closed)}
+                  dateError={formErrors.selected_date}
+                  timeError={formErrors.scheduled_start}
+                />
               </Card>
 
               {/* 4 — Notes + inspo */}
