@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 
 const QUICK_DAY_COUNT = 14;
 
@@ -80,6 +80,14 @@ export default function AppointmentTimePicker({
   );
 
   const selectedSlot = slots.find((slot) => slot.start === selectedStart) || null;
+
+  // Periods are collapsed to one row each; tapping a header reveals its times.
+  // Collapse again when the day changes, except the period holding the selection.
+  const [expandedPeriod, setExpandedPeriod] = useState(null);
+  useEffect(() => {
+    const owner = groupedSlots.find((period) => period.slots.some((slot) => slot.start === selectedStart));
+    setExpandedPeriod(owner ? owner.key : null);
+  }, [groupedSlots, selectedStart]);
   const dateLabel = date
     ? parseDateValue(date).toLocaleDateString([], { weekday: 'long', month: 'long', day: 'numeric' })
     : '';
@@ -136,9 +144,6 @@ export default function AppointmentTimePicker({
           <p className="text-sm font-semibold text-[#2a3923]">
             Pick a time{dateLabel ? <span className="font-normal text-[#6f7863]"> · {dateLabel}</span> : null}
           </p>
-          {hasServices && !loading && slots.length ? (
-            <span className="shrink-0 text-xs text-[#6f7863]">{slots.length} open</span>
-          ) : null}
         </div>
 
         {!hasServices ? (
@@ -165,31 +170,75 @@ export default function AppointmentTimePicker({
             </button>
           </div>
         ) : (
-          groupedSlots.map((period) => (
-            <div key={period.key} className="space-y-2">
-              <p className="text-[11px] font-semibold uppercase tracking-[0.25em] text-[#6f7863]">{period.label}</p>
-              <div className="grid grid-cols-3 gap-2 sm:grid-cols-4">
-                {period.slots.map((slot) => {
-                  const selected = selectedStart === slot.start;
-                  return (
-                    <button
-                      key={slot.start}
-                      type="button"
-                      aria-pressed={selected}
-                      onClick={() => onSelectSlot(slot.start)}
-                      className={`min-h-12 rounded-xl border px-1 text-sm font-semibold transition ${
-                        selected
-                          ? 'border-[#2a3923] bg-[#2a3923] text-white shadow-sm'
-                          : 'border-[#d9cbbc] bg-white text-slate-900 hover:border-[#2a3923]'
-                      }`}
+          <div className="divide-y divide-[#ede5d8] overflow-hidden rounded-2xl border border-[#d9cbbc] bg-white">
+            {groupedSlots.map((period) => {
+              const expanded = expandedPeriod === period.key;
+              const periodSelected = period.slots.find((slot) => slot.start === selectedStart) || null;
+              const first = period.slots[0];
+              const last = period.slots[period.slots.length - 1];
+              return (
+                <div key={period.key}>
+                  <button
+                    type="button"
+                    aria-expanded={expanded}
+                    aria-controls={`period-${period.key}`}
+                    onClick={() => setExpandedPeriod(expanded ? null : period.key)}
+                    className={`flex w-full items-center gap-3 px-4 py-3.5 text-left transition ${
+                      expanded ? 'bg-[#f6f2ec]' : 'hover:bg-[#faf7f2]'
+                    }`}
+                  >
+                    <span className="flex-1 min-w-0">
+                      <span className="block text-sm font-semibold text-[#2a3923]">{period.label}</span>
+                      <span className="block truncate text-xs text-[#6f7863]">
+                        {periodSelected
+                          ? `Selected ${formatTime(periodSelected.start)}`
+                          : `${formatTime(first.start)} – ${formatTime(last.start)}`}
+                      </span>
+                    </span>
+                    {periodSelected ? (
+                      <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-[#2a3923] text-white">
+                        <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                          <path d="M20 6L9 17l-5-5" />
+                        </svg>
+                      </span>
+                    ) : (
+                      <span className="shrink-0 rounded-full bg-[#eef1ea] px-2.5 py-1 text-xs font-semibold text-[#2a3923]">
+                        {period.slots.length} open
+                      </span>
+                    )}
+                    <svg
+                      className={`h-4 w-4 shrink-0 text-[#6f7863] transition-transform ${expanded ? 'rotate-180' : ''}`}
+                      viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"
                     >
-                      {formatTime(slot.start)}
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-          ))
+                      <path d="M6 9l6 6 6-6" />
+                    </svg>
+                  </button>
+                  {expanded ? (
+                    <div id={`period-${period.key}`} className="grid grid-cols-3 gap-2 bg-[#f6f2ec] px-4 pb-4 sm:grid-cols-4">
+                      {period.slots.map((slot) => {
+                        const selected = selectedStart === slot.start;
+                        return (
+                          <button
+                            key={slot.start}
+                            type="button"
+                            aria-pressed={selected}
+                            onClick={() => onSelectSlot(slot.start)}
+                            className={`min-h-12 rounded-xl border px-1 text-sm font-semibold transition ${
+                              selected
+                                ? 'border-[#2a3923] bg-[#2a3923] text-white shadow-sm'
+                                : 'border-[#d9cbbc] bg-white text-slate-900 hover:border-[#2a3923]'
+                            }`}
+                          >
+                            {formatTime(slot.start)}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  ) : null}
+                </div>
+              );
+            })}
+          </div>
         )}
 
         <div aria-live="polite">
