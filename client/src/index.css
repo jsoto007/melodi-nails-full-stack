@@ -68,6 +68,17 @@
   }
 }
 
+/* iOS Safari zooms the page when a focused form control is under 16px and keeps
+   that zoom after blur, so the layout ends up wider than the phone. Tailwind's
+   text-sm on inputs beats the base rule above, hence !important here. */
+@media (max-width: 639px) {
+  input,
+  textarea,
+  select {
+    font-size: 16px !important;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,

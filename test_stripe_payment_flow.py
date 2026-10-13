@@ -490,3 +490,277 @@ def test_short_appointment_leaves_turnaround_buffer_before_next_slot(app):
 
         assert appointment.scheduled_start + timedelta(minutes=15) not in starts
         assert appointment.scheduled_start + timedelta(minutes=20) in starts
+
+
+def _seed_addon_catalog():
+    manicure = SessionOption(name="Manicure", category="Hands", duration_minutes=60, price_cents=5000)
+    pedicure = SessionOption(name="Pedicure", category="Feet", duration_minutes=45, price_cents=4500)
+    paraffin = SessionOption(name="Paraffin", category="Treatments", duration_minutes=15, price_cents=1005)
+    acrylic = SessionOption(name="Acrylic", category="Hands", duration_minutes=90, price_cents=6500)
+    db.session.add_all([manicure, pedicure, paraffin, acrylic])
+    db.session.commit()
+    return manicure, pedicure, paraffin, acrylic
+
+
+def _initiate_payload(main_ids, addon_ids, scheduled_start, **extra):
+    payload = {
+        "first_name": "Test",
+        "last_name": "Customer",
+        "email": "test@example.com",
+        "phone": "5555555555",
+        "session_option_ids": main_ids,
+        "addon_session_option_ids": addon_ids,
+        "scheduled_start": scheduled_start.isoformat(),
+        "pay_full_amount": True,
+    }
+    payload.update(extra)
+    return payload
+
+
+def test_payment_config_exposes_addon_discount(client):
+    response = client.get("/api/payments/config")
+    assert response.status_code == 200
+    assert response.get_json()["stripe"]["addon_discount_percent"] == 10
+
+
+def test_stripe_initiate_discounts_addons_server_side(app, client, monkeypatch):
+    captured_checkout = {}
+    captured_slots = {}
+
+    with app.app_context():
+        manicure, pedicure, paraffin, _ = _seed_addon_catalog()
+        manicure_id, pedicure_id, paraffin_id = manicure.id, pedicure.id, paraffin.id
+        scheduled_start = _future_weekday_start()
+
+    def fake_build_available_slots(target_date, duration_minutes, **kwargs):
+        captured_slots["duration_minutes"] = duration_minutes
+        return ([{"start": scheduled_start, "end": scheduled_start + timedelta(minutes=duration_minutes)}], {})
+
+    def fake_checkout_create(**kwargs):
+        captured_checkout.update(kwargs)
+        return {"id": "cs_addon_123", "client_secret": "secret_addon"}
+
+    monkeypatch.setattr("app.routes.build_available_slots", fake_build_available_slots)
+    monkeypatch.setattr("app.routes.stripe.checkout.Session.create", fake_checkout_create)
+
+    response = client.post(
+        "/api/payments/stripe/initiate",
+        json=_initiate_payload([manicure_id], [pedicure_id, paraffin_id], scheduled_start),
+        headers=_set_csrf(client),
+    )
+
+    assert response.status_code == 200, response.get_json()
+    # Pedicure 4500 -> 4050; Paraffin 1005 -> discount 100.5 rounds to 101 -> 904
+    expected_total = 5000 + 4050 + 904
+    assert captured_checkout["line_items"][0]["price_data"]["unit_amount"] == expected_total
+    assert captured_slots["duration_minutes"] == 60 + 45 + 15
+    description = captured_checkout["line_items"][0]["price_data"]["product_data"]["description"]
+    assert description == "Manicure + Pedicure + Paraffin"
+
+    with app.app_context():
+        draft = BookingDraft.query.one()
+        assert draft.amount_cents == expected_total
+        assert draft.session_option_id == manicure_id
+        assert "10% add-on" in draft.payment_note
+        items = sorted(draft.session_option_items, key=lambda item: item.position)
+        assert [(i.name, i.price_cents, i.list_price_cents, i.discount_percent) for i in items] == [
+            ("Manicure", 5000, 5000, 0),
+            ("Pedicure", 4050, 4500, 10),
+            ("Paraffin", 904, 1005, 10),
+        ]
+
+
+def test_stripe_initiate_ignores_client_supplied_prices_for_addons(app, client, monkeypatch):
+    """The client cannot lower the charge by sending its own prices or discount."""
+    captured_checkout = {}
+
+    with app.app_context():
+        manicure, pedicure, _, _ = _seed_addon_catalog()
+        manicure_id, pedicure_id = manicure.id, pedicure.id
+        scheduled_start = _future_weekday_start()
+
+    monkeypatch.setattr(
+        "app.routes.build_available_slots",
+        lambda target_date, duration_minutes, **kwargs: (
+            [{"start": scheduled_start, "end": scheduled_start + timedelta(minutes=duration_minutes)}], {}
+        ),
+    )
+    monkeypatch.setattr(
+        "app.routes.stripe.checkout.Session.create",
+        lambda **kwargs: captured_checkout.update(kwargs) or {"id": "cs_x", "client_secret": "s"},
+    )
+
+    response = client.post(
+        "/api/payments/stripe/initiate",
+        json=_initiate_payload(
+            [manicure_id], [pedicure_id], scheduled_start,
+            price_cents=1, addon_discount_percent=90, amount_cents=1,
+        ),
+        headers=_set_csrf(client),
+    )
+    assert response.status_code == 200
+    assert captured_checkout["line_items"][0]["price_data"]["unit_amount"] == 5000 + 4050
+
+
+def test_stripe_initiate_rejects_addon_from_booked_category(app, client):
+    with app.app_context():
+        manicure, _, _, acrylic = _seed_addon_catalog()
+        manicure_id, acrylic_id = manicure.id, acrylic.id
+
+    response = client.post(
+        "/api/payments/stripe/initiate",
+        json=_initiate_payload([manicure_id], [acrylic_id], _future_weekday_start()),
+        headers=_set_csrf(client),
+    )
+    assert response.status_code == 400
+    error = response.get_json()["errors"][0]
+    assert error["field"] == "addon_session_option_ids"
+    assert "category" in error["message"]
+
+
+def test_stripe_initiate_rejects_addon_duplicating_main_service(app, client):
+    with app.app_context():
+        manicure, _, _, _ = _seed_addon_catalog()
+        manicure_id = manicure.id
+
+    response = client.post(
+        "/api/payments/stripe/initiate",
+        json=_initiate_payload([manicure_id], [manicure_id], _future_weekday_start()),
+        headers=_set_csrf(client),
+    )
+    assert response.status_code == 400
+    assert response.get_json()["errors"][0]["field"] == "addon_session_option_ids"
+
+
+def test_stripe_initiate_without_addons_is_unchanged(app, client, monkeypatch):
+    captured_checkout = {}
+    with app.app_context():
+        manicure, _, _, _ = _seed_addon_catalog()
+        manicure_id = manicure.id
+        scheduled_start = _future_weekday_start()
+
+    monkeypatch.setattr(
+        "app.routes.build_available_slots",
+        lambda target_date, duration_minutes, **kwargs: (
+            [{"start": scheduled_start, "end": scheduled_start + timedelta(minutes=duration_minutes)}], {}
+        ),
+    )
+    monkeypatch.setattr(
+        "app.routes.stripe.checkout.Session.create",
+        lambda **kwargs: captured_checkout.update(kwargs) or {"id": "cs_x", "client_secret": "s"},
+    )
+
+    payload = _initiate_payload([manicure_id], [], scheduled_start)
+    del payload["addon_session_option_ids"]
+    response = client.post("/api/payments/stripe/initiate", json=payload, headers=_set_csrf(client))
+    assert response.status_code == 200
+    assert captured_checkout["line_items"][0]["price_data"]["unit_amount"] == 5000
+    with app.app_context():
+        item = BookingDraft.query.one().session_option_items[0]
+        assert (item.price_cents, item.list_price_cents, item.discount_percent) == (5000, 5000, 0)
+
+
+def test_verify_session_copies_addon_discount_to_appointment(app, client, monkeypatch):
+    with app.app_context():
+        manicure, pedicure, _, _ = _seed_addon_catalog()
+        draft = BookingDraft(
+            first_name="Test", last_name="Customer", email="test@example.com", phone="5555555555",
+            session_option=manicure, scheduled_start=_future_weekday_start(),
+            amount_cents=9050, currency="USD", payment_note="x",
+            expires_at=datetime.utcnow() + timedelta(hours=2),
+        )
+        draft.session_option_items = [
+            BookingDraftSessionOption(session_option=manicure, position=0, name="Manicure", category="Hands",
+                                      duration_minutes=60, price_cents=5000, list_price_cents=5000, discount_percent=0),
+            BookingDraftSessionOption(session_option=pedicure, position=1, name="Pedicure", category="Feet",
+                                      duration_minutes=45, price_cents=4050, list_price_cents=4500, discount_percent=10),
+        ]
+        db.session.add(draft)
+        db.session.commit()
+        draft_id = draft.id
+
+    fake_checkout = {
+        "id": "cs_addon_v", "payment_status": "paid", "status": "complete", "payment_intent": "pi_v",
+        "amount_total": 9050, "currency": "usd", "metadata": {"booking_draft_id": draft_id},
+    }
+    monkeypatch.setattr("app.routes.stripe.checkout.Session.retrieve", lambda session_id: fake_checkout)
+    monkeypatch.setattr("app.routes.stripe.PaymentIntent.retrieve", lambda pid: FakeStripeObject(status="succeeded", charges=SimpleNamespace(data=[])))
+    monkeypatch.setattr("app.routes.send_booking_confirmation_email", lambda *a, **k: True)
+    monkeypatch.setattr("app.routes.send_internal_booking_notification", lambda *a, **k: True)
+
+    response = client.post("/api/payments/stripe/verify-session", json={"session_id": "cs_addon_v"}, headers=_set_csrf(client))
+    assert response.status_code == 200
+    payload = response.get_json()
+    assert [(o["name"], o["price_cents"], o["list_price_cents"], o["discount_percent"]) for o in payload["session_options"]] == [
+        ("Manicure", 5000, 5000, 0), ("Pedicure", 4050, 4500, 10),
+    ]
+    with app.app_context():
+        appointment = TattooAppointment.query.one()
+        items = sorted(appointment.session_option_items, key=lambda i: i.position)
+        assert [(i.price_cents, i.list_price_cents, i.discount_percent) for i in items] == [(5000, 5000, 0), (4050, 4500, 10)]
+        assert appointment.payments[0].amount_cents == 9050
+
+
+def test_stripe_initiate_rejects_stale_expected_amount(app, client, monkeypatch):
+    created = []
+    with app.app_context():
+        manicure, _, _, _ = _seed_addon_catalog()
+        manicure_id = manicure.id
+        scheduled_start = _future_weekday_start()
+    monkeypatch.setattr(
+        "app.routes.build_available_slots",
+        lambda target_date, duration_minutes, **kwargs: (
+            [{"start": scheduled_start, "end": scheduled_start + timedelta(minutes=duration_minutes)}], {}
+        ),
+    )
+    monkeypatch.setattr("app.routes.stripe.checkout.Session.create", lambda **kwargs: created.append(kwargs) or {"id": "cs", "client_secret": "s"})
+
+    # Client believed the full price was $45 but the catalogue now says $50 -> refuse, no Stripe session.
+    response = client.post(
+        "/api/payments/stripe/initiate",
+        json=_initiate_payload([manicure_id], [], scheduled_start, expected_amount_cents=4500),
+        headers=_set_csrf(client),
+    )
+    assert response.status_code == 409
+    body = response.get_json()
+    assert body["code"] == "amount_mismatch"
+    assert body["expected_amount_cents"] == 5000
+    assert created == []
+    with app.app_context():
+        assert BookingDraft.query.count() == 0
+
+    # Matching expectation goes through.
+    response = client.post(
+        "/api/payments/stripe/initiate",
+        json=_initiate_payload([manicure_id], [], scheduled_start, expected_amount_cents=5000),
+        headers=_set_csrf(client),
+    )
+    assert response.status_code == 200
+    assert created[0]["line_items"][0]["price_data"]["unit_amount"] == 5000
+
+
+def test_stripe_initiate_deposit_never_below_stripe_minimum(app, client, monkeypatch):
+    created = []
+    with app.app_context():
+        cheap = SessionOption(name="Cheap", category="A", duration_minutes=30, price_cents=200)
+        tiny = SessionOption(name="Tiny", category="B", duration_minutes=15, price_cents=50)
+        db.session.add_all([cheap, tiny])
+        db.session.commit()
+        cheap_id, tiny_id = cheap.id, tiny.id
+        scheduled_start = _future_weekday_start()
+    monkeypatch.setattr(
+        "app.routes.build_available_slots",
+        lambda target_date, duration_minutes, **kwargs: (
+            [{"start": scheduled_start, "end": scheduled_start + timedelta(minutes=duration_minutes)}], {}
+        ),
+    )
+    monkeypatch.setattr("app.routes.stripe.checkout.Session.create", lambda **kwargs: created.append(kwargs) or {"id": "cs", "client_secret": "s"})
+
+    # total 200 + 45 = 245 -> 20% deposit = 49 -> floored to 50
+    response = client.post(
+        "/api/payments/stripe/initiate",
+        json=_initiate_payload([cheap_id], [tiny_id], scheduled_start, pay_full_amount=False),
+        headers=_set_csrf(client),
+    )
+    assert response.status_code == 200
+    assert created[0]["line_items"][0]["price_data"]["unit_amount"] == 50
