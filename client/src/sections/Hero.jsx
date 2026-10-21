@@ -39,10 +39,10 @@ export default function Hero() {
   const { isSpanish } = useLanguage();
   const copy = isSpanish
     ? {
-        eyebrow: 'Salon de unas en Bronx, Nueva York',
+        eyebrow: 'Salón de uñas en el Bronx, Nueva York',
         address: '1205 College Ave, Bronx, NY 10456',
         description:
-          'Hola, soy Melodi Mejia. Bienvenida a un salon de unas en el Bronx enfocado en preparacion saludable, estructura limpia y acabados duraderos. Reserva tu manicure, pedicure, set de acrilico o nail art en linea en minutos.',
+          'Hola, soy Melodi Mejia. Bienvenida a un salón de uñas en el Bronx enfocado en preparación saludable, estructura limpia y acabados duraderos. Reserva tu manicure, pedicure, set de acrílico o nail art en línea en minutos.',
         primaryCta: 'Reserva Ahora',
         secondaryCta: 'Ver Servicios',
       }

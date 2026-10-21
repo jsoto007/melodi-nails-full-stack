@@ -58,9 +58,9 @@ export default function Header() {
   const navItems = useMemo(() => {
     const labels = isSpanish
       ? {
-          gallery: 'Galeria',
+          gallery: 'Galería',
           menu: 'Servicios',
-          about: 'Sobre Mi',
+          about: 'Sobre mí',
           contact: 'Contacto',
           dashboard: 'Panel',
           appointments: 'Citas',
@@ -107,8 +107,8 @@ export default function Header() {
         bookNow: 'Reservar',
         signOut: 'Salir',
         bookAppointment: 'Reservar cita',
-        closeMenu: 'Cerrar menu',
-        openMenu: 'Abrir menu',
+        closeMenu: 'Cerrar menú',
+        openMenu: 'Abrir menú',
       }
       : {
         bookNow: 'Book Now',

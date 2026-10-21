@@ -8,17 +8,17 @@ import artistPhoto from '../assets/melodi/melodiShowingNails.JPG';
 export default function About() {
   const { isSpanish } = useLanguage();
   const credentials = isSpanish
-    ? ['Enfoque en unas naturales', 'Preparacion y estructura detalladas', 'Reservas en linea sencillas']
+    ? ['Enfoque en uñas naturales', 'Preparación y estructura detalladas', 'Reservas en línea sencillas']
     : ['Natural nail care focus', 'Detailed prep and structure', 'Guest-friendly online booking'];
   const copy = isSpanish
     ? {
-        section: 'Sobre Mi',
-        title: 'El arte de tus unas',
+        section: 'Sobre mí',
+        title: 'El arte de tus uñas',
         description:
-          'Melodi Nails esta creado alrededor de acabados hermosos, preparacion saludable y una experiencia de cita acogedora. El objetivo es simple: que cada clienta salga con unas pulidas, intencionales y unicas.',
+          'Melodi Nails está creado alrededor de acabados hermosos, preparación saludable y una experiencia de cita acogedora. El objetivo es simple: que cada clienta salga con uñas pulidas, intencionales y únicas.',
         badgeOne: 'Belleza limpia',
         badgeTwo: 'Servicio personalizado',
-        imageAlt: 'Melodi mostrando un set de unas terminado',
+        imageAlt: 'Melodi mostrando un set de uñas terminado',
       }
     : {
         section: 'About',

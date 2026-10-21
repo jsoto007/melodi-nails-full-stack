@@ -5,33 +5,33 @@ export default function TattooAftercare() {
   const copy = isSpanish
     ? {
         eyebrow: 'Cuidado',
-        title: 'Guia de Cuidado de Unas',
+        title: 'Guía de Cuidado de Uñas',
         intro:
-          'El cuidado posterior ayuda a que tu manicure, servicio en gel o set acrilico se mantenga pulido, comodo y duradero. Unos cuantos habitos simples despues de tu cita hacen una gran diferencia.',
-        habitsTitle: 'Habitos diarios para cuidar tus unas',
+          'El cuidado posterior ayuda a que tu manicure, servicio en gel o set acrílico se mantenga pulido, cómodo y duradero. Unos cuantos hábitos simples después de tu cita hacen una gran diferencia.',
+        habitsTitle: 'Hábitos diarios para cuidar tus uñas',
         habitsIntro: 'Sigue estas recomendaciones entre citas para mantener tu set limpio y listo para foto:',
         habits: [
-          'Aplica aceite para cuticula todos los dias para mantener hidratada la zona de la una y evitar que el set se vea reseco antes de tiempo.',
-          'Usa guantes al lavar platos, limpiar o usar productos fuertes. El agua y los quimicos pueden afectar la duracion del servicio.',
-          'Evita morder, arrancar o despegar gel, acrilico o esquinas levantadas. Quitar el producto en casa puede debilitar la una natural.',
-          'Usa las yemas de los dedos en lugar de las unas al abrir latas, despegar etiquetas o presionar botones duros.',
-          'Si una una se levanta, se astilla o se rompe, agenda una reparacion lo antes posible para evitar un dano mayor.',
-          'Reserva mantenimiento regular si usas acrilico o gel estructurado. Eso ayuda a conservar forma, estructura y equilibrio.',
+          'Aplica aceite para cutícula todos los días para mantener hidratada la zona de la uña y evitar que el set se vea reseco antes de tiempo.',
+          'Usa guantes al lavar platos, limpiar o usar productos fuertes. El agua y los químicos pueden afectar la duración del servicio.',
+          'Evita morder, arrancar o despegar gel, acrílico o esquinas levantadas. Quitar el producto en casa puede debilitar la uña natural.',
+          'Usa las yemas de los dedos en lugar de las uñas al abrir latas, despegar etiquetas o presionar botones duros.',
+          'Si una uña se levanta, se astilla o se rompe, agenda una reparación lo antes posible para evitar un daño mayor.',
+          'Reserva mantenimiento regular si usas acrílico o gel estructurado. Eso ayuda a conservar forma, estructura y equilibrio.',
         ],
-        expectTitle: 'Que esperar despues de tu cita',
+        expectTitle: 'Qué esperar después de tu cita',
         expectOne:
-          'Un set nuevo debe sentirse suave, seguro y equilibrado al salir del salon. Durante las siguientes semanas el crecimiento natural y el uso diario empezaran a notarse, especialmente cerca de la cuticula.',
+          'Un set nuevo debe sentirse suave, seguro y equilibrado al salir del salón. Durante las siguientes semanas el crecimiento natural y el uso diario empezarán a notarse, especialmente cerca de la cutícula.',
         expectTwo:
-          'Algo de desgaste es normal con el tiempo, pero dolor, presion o levantamiento rapido no lo son. Si algo se siente mal, comunicate pronto para resolverlo antes de que la una se dane.',
+          'Algo de desgaste es normal con el tiempo, pero dolor, presión o levantamiento rápido no lo son. Si algo se siente mal, comunícate pronto para resolverlo antes de que la uña se dañe.',
         productsTitle: 'Productos recomendados',
         products: [
-          { label: 'Aceite para cuticula', text: 'mantiene la piel suave y ayuda a que el manicure se vea mas saludable.' },
-          { label: 'Crema para manos', text: 'evita que resequedad en manos y cuticulas opaque un set pulido.' },
-          { label: 'Guantes de proteccion', text: 'son utiles para tareas del hogar que pueden acortar la vida del servicio.' },
+          { label: 'Aceite para cutícula', text: 'mantiene la piel suave y ayuda a que el manicure se vea más saludable.' },
+          { label: 'Crema para manos', text: 'evita que resequedad en manos y cutículas opaque un set pulido.' },
+          { label: 'Guantes de protección', text: 'son útiles para tareas del hogar que pueden acortar la vida del servicio.' },
         ],
-        reachTitle: 'Cuando escribirnos',
+        reachTitle: 'Cuándo escribirnos',
         reach:
-          'Escribenos si necesitas una reparacion, si no sabes si reservar retiro o relleno, o si quieres ayuda para elegir tu proximo servicio. Puedes comunicarte con Melodi Nails en nailsmelodi@gmail.com o reservar para el estudio del Bronx en 1205 College Ave.',
+          'Escríbenos si necesitas una reparación, si no sabes si reservar retiro o relleno, o si quieres ayuda para elegir tu próximo servicio. Puedes comunicarte con Melodi Nails en nailsmelodi@gmail.com o reservar para el estudio del Bronx en 1205 College Ave.',
       }
     : {
         eyebrow: 'Aftercare',
@@ -110,7 +110,7 @@ export default function TattooAftercare() {
       <section className="space-y-4">
         <h2 className="text-2xl font-semibold text-gray-900">{copy.reachTitle}</h2>
         <p>
-          {copy.reach} {isSpanish ? 'Escribenos a' : 'Email us at'}{' '}
+          {copy.reach} {isSpanish ? 'Escríbenos a' : 'Email us at'}{' '}
           <a href="mailto:nailsmelodi@gmail.com">nailsmelodi@gmail.com</a>
         </p>
       </section>

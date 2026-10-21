@@ -149,11 +149,11 @@ export default function Gallery() {
   const [lightboxIndex, setLightboxIndex] = useState(null);
   const copy = isSpanish
     ? {
-        eyebrow: 'Galeria',
-        title: 'Una mirada mas cercana a Melodi Nails',
-        description: 'Imagenes detalladas del salon. Toca cualquier foto para ampliarla.',
-        viewMore: 'Ver mas en Instagram',
-        viewMorePhotos: 'Ver mas fotos de unas en Instagram',
+        eyebrow: 'Galería',
+        title: 'Una mirada más cercana a Melodi Nails',
+        description: 'Imágenes detalladas del salón. Toca cualquier foto para ampliarla.',
+        viewMore: 'Ver más en Instagram',
+        viewMorePhotos: 'Ver más fotos de uñas en Instagram',
         close: 'Cerrar',
         previous: 'Imagen anterior',
         next: 'Imagen siguiente',
