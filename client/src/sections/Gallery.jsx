@@ -12,13 +12,14 @@ import gelPedicure from '../assets/melodi/gelPedicure.jpg';
 const INSTAGRAM_URL =
   'https://www.instagram.com/_melodinails_?igsh=dWV5Y2VoOGd2dzI2&utm_source=qr';
 
-const galleryImages = [
-  { src: fullSet, alt: 'Full acrylic set with neutral tones' },
-  { src: greenNails, alt: 'Green manicure detail' },
-  { src: whiteNails, alt: 'Classic white manicure' },
-  { src: russianManicure, alt: 'Russian manicure service detail' },
-  { src: russianManicureTwo, alt: 'Refined manicure close-up' },
-  { src: gelPedicure, alt: 'Gel pedicure result' },
+// `key` doubles as the public.gallery.images.<key> alt-text message.
+const GALLERY_IMAGES = [
+  { key: 'fullSet', src: fullSet },
+  { key: 'greenManicure', src: greenNails },
+  { key: 'whiteManicure', src: whiteNails },
+  { key: 'russianManicure', src: russianManicure },
+  { key: 'refinedManicure', src: russianManicureTwo },
+  { key: 'gelPedicure', src: gelPedicure },
 ];
 
 function GalleryLightbox({ index, images, onClose, copy }) {
@@ -70,7 +71,7 @@ function GalleryLightbox({ index, images, onClose, copy }) {
         tabIndex={-1}
         role="dialog"
         aria-modal="true"
-        aria-label="Gallery image"
+        aria-label={copy.dialogLabel}
         className="relative w-full max-w-3xl focus:outline-none"
       >
         {/* Counter */}
@@ -104,8 +105,8 @@ function GalleryLightbox({ index, images, onClose, copy }) {
             href={INSTAGRAM_URL}
             target="_blank"
             rel="noreferrer"
-            aria-label="View more on Instagram"
-          className="flex items-center gap-2 rounded-full border border-white/20 bg-black/40 px-5 py-2 text-xs font-semibold uppercase tracking-widest text-gray-300 backdrop-blur transition hover:border-white/50 hover:bg-black/60 hover:text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-white/40"
+            aria-label={copy.viewMorePhotos}
+            className="flex items-center gap-2 rounded-full border border-white/20 bg-black/40 px-5 py-2 text-xs font-semibold uppercase tracking-widest text-gray-300 backdrop-blur transition hover:border-white/50 hover:bg-black/60 hover:text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-white/40"
           >
             <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" className="h-4 w-4" aria-hidden="true">
               <rect x="3" y="3" width="18" height="18" rx="5" />
@@ -145,29 +146,23 @@ function GalleryLightbox({ index, images, onClose, copy }) {
 }
 
 export default function Gallery() {
-  const { isSpanish } = useLanguage();
+  const { t } = useLanguage();
   const [lightboxIndex, setLightboxIndex] = useState(null);
-  const copy = isSpanish
-    ? {
-        eyebrow: 'Galería',
-        title: 'Una mirada más cercana a Melodi Nails',
-        description: 'Imágenes detalladas del salón. Toca cualquier foto para ampliarla.',
-        viewMore: 'Ver más en Instagram',
-        viewMorePhotos: 'Ver más fotos de uñas en Instagram',
-        close: 'Cerrar',
-        previous: 'Imagen anterior',
-        next: 'Imagen siguiente',
-      }
-    : {
-        eyebrow: 'Gallery',
-        title: 'A closer look at Melodi Nails',
-        description: 'Close-up nail imagery from the studio. Tap any photo to expand.',
-        viewMore: 'View more on Instagram',
-        viewMorePhotos: 'View more nail photos on Instagram',
-        close: 'Close',
-        previous: 'Previous image',
-        next: 'Next image',
-      };
+  const galleryImages = GALLERY_IMAGES.map((image) => ({
+    ...image,
+    alt: t(`public.gallery.images.${image.key}`),
+  }));
+  const copy = {
+    eyebrow: t('public.gallery.eyebrow'),
+    title: t('public.gallery.title'),
+    description: t('public.gallery.description'),
+    viewMore: t('common.a11y.viewOnInstagram'),
+    viewMorePhotos: t('public.gallery.viewMorePhotos'),
+    close: t('common.a11y.closeLightbox'),
+    previous: t('common.a11y.previousImage'),
+    next: t('common.a11y.nextImage'),
+    dialogLabel: t('common.a11y.expandedImage'),
+  };
 
   return (
     <section id="work" className="bg-[#fffaf5] py-16 text-[#23301d]">
@@ -182,11 +177,11 @@ export default function Gallery() {
         <div className="grid grid-cols-2 gap-4 lg:hidden">
           {galleryImages.map((image, idx) => (
             <button
-              key={image.alt}
+              key={image.key}
               type="button"
               onClick={() => setLightboxIndex(idx)}
               className={`group block w-full overflow-hidden rounded-[2rem] border border-white/60 shadow-[0_22px_50px_rgba(42,57,35,0.13)] transition duration-300 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#6f7863] focus-visible:ring-offset-2${idx % 2 !== 0 ? ' mt-10' : ''}`}
-              aria-label={`View ${image.alt}`}
+              aria-label={t('public.gallery.viewImage', { name: image.alt })}
             >
               <img
                 src={image.src}
@@ -202,11 +197,11 @@ export default function Gallery() {
         <FadeIn className="hidden columns-3 gap-5 lg:block" childClassName="mb-5 break-inside-avoid" delayStep={0.08}>
           {galleryImages.map((image, idx) => (
             <button
-              key={image.alt}
+              key={image.key}
               type="button"
               onClick={() => setLightboxIndex(idx)}
               className="group block w-full overflow-hidden rounded-[2rem] border border-[#e0d2c3] bg-white/90 shadow-[0_18px_40px_rgba(42,57,35,0.08)] transition duration-300 hover:shadow-[0_22px_50px_rgba(42,57,35,0.16)] hover:-translate-y-1 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#6f7863] focus-visible:ring-offset-2"
-              aria-label={`View ${image.alt}`}
+              aria-label={t('public.gallery.viewImage', { name: image.alt })}
             >
               <img
                 src={image.src}

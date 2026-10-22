@@ -1,3 +1,4 @@
+import { useLanguage } from '../contexts/LanguageContext.jsx';
 import { useEffect } from 'react';
 
 const TONE_STYLES = {
@@ -24,6 +25,7 @@ function IconX(props) {
 }
 
 export default function NoticeBanner({ tone = 'info', message, onDismiss, autoHideAfter = 6000 }) {
+  const { t } = useLanguage();
   useEffect(() => {
     if (!autoHideAfter) {
       return undefined;
@@ -51,7 +53,7 @@ export default function NoticeBanner({ tone = 'info', message, onDismiss, autoHi
         type="button"
         onClick={onDismiss}
         className="inline-flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full text-xs uppercase tracking-[0.3em] transition hover:bg-black/5 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-current"
-        aria-label="Dismiss notification"
+        aria-label={t('common.a11y.dismissNotification')}
       >
         <IconX className="h-4 w-4" />
       </button>

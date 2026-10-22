@@ -1,5 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
 import { apiGet, apiPost, resetCsrfToken, setCsrfToken } from '../lib/api.js';
+import { useLanguage } from './LanguageContext.jsx';
 
 const AuthContext = createContext(null);
 
@@ -11,6 +12,7 @@ const STATUS = {
 };
 
 export function AuthProvider({ children }) {
+  const { t } = useLanguage();
   const [state, setState] = useState({
     status: STATUS.loading,
     role: null,
@@ -52,7 +54,8 @@ export function AuthProvider({ children }) {
         status: STATUS.error,
         role: null,
         account: null,
-        error: 'Unable to verify session.'
+        // Stored as a key; translated in the context value so it follows the language toggle.
+        error: 'auth.session.verifyFailed'
       });
       resetCsrfToken();
 
@@ -85,7 +88,7 @@ export function AuthProvider({ children }) {
       status: state.status,
       role: state.role,
       account: state.account,
-      error: state.error,
+      error: state.error ? t(state.error) : null,
       isAuthenticated: state.status === STATUS.authenticated && !!state.role,
       isLoading: state.status === STATUS.loading,
       isAdmin: state.role === 'admin',
@@ -93,7 +96,7 @@ export function AuthProvider({ children }) {
       refreshSession,
       logout
     }),
-    [state, refreshSession, logout]
+    [state, refreshSession, logout, t]
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

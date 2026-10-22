@@ -6,44 +6,21 @@ import Card from '../../components/Card.jsx';
 import Dialog from '../../components/Dialog.jsx';
 import SectionTitle from '../../components/SectionTitle.jsx';
 import Tabs from '../../components/Tabs.jsx';
-import { useClientPortal } from '../../contexts/ClientPortalContext.jsx';
+import { getLocalizedServiceName, useClientPortal } from '../../contexts/ClientPortalContext.jsx';
+import { useLanguage } from '../../contexts/LanguageContext.jsx';
 import { getAppointmentTypeLabel } from '../../lib/appointments.js';
 import { formatStatusLabel, getStatusBadgeClasses } from '../../lib/statusStyles.js';
 
 const PAST_STATUSES = new Set(['cancelled', 'cancelled_by_client', 'declined', 'completed', 'no_show']);
 
-function formatDate(value) {
-  if (!value) {
-    return 'TBD';
-  }
-  try {
-    return new Date(value).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
-  } catch {
-    return 'TBD';
-  }
-}
-
-function formatTime(value) {
-  if (!value) {
-    return 'TBD';
-  }
-  try {
-    return new Date(value).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
-  } catch {
-    return 'TBD';
-  }
-}
-
-function formatDialogTitle(value) {
-  if (!value) {
-    return 'Note';
-  }
-  return value.replace(/_/g, ' ').replace(/\b\w/g, (char) => char.toUpperCase());
-}
+const SHORT_DATE = { month: 'short', day: 'numeric' };
 
 export default function ClientAppointmentsPage() {
   const navigate = useNavigate();
   const location = useLocation();
+  const { t, language, formatDate: formatStudioDate, formatTime: formatStudioTime } = useLanguage();
+  const formatDate = (value) => formatStudioDate(value, SHORT_DATE) || t('common.states.tbd');
+  const formatTime = (value) => formatStudioTime(value) || t('common.states.tbd');
   const [activeTab, setActiveTab] = useState('upcoming');
   const [selectedAppointment, setSelectedAppointment] = useState(null);
   const [actionDialog, setActionDialog] = useState(null);
@@ -112,10 +89,10 @@ export default function ClientAppointmentsPage() {
       return null;
     }
     if (actionDialog.type === 'reschedule') {
-      return 'Rescheduling is managed by the studio. Reply to your confirmation email or message the shop to request a new slot.';
+      return t('portal.appointment.rescheduleMessage');
     }
     if (actionDialog.type === 'cancel') {
-      return 'Need to cancel? Please notify us at least 48 hours ahead so we can release your session.';
+      return t('portal.appointment.cancelMessage');
     }
     return null;
   };
@@ -123,13 +100,13 @@ export default function ClientAppointmentsPage() {
   const renderAppointmentList = (items, variant) => {
     if (!items.length) {
       const message = variant === 'upcoming'
-        ? 'You don’t have any upcoming sessions yet.'
-        : 'No past sessions yet. Once your first session is complete, it will appear here.';
+        ? t('portal.appointments.emptyUpcoming')
+        : t('portal.appointments.emptyPast');
       return (
         <Card className="flex flex-col items-start gap-3 text-xs uppercase tracking-[0.3em] text-gray-500">
           <p>{message}</p>
           <Button as={Link} to="/appointments/new" variant="ghost">
-            Book consult
+            {t('portal.layout.bookAppointment')}
           </Button>
         </Card>
       );
@@ -137,6 +114,7 @@ export default function ClientAppointmentsPage() {
     return (
       <div className="space-y-4">
         {items.map((appointment) => {
+          const serviceName = getLocalizedServiceName(appointment, language);
           return (
             <article
               key={appointment.id}
@@ -148,36 +126,34 @@ export default function ClientAppointmentsPage() {
               </div>
               <div className="flex-1 space-y-1">
                 <p className="text-[0.65rem] uppercase tracking-[0.3em] text-gray-500">
-                  {getAppointmentTypeLabel(appointment)}
+                  {getAppointmentTypeLabel(appointment, language)}
                 </p>
                 {appointment.assigned_admin ? (
                   <p className="text-sm font-semibold text-gray-900">{appointment.assigned_admin.name}</p>
                 ) : null}
                 <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.3em]">
                   <Badge className={getStatusBadgeClasses(appointment.status)}>
-                    {formatStatusLabel(appointment.status)}
+                    {formatStatusLabel(appointment.status, language)}
                   </Badge>
-                  {appointment.service?.name ? (
-                    <span className="text-gray-500">{appointment.service.name}</span>
-                  ) : null}
+                  {serviceName ? <span className="text-gray-500">{serviceName}</span> : null}
                 </div>
               </div>
               <div className="flex flex-wrap items-center gap-2 text-xs font-semibold uppercase tracking-[0.3em]">
                 <Button variant="ghost" onClick={() => setSelectedAppointment(appointment)}>
-                  View details
+                  {t('portal.appointment.viewDetails')}
                 </Button>
                 {variant === 'upcoming' ? (
                   <>
                     <Button variant="ghost" onClick={() => handleActionClick('reschedule', appointment)}>
-                      Reschedule
+                      {t('portal.appointment.reschedule')}
                     </Button>
                     <Button variant="ghost" onClick={() => handleActionClick('cancel', appointment)}>
-                      Cancel
+                      {t('portal.appointment.cancel')}
                     </Button>
                   </>
                 ) : (
                   <Button variant="ghost" onClick={() => navigate('/appointments/new')}>
-                    Rebook
+                    {t('portal.appointment.rebook')}
                   </Button>
                 )}
               </div>
@@ -191,7 +167,7 @@ export default function ClientAppointmentsPage() {
   if (loading) {
     return (
       <main className="space-y-6">
-        <SectionTitle eyebrow="Client portal" title="Appointments" description="Loading your schedule…" />
+        <SectionTitle eyebrow={t('portal.eyebrow')} title={t('portal.appointments.title')} description={t('portal.appointments.loading')} />
       </main>
     );
   }
@@ -199,31 +175,31 @@ export default function ClientAppointmentsPage() {
   if (error) {
     return (
       <main className="space-y-6">
-        <SectionTitle eyebrow="Client portal" title="Appointments" description="We hit a snag." />
+        <SectionTitle eyebrow={t('portal.eyebrow')} title={t('portal.appointments.title')} description={t('common.states.somethingWrong')} />
         <Card className="text-xs uppercase tracking-[0.3em] text-rose-600">{error}</Card>
         <Button as={Link} to="/auth" variant="secondary">
-          Return to sign in
+          {t('portal.errors.returnToSignIn')}
         </Button>
       </main>
     );
   }
 
   const tabs = [
-    { id: 'upcoming', label: 'Upcoming' },
-    { id: 'past', label: 'Past' }
+    { id: 'upcoming', label: t('portal.appointments.tabs.upcoming') },
+    { id: 'past', label: t('portal.appointments.tabs.past') }
   ];
 
   return (
     <div className="space-y-6">
-      <SectionTitle eyebrow="Client portal" title="Appointments" description="A clean view of your schedule." />
+      <SectionTitle eyebrow={t('portal.eyebrow')} title={t('portal.appointments.title')} description={t('portal.appointments.description')} />
       <Card className="flex flex-col gap-4">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
-            <p className="text-xs uppercase tracking-[0.3em] text-gray-500">Appointments</p>
-            <p className="text-sm text-gray-500">Manage your studio time with confidence.</p>
+            <p className="text-xs uppercase tracking-[0.3em] text-gray-500">{t('portal.appointments.cardTitle')}</p>
+            <p className="text-sm text-gray-500">{t('portal.appointments.cardHint')}</p>
           </div>
           <Button as={Link} to="/appointments/new">
-            Book consult
+            {t('portal.layout.bookAppointment')}
           </Button>
         </div>
         <Tabs tabs={tabs} activeTab={activeTab} onTabChange={setActiveTab} renderPanel={(tabId) => {
@@ -237,8 +213,12 @@ export default function ClientAppointmentsPage() {
       <Dialog
         open={!!actionDialog}
         onClose={() => setActionDialog(null)}
-        title={actionDialog ? formatDialogTitle(actionDialog.type) : 'Note'}
-        footer={<Button onClick={() => setActionDialog(null)}>Close</Button>}
+        title={
+          actionDialog?.type === 'reschedule' || actionDialog?.type === 'cancel'
+            ? t(`portal.appointment.dialogTitles.${actionDialog.type}`)
+            : t('portal.appointment.note')
+        }
+        footer={<Button onClick={() => setActionDialog(null)}>{t('common.actions.close')}</Button>}
       >
         <p className="text-sm text-gray-600">{buildActionMessage()}</p>
       </Dialog>
@@ -246,25 +226,25 @@ export default function ClientAppointmentsPage() {
       <Dialog
         open={!!selectedAppointment}
         onClose={() => setSelectedAppointment(null)}
-        title="Appointment details"
-        footer={<Button onClick={() => setSelectedAppointment(null)}>Close</Button>}
+        title={t('portal.appointment.detailsTitle')}
+        footer={<Button onClick={() => setSelectedAppointment(null)}>{t('common.actions.close')}</Button>}
       >
         {selectedAppointment ? (
           <div className="space-y-3 text-sm text-gray-700">
             <p className="font-semibold text-gray-900">{formatDate(selectedAppointment.scheduled_start)} · {formatTime(selectedAppointment.scheduled_start)}</p>
             <p className="text-xs uppercase tracking-[0.3em] text-gray-500">
-              {getAppointmentTypeLabel(selectedAppointment)}
+              {getAppointmentTypeLabel(selectedAppointment, language)}
             </p>
             {selectedAppointment.assigned_admin ? (
-              <p>Artist: {selectedAppointment.assigned_admin.name}</p>
+              <p>{t('portal.appointment.nailTech', { name: selectedAppointment.assigned_admin.name })}</p>
             ) : null}
-                    <p>
-                      Status:{' '}
-                      <span className={getStatusBadgeClasses(selectedAppointment.status)}>
-                        {formatStatusLabel(selectedAppointment.status)}
-                      </span>
-                    </p>
-            {selectedAppointment.service?.notes ? <p>Notes: {selectedAppointment.service.notes}</p> : null}
+            <p>
+              {t('portal.appointment.status')}{' '}
+              <span className={getStatusBadgeClasses(selectedAppointment.status)}>
+                {formatStatusLabel(selectedAppointment.status, language)}
+              </span>
+            </p>
+            {selectedAppointment.service?.notes ? <p>{t('portal.appointment.notes', { notes: selectedAppointment.service.notes })}</p> : null}
           </div>
         ) : null}
       </Dialog>

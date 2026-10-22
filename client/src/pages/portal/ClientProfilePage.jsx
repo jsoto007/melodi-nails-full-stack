@@ -7,36 +7,31 @@ import SectionTitle from '../../components/SectionTitle.jsx';
 import { apiDelete, apiPatch, apiPost, apiUpload, resolveApiUrl } from '../../lib/api.js';
 import { useAuth } from '../../contexts/AuthContext.jsx';
 import { useClientPortal } from '../../contexts/ClientPortalContext.jsx';
+import { useLanguage } from '../../contexts/LanguageContext.jsx';
 import {
   getClientSideUploadError,
   getUploadErrorMessage,
+  isKnownUploadErrorStatus,
   validateDocumentBeforeUpload
 } from '../../lib/uploadValidation.js';
 
+// Labels/descriptions live in portal.profile.preferences.<key> and <key>_hint.
 const PREFERENCE_CONFIG = [
-  {
-    key: 'email_reminders',
-    label: 'Email reminders',
-    description: 'Receive appointment alerts and updates via email.'
-  },
-  {
-    key: 'sms_reminders',
-    label: 'SMS reminders',
-    description: 'Text notifications for upcoming sessions.'
-  },
-  {
-    key: 'aftercare_emails',
-    label: 'Aftercare emails',
-    description: 'Tips and care instructions after your session.'
-  }
+  { key: 'email_reminders' },
+  { key: 'sms_reminders' },
+  { key: 'aftercare_emails' }
 ];
 
-function ToggleSwitch({ checked, disabled, onChange }) {
+const LONG_DATE = { month: 'long', day: 'numeric', year: 'numeric' };
+const KNOWN_DOCUMENT_KINDS = new Set(['document', 'inspiration', 'inspiration_image', 'id_front', 'id_back', 'note', 'description']);
+
+function ToggleSwitch({ checked, disabled, onChange, label }) {
   return (
     <button
       type="button"
       role="switch"
       aria-checked={checked}
+      aria-label={label}
       disabled={disabled}
       onClick={() => onChange(!checked)}
       className="relative inline-flex h-6 w-12 items-center rounded-full border border-gray-300 bg-white transition"
@@ -47,17 +42,6 @@ function ToggleSwitch({ checked, disabled, onChange }) {
       />
     </button>
   );
-}
-
-function formatDate(value) {
-  if (!value) {
-    return '—';
-  }
-  try {
-    return new Date(value).toLocaleDateString(undefined, { month: 'long', day: 'numeric', year: 'numeric' });
-  } catch {
-    return '—';
-  }
 }
 
 const ACCEPTED_UPLOAD_TYPES = 'image/png,image/jpeg,image/jpg,image/webp,application/pdf,.pdf,.doc,.docx,.txt';
@@ -96,6 +80,16 @@ export default function ClientProfilePage() {
   const navigate = useNavigate();
   const location = useLocation();
   const { logout } = useAuth();
+  const { t, language, formatDate: formatStudioDate } = useLanguage();
+  const formatDate = (value) => formatStudioDate(value, LONG_DATE) || '—';
+  const documentKindLabel = (kind) => {
+    if (!kind) {
+      return t('portal.profile.documents.kinds.document');
+    }
+    return KNOWN_DOCUMENT_KINDS.has(kind) ? t(`portal.profile.documents.kinds.${kind}`) : kind.replace(/_/g, ' ');
+  };
+  const sourceLabel = (source) =>
+    source === 'you' ? t('portal.profile.documents.sourceYou') : t('portal.profile.documents.sourceSalon');
   const {
     loading,
     error,
@@ -221,11 +215,11 @@ export default function ClientProfilePage() {
 
     try {
       await apiPatch('/api/account/profile', payload);
-      setProfileStatus('Profile updated.');
+      setProfileStatus(t('portal.profile.personal.saved'));
       setIsEditingProfile(false);
       refresh();
-    } catch (err) {
-      setProfileError(err?.message || 'Unable to save your profile right now.');
+    } catch {
+      setProfileError(t('portal.profile.personal.failure'));
     } finally {
       setIsSavingProfile(false);
     }
@@ -238,10 +232,10 @@ export default function ClientProfilePage() {
     setPrefSaving(true);
     try {
       await apiPatch('/api/account/preferences', { [key]: value });
-      setPrefMessage('Preferences saved.');
+      setPrefMessage(t('portal.profile.preferences.saved'));
       refresh();
-    } catch (err) {
-      setPrefError(err?.message || 'Unable to update preference.');
+    } catch {
+      setPrefError(t('portal.profile.preferences.failure'));
       setPreferences((prev) => ({ ...prev, [key]: !value }));
     } finally {
       setPrefSaving(false);
@@ -261,7 +255,7 @@ export default function ClientProfilePage() {
     setPasswordError(null);
 
     if (passwordForm.new_password !== passwordForm.confirm_password) {
-      setPasswordError('New password and confirmation must match.');
+      setPasswordError(t('portal.profile.security.mismatch'));
       setPasswordSaving(false);
       return;
     }
@@ -271,11 +265,21 @@ export default function ClientProfilePage() {
         current_password: passwordForm.current_password,
         new_password: passwordForm.new_password
       });
-      setPasswordStatus('Password updated.');
+      setPasswordStatus(t('portal.profile.security.passwordUpdated'));
       setPasswordForm({ current_password: '', new_password: '', confirm_password: '' });
       refresh();
     } catch (err) {
-      setPasswordError(err?.body?.error || 'Unable to update password right now.');
+      // Server text is English-only; show our own copy for the known failures.
+      const serverText = String(err?.body?.error || '').toLowerCase();
+      let passwordMessage = t('portal.profile.security.passwordFailure');
+      if (err?.status === 403) {
+        passwordMessage = t('portal.profile.security.wrongPassword');
+      } else if (err?.status === 400) {
+        passwordMessage = serverText.includes('differ')
+          ? t('portal.profile.security.samePassword')
+          : t('portal.profile.security.minLength');
+      }
+      setPasswordError(passwordMessage);
     } finally {
       setPasswordSaving(false);
     }
@@ -290,9 +294,13 @@ export default function ClientProfilePage() {
     setVerificationError(null);
     try {
       const response = await apiPost('/api/auth/email/verify-request', { email: profile.email });
-      setVerificationStatus(response?.status === 'already_verified' ? 'Email already verified.' : 'Verification email sent.');
-    } catch (err) {
-      setVerificationError(err?.body?.error || 'Unable to send verification email.');
+      setVerificationStatus(
+        response?.status === 'already_verified'
+          ? t('portal.profile.security.alreadyVerified')
+          : t('portal.profile.security.verificationSent')
+      );
+    } catch {
+      setVerificationError(t('portal.profile.security.verificationFailure'));
     } finally {
       setSendingVerification(false);
     }
@@ -330,11 +338,11 @@ export default function ClientProfilePage() {
     });
 
     if (!validFiles.length) {
-      setUploadError(getClientSideUploadError(validationReason));
+      setUploadError(getClientSideUploadError(validationReason, language));
       return;
     }
 
-    setUploadError(validationReason ? getClientSideUploadError(validationReason) : null);
+    setUploadError(validationReason ? getClientSideUploadError(validationReason, language) : null);
     const nextFiles = createFileEntries(validFiles);
     setInspirationFiles((prev) => {
       prev.forEach((entry) => entry.previewUrl && URL.revokeObjectURL(entry.previewUrl));
@@ -370,13 +378,13 @@ export default function ClientProfilePage() {
   const handleUploadInspiration = async (event) => {
     event.preventDefault();
     if (!inspirationFiles.length) {
-      setUploadError('Add at least one file before uploading.');
+      setUploadError(t('portal.profile.uploads.addFile'));
       return;
     }
     for (const entry of inspirationFiles) {
       const validation = validateDocumentBeforeUpload(entry.file);
       if (!validation.isValid) {
-        setUploadError(getClientSideUploadError(validation.reason));
+        setUploadError(getClientSideUploadError(validation.reason, language));
         return;
       }
     }
@@ -396,7 +404,7 @@ export default function ClientProfilePage() {
         }
         await apiUpload('/api/account/documents', formData);
       }
-      setUploadMessage('Files uploaded successfully.');
+      setUploadMessage(t('portal.profile.uploads.success'));
       setNotes('');
       setInspirationFiles((prev) => {
         prev.forEach((entry) => entry.previewUrl && URL.revokeObjectURL(entry.previewUrl));
@@ -404,8 +412,11 @@ export default function ClientProfilePage() {
       });
       await refresh();
     } catch (err) {
-      const message = getUploadErrorMessage(err) ?? 'Unable to upload files right now.';
-      setUploadError(message);
+      // Known statuses get translated copy; other server text is English-only,
+      // so outside English fall back to our own message.
+      const message =
+        isKnownUploadErrorStatus(err) || language === 'en' ? getUploadErrorMessage(err, language) : null;
+      setUploadError(message || t('portal.profile.uploads.failure'));
     } finally {
       setIsUploading(false);
     }
@@ -425,7 +436,7 @@ export default function ClientProfilePage() {
         navigate('/auth', { replace: true });
         return;
       }
-      setDeleteError(err?.message || 'Unable to delete your account at this time.');
+      setDeleteError(t('portal.profile.danger.failure'));
     } finally {
       setIsDeleting(false);
     }
@@ -461,7 +472,7 @@ export default function ClientProfilePage() {
     });
   }, [documents, sharedDocuments]);
 
-  const profileName = [profile?.first_name, profile?.last_name].filter(Boolean).join(' ') || profile?.email || 'Your profile';
+  const profileName = [profile?.first_name, profile?.last_name].filter(Boolean).join(' ') || profile?.email || t('portal.profile.fallbackName');
   const initials = `${profile?.first_name?.[0] ?? ''}${profile?.last_name?.[0] ?? ''}`.trim().toUpperCase() || 'YO';
   const memberSince = formatDate(profile?.created_at);
   const lastLogin = formatDate(profile?.last_login_at);
@@ -483,7 +494,7 @@ export default function ClientProfilePage() {
   if (loading) {
     return (
       <main className="space-y-8">
-        <SectionTitle eyebrow="Client portal" title="Profile" description="Loading your account…" />
+        <SectionTitle eyebrow={t('portal.eyebrow')} title={t('portal.profile.title')} description={t('portal.profile.loading')} />
       </main>
     );
   }
@@ -491,10 +502,10 @@ export default function ClientProfilePage() {
   if (error) {
     return (
       <main className="space-y-8">
-        <SectionTitle eyebrow="Client portal" title="Profile" description="We hit a snag." />
+        <SectionTitle eyebrow={t('portal.eyebrow')} title={t('portal.profile.title')} description={t('common.states.somethingWrong')} />
         <Card className="text-xs uppercase tracking-[0.3em] text-rose-600">{error}</Card>
         <Button variant="secondary" onClick={() => navigate('/auth')}>
-          Return to sign in
+          {t('portal.errors.returnToSignIn')}
         </Button>
       </main>
     );
@@ -509,37 +520,37 @@ export default function ClientProfilePage() {
               {initials}
             </div>
             <div>
-              <p className="text-[0.65rem] uppercase tracking-[0.35em] text-gray-500">Profile</p>
+              <p className="text-[0.65rem] uppercase tracking-[0.35em] text-gray-500">{t('portal.profile.title')}</p>
               <h1 className="text-3xl font-semibold text-gray-900">{profileName}</h1>
               <div className="mt-2 flex flex-wrap gap-2 text-sm text-gray-600">
                 <span className="inline-flex items-center gap-2 rounded-full bg-white/70 px-3 py-1 shadow-sm ring-1 ring-black/5 backdrop-blur">
-                  ✨ Member since {memberSince}
+                  <span aria-hidden="true">✨</span> {t('portal.profile.memberSince', { date: memberSince })}
                 </span>
                 <span className="inline-flex items-center gap-2 rounded-full bg-emerald-50 px-3 py-1 text-emerald-700 ring-1 ring-emerald-100">
                   <span className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse" />
-                  Active
+                  {t('portal.profile.active')}
                 </span>
               </div>
             </div>
           </div>
           <div className="flex flex-wrap gap-3">
             <Button variant="ghost" onClick={() => setIsEditingProfile((prev) => !prev)}>
-              {isEditingProfile ? 'Cancel edit' : 'Edit profile'}
+              {isEditingProfile ? t('portal.profile.cancelEdit') : t('portal.profile.editProfile')}
             </Button>
-            <Button onClick={() => navigate('/appointments/new')}>Book appointment</Button>
+            <Button onClick={() => navigate('/appointments/new')}>{t('portal.profile.bookAppointment')}</Button>
           </div>
         </div>
         <div className="mt-6 grid gap-3 sm:grid-cols-3">
           <div className="rounded-2xl bg-white/80 p-4 text-sm text-gray-600 shadow-sm ring-1 ring-black/5 backdrop-blur">
-            <p className="text-[0.65rem] uppercase tracking-[0.35em] text-gray-500">Email</p>
+            <p className="text-[0.65rem] uppercase tracking-[0.35em] text-gray-500">{t('portal.profile.fields.email')}</p>
             <p className="truncate text-base font-semibold text-gray-900">{profile?.email || '—'}</p>
           </div>
           <div className="rounded-2xl bg-white/80 p-4 text-sm text-gray-600 shadow-sm ring-1 ring-black/5 backdrop-blur">
-            <p className="text-[0.65rem] uppercase tracking-[0.35em] text-gray-500">Phone</p>
+            <p className="text-[0.65rem] uppercase tracking-[0.35em] text-gray-500">{t('portal.profile.fields.phone')}</p>
             <p className="text-base font-semibold text-gray-900">{profile?.phone || '—'}</p>
           </div>
           <div className="rounded-2xl bg-white/80 p-4 text-sm text-gray-600 shadow-sm ring-1 ring-black/5 backdrop-blur">
-            <p className="text-[0.65rem] uppercase tracking-[0.35em] text-gray-500">Last login</p>
+            <p className="text-[0.65rem] uppercase tracking-[0.35em] text-gray-500">{t('portal.profile.fields.lastLogin')}</p>
             <p className="text-base font-semibold text-gray-900">{lastLogin}</p>
           </div>
         </div>
@@ -548,18 +559,18 @@ export default function ClientProfilePage() {
       <Card ref={profileRef} className="space-y-6">
         <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
           <div>
-            <p className="text-xs uppercase tracking-[0.3em] text-gray-500">Personal information</p>
-            <p className="text-sm text-gray-500">Manage your contact details without leaving the portal.</p>
+            <p className="text-xs uppercase tracking-[0.3em] text-gray-500">{t('portal.profile.personal.title')}</p>
+            <p className="text-sm text-gray-500">{t('portal.profile.personal.hint')}</p>
           </div>
           <Button variant="ghost" onClick={() => setIsEditingProfile((prev) => !prev)}>
-            {isEditingProfile ? 'Exit edit mode' : 'Edit details'}
+            {isEditingProfile ? t('portal.profile.personal.exitEdit') : t('portal.profile.personal.editDetails')}
           </Button>
         </div>
         {isEditingProfile ? (
           <form className="space-y-5" onSubmit={handleProfileSubmit}>
             <div className="grid gap-4 md:grid-cols-2">
               <label className="flex flex-col gap-2">
-                <span className="text-xs uppercase tracking-[0.3em] text-gray-500">First name</span>
+                <span className="text-xs uppercase tracking-[0.3em] text-gray-500">{t('portal.profile.fields.firstName')}</span>
                 <input
                   value={profileForm.first_name}
                   onChange={handleProfileChange('first_name')}
@@ -568,7 +579,7 @@ export default function ClientProfilePage() {
                 />
               </label>
               <label className="flex flex-col gap-2">
-                <span className="text-xs uppercase tracking-[0.3em] text-gray-500">Last name</span>
+                <span className="text-xs uppercase tracking-[0.3em] text-gray-500">{t('portal.profile.fields.lastName')}</span>
                 <input
                   value={profileForm.last_name}
                   onChange={handleProfileChange('last_name')}
@@ -579,7 +590,7 @@ export default function ClientProfilePage() {
             </div>
             <div className="grid gap-4 md:grid-cols-2">
               <label className="flex flex-col gap-2">
-                <span className="text-xs uppercase tracking-[0.3em] text-gray-500">Email</span>
+                <span className="text-xs uppercase tracking-[0.3em] text-gray-500">{t('portal.profile.fields.email')}</span>
                 <input
                   type="email"
                   value={profileForm.email}
@@ -589,7 +600,7 @@ export default function ClientProfilePage() {
                 />
               </label>
               <label className="flex flex-col gap-2">
-                <span className="text-xs uppercase tracking-[0.3em] text-gray-500">Phone</span>
+                <span className="text-xs uppercase tracking-[0.3em] text-gray-500">{t('portal.profile.fields.phone')}</span>
                 <input
                   value={profileForm.phone}
                   onChange={handleProfileChange('phone')}
@@ -601,37 +612,37 @@ export default function ClientProfilePage() {
             {profileError ? <p className="text-xs uppercase tracking-[0.3em] text-rose-600">{profileError}</p> : null}
             <div className="flex flex-wrap items-center gap-3">
               <Button type="submit" disabled={isSavingProfile}>
-                {isSavingProfile ? 'Saving…' : 'Save profile'}
+                {isSavingProfile ? t('common.states.saving') : t('portal.profile.personal.save')}
               </Button>
               <Button variant="ghost" onClick={() => setIsEditingProfile(false)} disabled={isSavingProfile}>
-                Cancel
+                {t('common.actions.cancel')}
               </Button>
             </div>
           </form>
         ) : (
           <dl className="grid gap-4 md:grid-cols-2">
             <div className="rounded-2xl bg-gray-50 p-4 text-gray-700 ring-1 ring-gray-200">
-              <dt className="text-[0.65rem] uppercase tracking-[0.35em] text-gray-500">First name</dt>
+              <dt className="text-[0.65rem] uppercase tracking-[0.35em] text-gray-500">{t('portal.profile.fields.firstName')}</dt>
               <dd className="text-base font-semibold">{profile?.first_name || '—'}</dd>
             </div>
             <div className="rounded-2xl bg-gray-50 p-4 text-gray-700 ring-1 ring-gray-200">
-              <dt className="text-[0.65rem] uppercase tracking-[0.35em] text-gray-500">Last name</dt>
+              <dt className="text-[0.65rem] uppercase tracking-[0.35em] text-gray-500">{t('portal.profile.fields.lastName')}</dt>
               <dd className="text-base font-semibold">{profile?.last_name || '—'}</dd>
             </div>
             <div className="rounded-2xl bg-gray-50 p-4 text-gray-700 ring-1 ring-gray-200">
-              <dt className="text-[0.65rem] uppercase tracking-[0.35em] text-gray-500">Email</dt>
+              <dt className="text-[0.65rem] uppercase tracking-[0.35em] text-gray-500">{t('portal.profile.fields.email')}</dt>
               <dd className="text-base font-semibold">{profile?.email || '—'}</dd>
             </div>
             <div className="rounded-2xl bg-gray-50 p-4 text-gray-700 ring-1 ring-gray-200">
-              <dt className="text-[0.65rem] uppercase tracking-[0.35em] text-gray-500">Phone</dt>
+              <dt className="text-[0.65rem] uppercase tracking-[0.35em] text-gray-500">{t('portal.profile.fields.phone')}</dt>
               <dd className="text-base font-semibold">{profile?.phone || '—'}</dd>
             </div>
             <div className="rounded-2xl bg-gray-50 p-4 text-gray-700 ring-1 ring-gray-200">
-              <dt className="text-[0.65rem] uppercase tracking-[0.35em] text-gray-500">Member since</dt>
+              <dt className="text-[0.65rem] uppercase tracking-[0.35em] text-gray-500">{t('portal.profile.memberSinceLabel')}</dt>
               <dd className="text-base font-semibold">{memberSince}</dd>
             </div>
             <div className="rounded-2xl bg-gray-50 p-4 text-gray-700 ring-1 ring-gray-200">
-              <dt className="text-[0.65rem] uppercase tracking-[0.35em] text-gray-500">Last login</dt>
+              <dt className="text-[0.65rem] uppercase tracking-[0.35em] text-gray-500">{t('portal.profile.fields.lastLogin')}</dt>
               <dd className="text-base font-semibold">{lastLogin}</dd>
             </div>
           </dl>
@@ -641,8 +652,8 @@ export default function ClientProfilePage() {
       <Card className="space-y-6">
         <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
           <div>
-            <p className="text-xs uppercase tracking-[0.3em] text-gray-500">Security</p>
-            <p className="text-sm text-gray-500">Verify your email and keep your password fresh.</p>
+            <p className="text-xs uppercase tracking-[0.3em] text-gray-500">{t('portal.profile.security.title')}</p>
+            <p className="text-sm text-gray-500">{t('portal.profile.security.hint')}</p>
           </div>
           {passwordStatus ? (
             <p className="text-xs uppercase tracking-[0.3em] text-emerald-600">{passwordStatus}</p>
@@ -653,16 +664,20 @@ export default function ClientProfilePage() {
         </div>
         <div className="grid gap-6 lg:grid-cols-2">
           <div className="rounded-2xl bg-gray-50 p-4 ring-1 ring-gray-200">
-            <p className="text-xs uppercase tracking-[0.3em] text-gray-500">Email verification</p>
+            <p className="text-xs uppercase tracking-[0.3em] text-gray-500">{t('portal.profile.security.verificationTitle')}</p>
             <p className="mt-1 text-sm text-gray-700">
-              {emailVerified ? 'Email verified.' : 'Verify your email to enable password recovery and reminders.'}
+              {emailVerified ? t('portal.profile.security.verified') : t('portal.profile.security.unverified')}
             </p>
             <p className="mt-2 text-[0.7rem] uppercase tracking-[0.25em] text-gray-500">
-              Last password change: {lastPasswordChange}
+              {t('portal.profile.security.lastPasswordChange', { date: lastPasswordChange })}
             </p>
             <div className="mt-4 flex flex-wrap gap-3">
               <Button type="button" variant={emailVerified ? 'secondary' : 'primary'} onClick={handleSendVerification} disabled={sendingVerification || !profile?.email}>
-                {sendingVerification ? 'Sending…' : emailVerified ? 'Resend code' : 'Send verification email'}
+                {sendingVerification
+                  ? t('common.states.sending')
+                  : emailVerified
+                    ? t('portal.profile.security.resendCode')
+                    : t('portal.profile.security.sendVerification')}
               </Button>
               <Button
                 type="button"
@@ -673,7 +688,7 @@ export default function ClientProfilePage() {
                   )
                 }
               >
-                Enter code
+                {t('portal.profile.security.enterCode')}
               </Button>
             </div>
             {verificationStatus ? (
@@ -684,9 +699,9 @@ export default function ClientProfilePage() {
             ) : null}
           </div>
           <form className="space-y-3 rounded-2xl bg-gray-50 p-4 ring-1 ring-gray-200" onSubmit={handlePasswordSubmit}>
-            <p className="text-xs uppercase tracking-[0.3em] text-gray-500">Update password</p>
+            <p className="text-xs uppercase tracking-[0.3em] text-gray-500">{t('portal.profile.security.passwordTitle')}</p>
             <label className="flex flex-col gap-2">
-              <span className="text-xs uppercase tracking-[0.3em] text-gray-500">Current password</span>
+              <span className="text-xs uppercase tracking-[0.3em] text-gray-500">{t('portal.profile.security.currentPassword')}</span>
               <input
                 type="password"
                 value={passwordForm.current_password}
@@ -696,7 +711,7 @@ export default function ClientProfilePage() {
               />
             </label>
             <label className="flex flex-col gap-2">
-              <span className="text-xs uppercase tracking-[0.3em] text-gray-500">New password</span>
+              <span className="text-xs uppercase tracking-[0.3em] text-gray-500">{t('portal.profile.security.newPassword')}</span>
               <input
                 type="password"
                 value={passwordForm.new_password}
@@ -707,7 +722,7 @@ export default function ClientProfilePage() {
               />
             </label>
             <label className="flex flex-col gap-2">
-              <span className="text-xs uppercase tracking-[0.3em] text-gray-500">Confirm password</span>
+              <span className="text-xs uppercase tracking-[0.3em] text-gray-500">{t('portal.profile.security.confirmPassword')}</span>
               <input
                 type="password"
                 value={passwordForm.confirm_password}
@@ -719,10 +734,10 @@ export default function ClientProfilePage() {
             </label>
             <div className="flex flex-wrap items-center gap-3">
               <Button type="submit" disabled={passwordSaving}>
-                {passwordSaving ? 'Saving…' : 'Update password'}
+                {passwordSaving ? t('common.states.saving') : t('portal.profile.security.updatePassword')}
               </Button>
               <p className="text-[0.65rem] uppercase tracking-[0.3em] text-gray-500">
-                Minimum 8 characters.
+                {t('portal.profile.security.minLength')}
               </p>
             </div>
           </form>
@@ -732,15 +747,15 @@ export default function ClientProfilePage() {
       <Card ref={documentsRef} className="space-y-4">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div>
-            <p className="text-xs uppercase tracking-[0.3em] text-gray-500">Documents & studio files</p>
-            <p className="text-sm text-gray-500">Access shared PDFs, policies, and guides without reloading.</p>
+            <p className="text-xs uppercase tracking-[0.3em] text-gray-500">{t('portal.profile.documents.title')}</p>
+            <p className="text-sm text-gray-500">{t('portal.profile.documents.hint')}</p>
           </div>
           <div className="flex flex-wrap gap-2">
             <Button variant="ghost" onClick={focusInspirationUpload}>
-              Upload files
+              {t('portal.profile.documents.uploadFiles')}
             </Button>
             <Button variant="secondary" onClick={() => navigate('/appointments/new')}>
-              Book appointment
+              {t('portal.profile.bookAppointment')}
             </Button>
           </div>
         </div>
@@ -755,7 +770,7 @@ export default function ClientProfilePage() {
                   {isImageName(document.file_url || document.title) ? (
                     <img
                       src={resolveApiUrl(document.file_url)}
-                      alt={document.title || 'Uploaded file'}
+                      alt={document.title || t('portal.profile.documents.uploadedFile')}
                       className="h-36 w-full object-cover"
                       loading="lazy"
                     />
@@ -769,11 +784,11 @@ export default function ClientProfilePage() {
                   <div>
                     <p className="text-lg font-semibold text-gray-900">{document.title}</p>
                     <p className="text-[0.6rem] uppercase tracking-[0.35em] text-gray-500">
-                      {document.kind ? document.kind.replace(/_/g, ' ') : 'document'}
+                      {documentKindLabel(document.kind)}
                     </p>
                   </div>
                   <span className="rounded-full bg-gray-100 px-3 py-1 text-[0.65rem] font-semibold uppercase tracking-[0.35em] text-gray-600">
-                    {document.source === 'you' ? 'You' : 'Studio'}
+                    {sourceLabel(document.source)}
                   </span>
                 </div>
                 <p className="text-sm text-gray-500">{document.notes}</p>
@@ -786,7 +801,7 @@ export default function ClientProfilePage() {
                     target="_blank"
                     rel="noreferrer"
                   >
-                    View / download
+                    {t('portal.profile.documents.viewDownload')}
                   </Button>
                 </div>
               </article>
@@ -794,9 +809,9 @@ export default function ClientProfilePage() {
           </div>
         ) : (
           <div className="flex flex-col items-center justify-center rounded-2xl border border-dashed border-gray-200 bg-gray-50/80 px-6 py-10 text-center text-gray-500">
-            <div className="text-3xl">📁</div>
-            <p className="mt-2 text-sm font-semibold text-gray-700">No documents yet</p>
-            <p className="text-xs text-gray-500">Upload files or check back when the studio shares theirs.</p>
+            <div className="text-3xl" aria-hidden="true">📁</div>
+            <p className="mt-2 text-sm font-semibold text-gray-700">{t('portal.profile.documents.emptyTitle')}</p>
+            <p className="text-xs text-gray-500">{t('portal.profile.documents.emptyHint')}</p>
           </div>
         )}
       </Card>
@@ -804,10 +819,10 @@ export default function ClientProfilePage() {
       <Card className="space-y-4">
         <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
           <div>
-            <p className="text-xs uppercase tracking-[0.3em] text-gray-500">Communication preferences</p>
-            <p className="text-sm text-gray-500">Choose how you want reminders and aftercare updates.</p>
+            <p className="text-xs uppercase tracking-[0.3em] text-gray-500">{t('portal.profile.preferences.title')}</p>
+            <p className="text-sm text-gray-500">{t('portal.profile.preferences.hint')}</p>
           </div>
-          {prefSaving ? <p className="text-xs uppercase tracking-[0.3em] text-gray-500">Saving…</p> : null}
+          {prefSaving ? <p className="text-xs uppercase tracking-[0.3em] text-gray-500">{t('common.states.saving')}</p> : null}
         </div>
         <div className="grid gap-4 md:grid-cols-2">
           {PREFERENCE_CONFIG.map((preference) => (
@@ -816,10 +831,11 @@ export default function ClientProfilePage() {
               className="flex items-start justify-between rounded-2xl bg-gray-50 p-4 ring-1 ring-gray-200 transition hover:-translate-y-0.5 hover:ring-black/10"
             >
               <div className="space-y-1">
-                <p className="text-sm font-semibold uppercase tracking-[0.3em] text-gray-900">{preference.label}</p>
-                <p className="text-xs text-gray-500">{preference.description}</p>
+                <p className="text-sm font-semibold uppercase tracking-[0.3em] text-gray-900">{t(`portal.profile.preferences.${preference.key}`)}</p>
+                <p className="text-xs text-gray-500">{t(`portal.profile.preferences.${preference.key}_hint`)}</p>
               </div>
               <ToggleSwitch
+                label={t(`portal.profile.preferences.${preference.key}`)}
                 checked={!!preferences[preference.key]}
                 disabled={prefSaving}
                 onChange={(value) => handlePreferenceToggle(preference.key, value)}
@@ -834,11 +850,11 @@ export default function ClientProfilePage() {
       <Card ref={inspirationRef} className="space-y-5">
         <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
           <div>
-            <p className="text-xs uppercase tracking-[0.3em] text-gray-500">Uploads</p>
-            <p className="text-sm text-gray-500">Share references or documents with the studio without refreshing the page.</p>
+            <p className="text-xs uppercase tracking-[0.3em] text-gray-500">{t('portal.profile.uploads.title')}</p>
+            <p className="text-sm text-gray-500">{t('portal.profile.uploads.hint')}</p>
           </div>
           <Button variant="ghost" onClick={() => setIsInspirationOpen((prev) => !prev)}>
-            {isInspirationOpen ? 'Hide upload' : 'Upload files'}
+            {isInspirationOpen ? t('portal.profile.uploads.hide') : t('portal.profile.uploads.open')}
           </Button>
         </div>
         {isInspirationOpen ? (
@@ -856,6 +872,7 @@ export default function ClientProfilePage() {
               <div
                 role="button"
                 tabIndex={0}
+                aria-label={t('portal.profile.uploads.dropZoneLabel')}
                 onClick={() => inspirationUploadRef.current?.click()}
                 onKeyDown={handleDropZoneKeyDown}
                 className="mt-1 cursor-pointer rounded-2xl border border-dashed border-gray-300 bg-gray-50/70 p-6 text-center shadow-inner transition hover:border-indigo-400 hover:bg-white"
@@ -863,14 +880,14 @@ export default function ClientProfilePage() {
                 onDrop={handleDrop}
               >
                 <label htmlFor="inspiration-upload" className="flex flex-col items-center gap-2">
-                  <span className="text-3xl">📤</span>
-                  <span className="text-sm font-semibold text-gray-800">Drop PNG, JPEG, WebP, PDF, DOC/DOCX, or TXT files</span>
-                  <span className="text-xs text-gray-500">Up to 6 files. Click to choose from your device.</span>
+                  <span className="text-3xl" aria-hidden="true">📤</span>
+                  <span className="text-sm font-semibold text-gray-800">{t('portal.profile.uploads.dropTitle')}</span>
+                  <span className="text-xs text-gray-500">{t('portal.profile.uploads.dropHint')}</span>
                 </label>
                 <p className="mt-3 text-[0.7rem] text-gray-500">
                   {inspirationFiles.length
-                    ? `${inspirationFiles.length} file${inspirationFiles.length > 1 ? 's' : ''} ready to upload`
-                    : 'No files selected yet.'}
+                    ? t('portal.profile.uploads.ready', { count: inspirationFiles.length })
+                    : t('portal.profile.uploads.noneSelected')}
                 </p>
               </div>
               {inspirationFiles.length ? (
@@ -885,16 +902,17 @@ export default function ClientProfilePage() {
                         <button
                           type="button"
                           onClick={() => handleRemoveFile(file.id)}
+                          aria-label={t('portal.profile.uploads.removeFile', { name: file.file.name })}
                           className="text-[0.6rem] uppercase tracking-[0.4em] text-gray-400 hover:text-rose-500"
                         >
-                          Remove
+                          {t('common.actions.remove')}
                         </button>
                       </div>
                       {file.previewUrl ? (
                         <img src={file.previewUrl} alt={file.file.name} className="mt-2 h-28 w-full rounded-xl object-cover" />
                       ) : (
                         <div className="mt-2 flex h-28 items-center justify-center rounded-xl bg-gray-100 text-[0.7rem] text-gray-500">
-                          Preview unavailable
+                          {t('portal.profile.uploads.previewUnavailable')}
                         </div>
                       )}
                     </div>
@@ -903,7 +921,7 @@ export default function ClientProfilePage() {
               ) : null}
             </div>
             <label className="flex flex-col gap-2">
-              <span className="text-xs uppercase tracking-[0.3em] text-gray-500">Notes for the artist (optional)</span>
+              <span className="text-xs uppercase tracking-[0.3em] text-gray-500">{t('portal.profile.uploads.notesLabel')}</span>
               <textarea
                 rows={3}
                 value={notes}
@@ -915,9 +933,9 @@ export default function ClientProfilePage() {
             {uploadMessage ? <p className="text-xs uppercase tracking-[0.3em] text-emerald-600">{uploadMessage}</p> : null}
             <div className="flex flex-wrap items-center gap-3">
               <Button type="submit" disabled={isUploading || !inspirationFiles.length}>
-                {isUploading ? 'Uploading…' : 'Upload files'}
+                {isUploading ? t('portal.profile.uploads.uploading') : t('portal.profile.uploads.submit')}
               </Button>
-              <p className="text-xs text-gray-500">We keep the latest six uploads ready for review.</p>
+              <p className="text-xs text-gray-500">{t('portal.profile.uploads.keepLatest')}</p>
             </div>
           </form>
         ) : null}
@@ -932,7 +950,7 @@ export default function ClientProfilePage() {
                   {isImageName(document.file_url || document.title) ? (
                     <img
                       src={resolveApiUrl(document.file_url)}
-                      alt={document.title || 'Uploaded file'}
+                      alt={document.title || t('portal.profile.documents.uploadedFile')}
                       className="h-32 w-full object-cover"
                       loading="lazy"
                     />
@@ -945,35 +963,35 @@ export default function ClientProfilePage() {
                 <div className="flex items-center justify-between">
                   <div>
                     <p className="font-semibold text-gray-900">{document.title}</p>
-                    <p className="text-[0.55rem] uppercase tracking-[0.4em] text-gray-500">{document.kind.replace(/_/g, ' ')}</p>
+                    <p className="text-[0.55rem] uppercase tracking-[0.4em] text-gray-500">{documentKindLabel(document.kind)}</p>
                   </div>
                   <span className="text-[0.6rem] font-semibold uppercase tracking-[0.4em] text-gray-500">
-                    {document.source === 'you' ? 'You' : 'Studio'}
+                    {sourceLabel(document.source)}
                   </span>
                 </div>
                 <p className="mt-1 text-xs text-gray-500">{document.notes}</p>
                 <div className="mt-3 flex items-center justify-between text-[0.6rem] uppercase tracking-[0.3em] text-gray-500">
                   <span>{formatDate(document.created_at)}</span>
                   <a href={resolveApiUrl(document.file_url)} target="_blank" rel="noreferrer" className="font-semibold text-gray-900 underline">
-                    View file
+                    {t('portal.profile.documents.viewFile')}
                   </a>
                 </div>
               </article>
             ))}
           </div>
         ) : (
-          <p className="text-xs uppercase tracking-[0.3em] text-gray-500">No uploads yet.</p>
+          <p className="text-xs uppercase tracking-[0.3em] text-gray-500">{t('portal.profile.uploads.empty')}</p>
         )}
       </Card>
 
       <Card className="space-y-4 border-rose-200/80 bg-rose-50/80 text-rose-900 ring-1 ring-rose-200">
         <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
           <div>
-            <p className="text-xs uppercase tracking-[0.3em] text-rose-700">Danger zone</p>
-            <p className="text-sm text-rose-800">Remove your account and all associated data.</p>
+            <p className="text-xs uppercase tracking-[0.3em] text-rose-700">{t('portal.profile.danger.title')}</p>
+            <p className="text-sm text-rose-800">{t('portal.profile.danger.hint')}</p>
           </div>
           <Button variant="secondary" onClick={openDeleteDialog}>
-            Delete account
+            {t('portal.profile.danger.deleteAccount')}
           </Button>
         </div>
       </Card>
@@ -981,11 +999,11 @@ export default function ClientProfilePage() {
       <Dialog
         open={deleteDialogOpen}
         onClose={closeDeleteDialog}
-        title="Delete account"
+        title={t('portal.profile.danger.dialogTitle')}
         footer={
           <>
             <Button variant="ghost" onClick={closeDeleteDialog} disabled={isDeleting}>
-              Cancel
+              {t('common.actions.cancel')}
             </Button>
             <Button
               form="delete-account-form"
@@ -993,7 +1011,7 @@ export default function ClientProfilePage() {
               variant="secondary"
               disabled={isDeleting}
             >
-              {isDeleting ? 'Deleting…' : 'Delete account'}
+              {isDeleting ? t('portal.profile.danger.deleting') : t('portal.profile.danger.deleteAccount')}
             </Button>
           </>
         }
@@ -1004,7 +1022,7 @@ export default function ClientProfilePage() {
           onSubmit={handleDeleteAccount}
         >
           <p className="text-sm text-gray-600">
-            This action cannot be undone. Click delete below to permanently remove your account and all associated data.
+            {t('portal.profile.danger.confirmText')}
           </p>
           {deleteError ? <p className="text-xs uppercase tracking-[0.3em] text-rose-600">{deleteError}</p> : null}
         </form>

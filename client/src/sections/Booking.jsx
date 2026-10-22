@@ -7,35 +7,15 @@ import { useLanguage } from '../contexts/LanguageContext.jsx';
 
 export default function Booking() {
   const navigate = useNavigate();
-  const { isSpanish } = useLanguage();
-  const bookingRequirements = isSpanish
-    ? [
-        'Ingresa tu información de contacto',
-        'Elige un servicio de uñas y un horario disponible',
-        'Agrega notas opcionales o una imagen de inspiración, luego paga el depósito o el monto completo',
-      ]
-    : [
-        'Enter your contact information',
-        'Choose a nail service and available time slot',
-        'Add optional notes or an inspiration image, then pay the deposit or full amount',
-      ];
-  const copy = isSpanish
-    ? {
-        eyebrow: 'Reservas',
-        title: 'Reserva tu cita',
-        description: 'Elige un servicio, selecciona un horario y paga de forma segura con Stripe.',
-        detail:
-          'Aceptamos reservas como invitada. Puedes agregar notas o una foto de inspiración y luego pagar el depósito o el monto completo.',
-        cta: 'Comenzar reserva',
-      }
-    : {
-        eyebrow: 'Booking',
-        title: 'Reserve your appointment',
-        description: 'Choose a nail service, pick a time that fits your schedule, and check out securely with Stripe.',
-        detail:
-          'Guest checkout is supported. Add notes or an inspiration image if you want, then pay the deposit or the full amount.',
-        cta: 'Start Booking',
-      };
+  const { t } = useLanguage();
+  const bookingRequirements = t('public.booking.steps');
+  const copy = {
+    eyebrow: t('public.booking.eyebrow'),
+    title: t('public.booking.title'),
+    description: t('public.booking.description'),
+    detail: t('public.booking.detail'),
+    cta: t('public.booking.cta'),
+  };
   const requirementList = useMemo(
     () =>
       bookingRequirements.map((item, index) => (

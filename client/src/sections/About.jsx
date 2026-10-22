@@ -6,29 +6,16 @@ import { useLanguage } from '../contexts/LanguageContext.jsx';
 import artistPhoto from '../assets/melodi/melodiShowingNails.JPG';
 
 export default function About() {
-  const { isSpanish } = useLanguage();
-  const credentials = isSpanish
-    ? ['Enfoque en uñas naturales', 'Preparación y estructura detalladas', 'Reservas en línea sencillas']
-    : ['Natural nail care focus', 'Detailed prep and structure', 'Guest-friendly online booking'];
-  const copy = isSpanish
-    ? {
-        section: 'Sobre mí',
-        title: 'El arte de tus uñas',
-        description:
-          'Melodi Nails está creado alrededor de acabados hermosos, preparación saludable y una experiencia de cita acogedora. El objetivo es simple: que cada clienta salga con uñas pulidas, intencionales y únicas.',
-        badgeOne: 'Belleza limpia',
-        badgeTwo: 'Servicio personalizado',
-        imageAlt: 'Melodi mostrando un set de uñas terminado',
-      }
-    : {
-        section: 'About',
-        title: 'The art of your nails',
-        description:
-          'Melodi Nails is built around beautiful finishes, healthy prep, and a welcoming appointment experience. The goal is simple: help every client leave with nails that feel polished, intentional, and uniquely theirs.',
-        badgeOne: 'Clean beauty',
-        badgeTwo: 'Personalized service',
-        imageAlt: 'Melodi showing a finished nail set',
-      };
+  const { t } = useLanguage();
+  const credentials = t('public.about.credentials');
+  const copy = {
+    section: t('public.about.section'),
+    title: t('public.about.title'),
+    description: t('public.about.description'),
+    badgeOne: t('public.about.badgeOne'),
+    badgeTwo: t('public.about.badgeTwo'),
+    imageAlt: t('public.about.imageAlt'),
+  };
 
   return (
     <section

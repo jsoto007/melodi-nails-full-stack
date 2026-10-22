@@ -1,4 +1,6 @@
-const DEFAULT_APPOINTMENT_TYPE_LABEL = 'Nail appointment';
+import { getCurrentLanguage, translate } from '../i18n/index.js';
+import { localizedServiceField } from './localizedService.js';
+
 const MAX_LABEL_LENGTH = 60;
 
 function normalizeDescription(value) {
@@ -20,19 +22,20 @@ function normalizeDescription(value) {
   return `${singleSpaced.slice(0, MAX_LABEL_LENGTH - 3).trim()}...`;
 }
 
-export function getAppointmentTypeLabel(appointment) {
+export function getAppointmentTypeLabel(appointment, language = getCurrentLanguage()) {
+  const fallback = translate('confirmation.appointmentTypeFallback', language);
   if (!appointment) {
-    return DEFAULT_APPOINTMENT_TYPE_LABEL;
+    return fallback;
   }
   const sessionNames = Array.isArray(appointment.session_options)
     ? appointment.session_options
-      .map((option) => option?.name?.trim())
+      .map((option) => localizedServiceField(option, 'name', language).trim())
       .filter(Boolean)
     : [];
   if (sessionNames.length) {
     return sessionNames.join(' + ');
   }
-  const sessionName = appointment.session_option?.name?.trim();
+  const sessionName = localizedServiceField(appointment.session_option, 'name', language).trim();
   if (sessionName) {
     return sessionName;
   }
@@ -44,7 +47,7 @@ export function getAppointmentTypeLabel(appointment) {
   if (descriptionLabel) {
     return descriptionLabel;
   }
-  return DEFAULT_APPOINTMENT_TYPE_LABEL;
+  return fallback;
 }
 
 export function sanitizeAppointmentForConfirmation(appointment) {
@@ -102,6 +105,7 @@ export function sanitizeAppointmentForConfirmation(appointment) {
       ? {
           id: appointment.session_option.id,
           name: appointment.session_option.name,
+          category: appointment.session_option.category,
           duration_minutes: appointment.session_option.duration_minutes,
           price_cents: appointment.session_option.price_cents
         }

@@ -1,3 +1,4 @@
+import { useLanguage } from '../contexts/LanguageContext.jsx';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { resolveApiUrl } from '../lib/api.js';
 import { shouldIgnoreHotkeys } from '../lib/hotkeys.js';
@@ -19,6 +20,7 @@ function classNames(...classes) {
 }
 
 export default function Lightbox({ open, image, images = [], startIndex = 0, onClose }) {
+  const { t } = useLanguage();
   const overlayRef = useRef(null);
   const dialogRef = useRef(null);
   const [activeIndex, setActiveIndex] = useState(startIndex || 0);
@@ -162,7 +164,7 @@ export default function Lightbox({ open, image, images = [], startIndex = 0, onC
         tabIndex={-1}
         role="dialog"
         aria-modal="true"
-        aria-label="Expanded gallery image"
+        aria-label={t('common.a11y.expandedImage')}
         className="relative w-full max-w-4xl focus:outline-none"
       >
         {hasCollection ? (
@@ -185,7 +187,7 @@ export default function Lightbox({ open, image, images = [], startIndex = 0, onC
             target="_blank"
             rel="noreferrer"
             className="flex items-center gap-2 rounded-full border border-gray-700 bg-black/40 px-5 py-2 text-xs font-semibold uppercase tracking-widest text-gray-300 backdrop-blur transition hover:border-gray-500 hover:bg-black/60 hover:text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-gray-400"
-            aria-label="View more on Instagram"
+            aria-label={t('common.a11y.viewOnInstagram')}
           >
             <svg
               xmlns="http://www.w3.org/2000/svg"
@@ -200,7 +202,7 @@ export default function Lightbox({ open, image, images = [], startIndex = 0, onC
               <circle cx="12" cy="12" r="4" />
               <circle cx="17" cy="7" r="1.25" />
             </svg>
-            <span>View more</span>
+            <span>{t('common.a11y.viewMore')}</span>
           </a>
         </div>
 
@@ -213,7 +215,7 @@ export default function Lightbox({ open, image, images = [], startIndex = 0, onC
                 'absolute left-2 top-1/2 inline-flex h-11 w-11 -translate-y-1/2 items-center justify-center rounded-full border border-gray-700 bg-black/50 text-gray-200 shadow-soft backdrop-blur transition',
                 'hover:border-gray-400 hover:text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-gray-300 focus-visible:ring-offset-2 focus-visible:ring-offset-black'
               )}
-              aria-label="Previous image"
+              aria-label={t('common.a11y.previousImage')}
             >
               <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" aria-hidden="true">
                 <path d="M15 6l-6 6 6 6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
@@ -226,7 +228,7 @@ export default function Lightbox({ open, image, images = [], startIndex = 0, onC
                 'absolute right-2 top-1/2 inline-flex h-11 w-11 -translate-y-1/2 items-center justify-center rounded-full border border-gray-700 bg-black/50 text-gray-200 shadow-soft backdrop-blur transition',
                 'hover:border-gray-400 hover:text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-gray-300 focus-visible:ring-offset-2 focus-visible:ring-offset-black'
               )}
-              aria-label="Next image"
+              aria-label={t('common.a11y.nextImage')}
             >
               <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" aria-hidden="true">
                 <path d="M9 18l6-6-6-6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
@@ -238,7 +240,7 @@ export default function Lightbox({ open, image, images = [], startIndex = 0, onC
           type="button"
           onClick={onClose}
           className="absolute right-4 top-4 inline-flex h-10 w-10 items-center justify-center rounded-full border border-gray-700 text-gray-200 transition hover:border-gray-400 hover:text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-gray-300 focus-visible:ring-offset-2 focus-visible:ring-offset-black"
-          aria-label="Close lightbox"
+          aria-label={t('common.a11y.closeLightbox')}
         >
           <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" aria-hidden="true">
             <path d="M6 6l12 12M18 6L6 18" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />

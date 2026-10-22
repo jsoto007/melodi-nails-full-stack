@@ -5,6 +5,8 @@ import Card from '../components/Card.jsx';
 import Button from '../components/Button.jsx';
 import SectionTitle from '../components/SectionTitle.jsx';
 import { useAuth } from '../contexts/AuthContext.jsx';
+import { useLanguage } from '../contexts/LanguageContext.jsx';
+import { localizedServiceField } from '../lib/localizedService.js';
 import { formatStatusLabel, getStatusBadgeClasses } from '../lib/statusStyles.js';
 import { apiGet, apiPost } from '../lib/api.js';
 import { sanitizeAppointmentForConfirmation } from '../lib/appointments.js';
@@ -12,6 +14,21 @@ import { sanitizeAppointmentForConfirmation } from '../lib/appointments.js';
 const BOOKING_RECEIPT_KEY = 'melodi-nails:last-booking';
 const LOCATION_LINE = '1205 College Ave, Bronx, NY 10456';
 const STUDIO_EMAIL = 'melodinails@mail.sotodev.com';
+// Raw payment / Stripe status values that have a translated label.
+const KNOWN_PAYMENT_STATUSES = new Set([
+  'paid',
+  'succeeded',
+  'pending',
+  'processing',
+  'requires_payment_method',
+  'requires_action',
+  'failed',
+  'canceled',
+  'cancelled',
+  'expired',
+  'refunded',
+  'partially_refunded',
+]);
 const DIRECTIONS_URL = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(LOCATION_LINE)}`;
 function readLatestAppointment() {
   try {
@@ -38,9 +55,8 @@ function storeLatestAppointment(appointment) {
   }
 }
 
-const PRICE_FORMATTER = new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 });
-
-function RelatedServices({ currentServiceName, currentCategory }) {
+function RelatedServices({ currentServiceNames, currentCategory }) {
+  const { language, t, formatCurrency } = useLanguage();
   const [services, setServices] = useState([]);
   useEffect(() => {
     const controller = new AbortController();
@@ -53,46 +69,52 @@ function RelatedServices({ currentServiceName, currentCategory }) {
   const related = useMemo(() => {
     if (!currentCategory) return [];
     return services.filter(
-      (s) => s.category === currentCategory && s.name !== currentServiceName
+      (s) => s.category === currentCategory && !currentServiceNames.includes(s.name)
     ).slice(0, 3);
-  }, [services, currentCategory, currentServiceName]);
+  }, [services, currentCategory, currentServiceNames]);
 
   if (!related.length) return null;
+
+  const categoryLabel = localizedServiceField(related[0], 'category', language) || currentCategory;
 
   return (
     <FadeIn className="mt-8">
       <div className="mb-4 flex items-center gap-4">
         <p className="shrink-0 text-xs font-semibold uppercase tracking-[0.35em] text-gray-500">
-          También en {currentCategory}
+          {t('confirmation.labels.alsoIn', { category: categoryLabel })}
         </p>
         <div className="h-px flex-1 bg-gray-200" />
       </div>
       <div className="grid gap-4 sm:grid-cols-3">
-        {related.map((s) => (
+        {related.map((s) => {
+          const tagline = localizedServiceField(s, 'tagline', language);
+          const description = localizedServiceField(s, 'description', language);
+          return (
           <Card key={s.id} className="space-y-2 bg-white/80">
-            {s.tagline ? (
-              <p className="text-[10px] font-semibold uppercase tracking-[0.3em] text-[#8d755a]">{s.tagline}</p>
+            {tagline ? (
+              <p className="text-[10px] font-semibold uppercase tracking-[0.3em] text-[#8d755a]">{tagline}</p>
             ) : null}
-            <p className="font-semibold text-slate-900">{s.name}</p>
-            {s.description ? (
-              <p className="text-xs leading-relaxed text-gray-500 line-clamp-2">{s.description}</p>
+            <p className="font-semibold text-slate-900">{localizedServiceField(s, 'name', language)}</p>
+            {description ? (
+              <p className="text-xs leading-relaxed text-gray-500 line-clamp-2">{description}</p>
             ) : null}
             <div className="flex items-center justify-between gap-2 pt-1">
               <span className="text-xs text-gray-400">
-                {s.duration_minutes ? `${s.duration_minutes} min` : ''}
+                {s.duration_minutes ? t('common.duration.minutes', { count: s.duration_minutes }) : ''}
               </span>
               <span className="rounded-full bg-[#2a3923] px-2.5 py-0.5 text-xs font-semibold text-[#f3e7d9]">
-                {s.price_cents ? PRICE_FORMATTER.format(s.price_cents / 100) : '—'}
+                {s.price_cents ? formatCurrency(s.price_cents, 'USD', { minimumFractionDigits: 0, maximumFractionDigits: 0 }) : '—'}
               </span>
             </div>
             <Link
               to="/appointments/new"
               className="mt-1 block text-center rounded-xl border border-[#2a3923] px-3 py-2 text-xs font-semibold text-[#2a3923] transition hover:bg-[#2a3923] hover:text-white"
             >
-              Reservar
+              {t('confirmation.actions.book')}
             </Link>
           </Card>
-        ))}
+          );
+        })}
       </div>
     </FadeIn>
   );
@@ -100,6 +122,7 @@ function RelatedServices({ currentServiceName, currentCategory }) {
 
 export default function BookingConfirmation() {
   const { isAuthenticated } = useAuth();
+  const { language, t, formatDate, formatTime, formatCurrency } = useLanguage();
   const [appointment, setAppointment] = useState(() => readLatestAppointment());
 
   const location = useLocation();
@@ -148,7 +171,7 @@ export default function BookingConfirmation() {
             setRemoteAppointment(fallbackAppointment);
             storeLatestAppointment(fallbackAppointment);
           }
-          setFetchError(error.message || 'Unable to verify Stripe payment.');
+          setFetchError('verifyPayment');
           setIsFetchingRemote(false);
         });
     };
@@ -186,7 +209,7 @@ export default function BookingConfirmation() {
         if (!isActive || error.name === 'AbortError') {
           return;
         }
-        setFetchError(error.message || 'Unable to load appointment details.');
+        setFetchError('loadAppointment');
       })
       .finally(() => {
         if (isActive) {
@@ -209,44 +232,43 @@ export default function BookingConfirmation() {
 
   const bookingDetails = remoteAppointment || appointment;
   const scheduledStart = bookingDetails?.scheduled_start ? new Date(bookingDetails.scheduled_start) : null;
-  const formattedDateLabel = useMemo(
-    () => (scheduledStart ? DAY_FORMATTER.format(scheduledStart) : 'Pending scheduling'),
-    [scheduledStart]
-  );
-  const formattedTimeLabel = useMemo(
-    () => (scheduledStart ? TIME_FORMATTER.format(scheduledStart) : 'To be confirmed'),
-    [scheduledStart]
-  );
-  const timeZoneLabel = useMemo(() => getTimeZoneLabel(scheduledStart), [scheduledStart]);
-  const durationLabel = formatDuration(bookingDetails?.duration_minutes);
+  const formattedDateLabel = scheduledStart
+    ? formatDate(scheduledStart, { weekday: 'long', month: 'long', day: 'numeric' })
+    : t('confirmation.fallbacks.pendingScheduling');
+  const formattedTimeLabel = scheduledStart ? formatTime(scheduledStart) : t('confirmation.fallbacks.toBeConfirmed');
+  const durationLabel = formatDuration(bookingDetails?.duration_minutes, t);
   const suggestedDurationLabel =
     bookingDetails?.suggested_duration_minutes && bookingDetails?.suggested_duration_minutes !== bookingDetails?.duration_minutes
-      ? formatDuration(bookingDetails.suggested_duration_minutes)
+      ? formatDuration(bookingDetails.suggested_duration_minutes, t)
       : null;
   const payment = bookingDetails?.payments?.[0] || null;
   const depositLabel = payment
-    ? new Intl.NumberFormat('en-US', {
-      style: 'currency',
-      currency: payment.currency || 'USD'
-    }).format((payment.amount_cents || 0) / 100)
+    ? formatCurrency(payment.amount_cents || 0, payment.currency || 'USD', { minimumFractionDigits: 2 })
     : null;
   const contactName =
     bookingDetails?.contact_name ||
     bookingDetails?.contact?.name ||
     bookingDetails?.client?.display_name ||
-    'Guest booking';
+    t('confirmation.fallbacks.guestBooking');
   const contactEmail =
     bookingDetails?.contact_email || bookingDetails?.contact?.email || bookingDetails?.client?.email || '—';
   const contactPhone =
     bookingDetails?.contact_phone || bookingDetails?.contact?.phone || bookingDetails?.client?.phone || '—';
-  const selectedServiceNames = Array.isArray(bookingDetails?.session_options)
-    ? bookingDetails.session_options.map((option) => option?.name).filter(Boolean)
+  const selectedOptions = Array.isArray(bookingDetails?.session_options)
+    ? bookingDetails.session_options.filter((option) => option?.name)
     : [];
+  const rawServiceNames = selectedOptions.length
+    ? selectedOptions.map((option) => option.name)
+    : [bookingDetails?.session_option?.name].filter(Boolean);
+  const localizedServiceNames = selectedOptions.length
+    ? selectedOptions.map((option) => localizedServiceField(option, 'name', language))
+    : [localizedServiceField(bookingDetails?.session_option, 'name', language)].filter(Boolean);
+  // Prefer the per-service names (they carry English variants) over the
+  // pre-joined service.name, which is always in the catalogue's Spanish.
   const serviceLabel =
+    (localizedServiceNames.length ? localizedServiceNames.join(' + ') : null) ||
     bookingDetails?.service?.name ||
-    (selectedServiceNames.length ? selectedServiceNames.join(' + ') : null) ||
-    bookingDetails?.session_option?.name ||
-    'Service pending';
+    t('confirmation.fallbacks.servicePending');
   const currentServiceCategory =
     bookingDetails?.session_option?.category ||
     bookingDetails?.session_options?.find((option) => option?.category)?.category ||
@@ -254,26 +276,25 @@ export default function BookingConfirmation() {
   const placementNotes =
     bookingDetails?.service?.notes || bookingDetails?.client_description || bookingDetails?.tattoo?.notes || '';
   const descriptionCopy = bookingDetails?.client_description || '';
-  const artistName =
+  const nailTechName =
     bookingDetails?.assigned_admin?.name ||
     bookingDetails?.assigned_admin?.display_name ||
-    'Assigned shortly';
-  const artistEmail =
+    t('confirmation.fallbacks.assignedShortly');
+  const nailTechEmail =
     bookingDetails?.assigned_admin?.email || bookingDetails?.assigned_admin?.contact_email || '';
-  const statusLabel = formatStatusLabel(bookingDetails?.status);
+  const statusLabel = formatStatusLabel(bookingDetails?.status, language);
   const statusClasses = getStatusBadgeClasses(bookingDetails?.status);
   const isPaymentAwaiting = bookingDetails?.status === 'awaiting_payment';
   const isPaymentFailed = bookingDetails?.status === 'payment_failed' || bookingDetails?.status === 'payment_expired';
-  const confirmationTitle = isPaymentAwaiting
-    ? 'Payment still processing'
-    : isPaymentFailed
-      ? 'Payment was not completed'
-      : 'Appointment confirmed';
-  const confirmationDescription = isPaymentAwaiting
-    ? 'Your time is on a temporary hold while Stripe finishes processing payment. We will only confirm the appointment after payment succeeds.'
-    : isPaymentFailed
-      ? 'Stripe did not confirm payment, so this appointment was not booked. Start a new checkout to reserve a time.'
-      : 'Thanks for securing your appointment. We emailed a confirmation with calendar invites—check your inbox or spam folder.';
+  const pageState = isPaymentAwaiting ? 'processing' : isPaymentFailed ? 'failed' : 'confirmed';
+  const confirmationTitle = t(`confirmation.title.${pageState}`);
+  const confirmationDescription = t(`confirmation.description.${pageState}`);
+  const paymentStatusKey = String(payment?.status || '').toLowerCase();
+  const paymentStatusLabel = paymentStatusKey
+    ? KNOWN_PAYMENT_STATUSES.has(paymentStatusKey)
+      ? t(`confirmation.paymentStatus.${paymentStatusKey}`)
+      : t('confirmation.fallbacks.recorded')
+    : null;
   const depositSecondary = payment?.receipt_url ? (
     <a
       href={payment.receipt_url}
@@ -281,10 +302,10 @@ export default function BookingConfirmation() {
       rel="noreferrer"
       className="text-xs font-semibold uppercase tracking-[0.2em] text-gray-500 underline-offset-4 hover:underline"
     >
-      View Stripe receipt
+      {t('confirmation.actions.viewReceipt')}
     </a>
   ) : (
-    payment?.status || 'Captured during booking'
+    paymentStatusLabel || t('confirmation.fallbacks.captured')
   );
 
   return (
@@ -292,18 +313,30 @@ export default function BookingConfirmation() {
       <div className="mx-auto flex max-w-4xl flex-col gap-8 px-4">
         <FadeIn>
           <SectionTitle
-            eyebrow={isPaymentFailed ? 'Payment issue' : isPaymentAwaiting ? 'Processing' : 'Booked'}
+            eyebrow={t(`confirmation.eyebrow.${isPaymentFailed ? 'failed' : isPaymentAwaiting ? 'processing' : 'booked'}`)}
             title={confirmationTitle}
             description={confirmationDescription}
           />
         </FadeIn>
         <FadeIn>
           <p className="text-sm text-gray-600">
-            {isPaymentAwaiting
-              ? 'Keep this page open for a moment while we verify the Stripe session. If payment does not complete, the temporary hold will expire and the appointment will not be booked.'
-              : isPaymentFailed
-                ? 'If Stripe charged your card but this page still shows a failed payment, verify the Stripe receipt first and then review the webhook logs before manually creating or confirming an appointment.'
-              : <>If you don’t see the email, double-check your spam or promotions folder and look for an email from <span className="font-semibold">melodinails@mail.sotodev.com</span>. The confirmation includes Google and Apple calendar options so you can lock in the time.</>}
+            {isPaymentAwaiting ? (
+              t('confirmation.help.processing')
+            ) : isPaymentFailed ? (
+              <>
+                {t('confirmation.help.failedBefore')}
+                <a href={`mailto:${STUDIO_EMAIL}`} className="font-semibold underline-offset-4 hover:underline">
+                  {STUDIO_EMAIL}
+                </a>
+                {t('confirmation.help.failedAfter')}
+              </>
+            ) : (
+              <>
+                {t('confirmation.help.confirmedBefore')}
+                <span className="font-semibold">{STUDIO_EMAIL}</span>
+                {t('confirmation.help.confirmedAfter')}
+              </>
+            )}
           </p>
         </FadeIn>
 
@@ -312,11 +345,11 @@ export default function BookingConfirmation() {
             <Card className="space-y-6">
               <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                 <div>
-                  <p className="text-xs uppercase tracking-[0.3em] text-gray-500">Reference</p>
+                  <p className="text-xs uppercase tracking-[0.3em] text-gray-500">{t('confirmation.labels.reference')}</p>
                   <p className="text-2xl font-semibold tracking-[0.2em] text-gray-900">
-                    {bookingDetails.reference_code || 'Pending'}
+                    {bookingDetails.reference_code || t('confirmation.fallbacks.pending')}
                   </p>
-                  <p className="text-sm text-gray-500">Booked for {contactName}</p>
+                  <p className="text-sm text-gray-500">{t('confirmation.labels.bookedForName', { name: contactName })}</p>
                 </div>
                 <span
                   className={`inline-flex w-fit items-center rounded-full px-4 py-1 text-[11px] font-semibold uppercase tracking-[0.3em] ${statusClasses}`}
@@ -327,24 +360,24 @@ export default function BookingConfirmation() {
 
               <div className="grid gap-4 md:grid-cols-2">
                 <DetailItem
-                  label="Date"
+                  label={t('confirmation.labels.date')}
                   value={formattedDateLabel}
                   secondary={
-                    scheduledStart ? 'Arrive 10 minutes early for check-in.' : 'We will email once the time is confirmed.'
+                    scheduledStart ? t('confirmation.secondary.arriveEarly') : t('confirmation.secondary.emailOnceConfirmed')
                   }
                 />
                 <DetailItem
-                  label="Start time"
+                  label={t('confirmation.labels.startTime')}
                   value={formattedTimeLabel}
-                  secondary={scheduledStart ? `${timeZoneLabel || 'Local'} time` : 'Scheduling in progress'}
+                  secondary={scheduledStart ? t('confirmation.secondary.timeZone') : t('confirmation.secondary.schedulingInProgress')}
                 />
                 <DetailItem
-                  label="Appointment length"
+                  label={t('confirmation.labels.length')}
                   value={durationLabel}
-                  secondary={suggestedDurationLabel ? `Suggested ${suggestedDurationLabel}` : null}
+                  secondary={suggestedDurationLabel ? t('confirmation.secondary.suggested', { duration: suggestedDurationLabel }) : null}
                 />
                 <DetailItem
-                  label="Studio"
+                  label={t('confirmation.labels.studio')}
                   value={LOCATION_LINE}
                   secondary={
                     <a
@@ -353,30 +386,38 @@ export default function BookingConfirmation() {
                       rel="noreferrer"
                       className="text-xs font-semibold uppercase tracking-[0.2em] text-gray-500 underline-offset-4 hover:underline"
                     >
-                      View map
+                      {t('confirmation.actions.viewMap')}
                     </a>
                   }
                 />
                 <DetailItem
-                  label="Artist"
-                  value={artistName}
-                  secondary={artistEmail || 'Assigned shortly'}
+                  label={t('confirmation.labels.nailTech')}
+                  value={nailTechName}
+                  secondary={nailTechEmail || null}
                 />
-                <DetailItem label="Payment" value={depositLabel || 'Recorded'} secondary={depositSecondary} />
+                <DetailItem
+                  label={t('confirmation.labels.payment')}
+                  value={depositLabel || t('confirmation.fallbacks.recorded')}
+                  secondary={depositSecondary}
+                />
               </div>
 
               <div className="grid gap-4 md:grid-cols-2">
-                <DetailItem label="Booked for" value={contactName} secondary={contactEmail} />
-                <DetailItem label="Phone" value={contactPhone} secondary="We’ll send reminders via SMS or email." />
+                <DetailItem label={t('confirmation.labels.bookedFor')} value={contactName} secondary={contactEmail} />
+                <DetailItem
+                  label={t('confirmation.labels.phone')}
+                  value={contactPhone}
+                  secondary={t('confirmation.secondary.phoneNote')}
+                />
               </div>
 
               <div className="space-y-3">
-                <p className="text-xs uppercase tracking-[0.3em] text-gray-500">Appointment details</p>
+                <p className="text-xs uppercase tracking-[0.3em] text-gray-500">{t('confirmation.labels.details')}</p>
                 <p className="text-sm text-gray-900">{serviceLabel}</p>
                 {placementNotes ? <p className="text-sm text-gray-600">{placementNotes}</p> : null}
                 {descriptionCopy ? (
                   <div className="rounded-2xl border border-dashed border-gray-300 p-4 text-sm text-gray-600">
-                    <p className="text-xs uppercase tracking-[0.3em] text-gray-500">Client notes</p>
+                    <p className="text-xs uppercase tracking-[0.3em] text-gray-500">{t('confirmation.labels.clientNotes')}</p>
                     <p className="mt-2 leading-relaxed text-gray-700">{descriptionCopy}</p>
                   </div>
                 ) : null}
@@ -384,14 +425,14 @@ export default function BookingConfirmation() {
 
               <div className="flex flex-wrap gap-3">
                 <Button as="a" href={DIRECTIONS_URL} target="_blank" rel="noreferrer">
-                  Get directions
+                  {t('confirmation.actions.directions')}
                 </Button>
                 <Button as="a" href={`mailto:${STUDIO_EMAIL}`} variant="secondary">
-                  Email studio
+                  {t('confirmation.actions.emailStudio')}
                 </Button>
                 {payment?.receipt_url ? (
                   <Button as="a" href={payment.receipt_url} target="_blank" rel="noreferrer" variant="ghost">
-                    View receipt
+                    {t('confirmation.actions.viewReceipt')}
                   </Button>
                 ) : null}
               </div>
@@ -399,49 +440,44 @@ export default function BookingConfirmation() {
 
             <div className="flex flex-wrap gap-3">
               <Button as={Link} to="/" variant="secondary">
-                Return home
+                {t('confirmation.actions.returnHome')}
               </Button>
               {isAuthenticated ? (
                 <Button as={Link} to="/portal/dashboard">
-                  View dashboard
+                  {t('confirmation.actions.dashboard')}
                 </Button>
               ) : (
                 <Button as={Link} to="/appointments/new">
-                  Book another appointment
+                  {t('confirmation.actions.bookAnother')}
                 </Button>
               )}
             </div>
 
             <RelatedServices
-              currentServiceName={serviceLabel}
+              currentServiceNames={rawServiceNames}
               currentCategory={currentServiceCategory}
             />
           </FadeIn>
         ) : isFetchingRemote ? (
           <FadeIn>
             <Card className="space-y-4">
-              <p className="text-sm text-gray-600">Retrieving your booking details…</p>
-              <p className="text-xs text-gray-500">
-                If you received a reference and contact email in your booking confirmation, that pair will unlock this page again.
-              </p>
+              <p className="text-sm text-gray-600">{t('confirmation.loading.title')}</p>
+              <p className="text-xs text-gray-500">{t('confirmation.loading.hint')}</p>
             </Card>
           </FadeIn>
         ) : (
           <FadeIn>
             <Card className="space-y-4">
               <p className="text-sm text-gray-600">
-                {fetchError ||
-                  'We couldn’t find booking details for this session. Try refreshing the page or check your confirmation email for the link.'}
+                {fetchError ? t(`confirmation.errors.${fetchError}`) : t('confirmation.notFound.message')}
               </p>
-              <p className="text-xs text-gray-500">
-                Use the reference code and contact email sent to you (or revisit the confirmation link) to view the full details even without signing in.
-              </p>
+              <p className="text-xs text-gray-500">{t('confirmation.notFound.hint')}</p>
               <div className="flex flex-wrap gap-3">
                 <Button as={Link} to="/appointments/new">
-                  Start a booking
+                  {t('confirmation.actions.startBooking')}
                 </Button>
                 <Button as={Link} to="/" variant="secondary">
-                  Back to home
+                  {t('confirmation.actions.backHome')}
                 </Button>
               </div>
             </Card>
@@ -452,28 +488,15 @@ export default function BookingConfirmation() {
   );
 }
 
-const DAY_FORMATTER = new Intl.DateTimeFormat('en-US', {
-  weekday: 'long', month: 'long', day: 'numeric',
-  timeZone: 'America/New_York'
-});
-const TIME_FORMATTER = new Intl.DateTimeFormat('en-US', {
-  hour: 'numeric', minute: '2-digit',
-  timeZone: 'America/New_York'
-});
-
-function formatDuration(minutes) {
+function formatDuration(minutes, t) {
   if (!minutes || Number.isNaN(Number(minutes))) {
-    return 'To be confirmed';
+    return t('confirmation.fallbacks.toBeConfirmed');
   }
   const hours = minutes / 60;
   if (Number.isInteger(hours)) {
-    return `${hours} hour${hours === 1 ? '' : 's'}`;
+    return t('confirmation.duration.hours', { count: hours });
   }
-  return `${minutes} minutes`;
-}
-
-function getTimeZoneLabel() {
-  return 'ET';
+  return t('confirmation.duration.minutes', { count: Number(minutes) });
 }
 
 function DetailItem({ label, value, secondary }) {

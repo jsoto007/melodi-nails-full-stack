@@ -7,21 +7,13 @@ import { useLanguage } from '../contexts/LanguageContext.jsx';
 import localTestimonials from '../data/testimonials.json';
 
 export default function Testimonials() {
-  const { isSpanish } = useLanguage();
+  const { isSpanish, t } = useLanguage();
   const entries = localTestimonials;
-  const copy = isSpanish
-    ? {
-        eyebrow: 'Testimonios',
-        title: 'Clientas felices',
-        description:
-          'Algunas notas breves de clientas que visitan Melodi Nails por sus acabados hermosos, reservas organizadas y una experiencia tranquila de principio a fin.',
-      }
-    : {
-        eyebrow: 'Testimonials',
-        title: 'Clients leave glowing',
-        description:
-          'A few quick notes from clients who come to Melodi Nails for beautiful finishes, organized booking, and an experience that feels calm from start to finish.',
-      };
+  const copy = {
+    eyebrow: t('public.testimonials.eyebrow'),
+    title: t('public.testimonials.title'),
+    description: t('public.testimonials.description'),
+  };
 
   const filteredEntries = useMemo(
     () => entries.filter((entry) => Number(entry.rating) === 5),
@@ -61,7 +53,7 @@ export default function Testimonials() {
             <Card key={entry.id} className="h-full space-y-6 bg-[#fffdf9]">
               <div className="space-y-4">
                 <Stars rating={entry.rating} />
-                <p className="text-sm text-slate-900">&ldquo;{entry.quote}&rdquo;</p>
+                <p className="text-sm text-slate-900">&ldquo;{isSpanish ? entry.quote_es || entry.quote : entry.quote}&rdquo;</p>
               </div>
               <p className="text-xs font-semibold uppercase tracking-[0.3em] text-[#6f7863]">{entry.name}</p>
             </Card>

@@ -49,36 +49,25 @@ function NavItem({ item, onNavigate }) {
 
 export default function Header() {
   const { isAuthenticated, isAdmin, isUser, logout } = useAuth();
-  const { isSpanish } = useLanguage();
+  const { t } = useLanguage();
   const [menuOpen, setMenuOpen] = useState(false);
   const menuPanelRef = useRef(null);
   const toggleButtonRef = useRef(null);
   const navigate = useNavigate();
 
   const navItems = useMemo(() => {
-    const labels = isSpanish
-      ? {
-          gallery: 'Galería',
-          menu: 'Servicios',
-          about: 'Sobre mí',
-          contact: 'Contacto',
-          dashboard: 'Panel',
-          appointments: 'Citas',
-          profile: 'Perfil',
-          settings: 'Ajustes',
-          calendar: 'Calendario',
-        }
-      : {
-          gallery: 'Gallery',
-          menu: 'Menu',
-          about: 'About',
-          contact: 'Contact',
-          dashboard: 'Dashboard',
-          appointments: 'Appointments',
-          profile: 'Profile',
-          settings: 'Settings',
-          calendar: 'Calendar',
-        };
+    const label = (key) => t(`public.nav.${key}`);
+    const labels = {
+      gallery: label('gallery'),
+      menu: label('services'),
+      about: label('about'),
+      contact: label('contact'),
+      dashboard: label('dashboard'),
+      appointments: label('appointments'),
+      profile: label('profile'),
+      settings: label('settings'),
+      calendar: label('calendar'),
+    };
 
     if (isAdmin) {
       return [
@@ -100,23 +89,15 @@ export default function Header() {
       { label: labels.about, to: '/#about', type: 'link' },
       { label: labels.contact, to: '/#contact', type: 'link' },
     ];
-  }, [isAdmin, isSpanish, isUser]);
+  }, [isAdmin, isUser, t]);
 
-  const copy = isSpanish
-    ? {
-        bookNow: 'Reservar',
-        signOut: 'Salir',
-        bookAppointment: 'Reservar cita',
-        closeMenu: 'Cerrar menú',
-        openMenu: 'Abrir menú',
-      }
-      : {
-        bookNow: 'Book Now',
-        signOut: 'Sign Out',
-        bookAppointment: 'Book appointment',
-        closeMenu: 'Close menu',
-        openMenu: 'Open menu',
-      };
+  const copy = {
+    bookNow: t('public.nav.bookNow'),
+    signOut: t('public.nav.signOut'),
+    bookAppointment: t('public.nav.bookAppointment'),
+    closeMenu: t('public.nav.closeMenu'),
+    openMenu: t('public.nav.openMenu'),
+  };
 
   const closeMenu = () => setMenuOpen(false);
 
@@ -168,10 +149,10 @@ export default function Header() {
   return (
     <header className="sticky top-0 z-40 border-b border-[#3a5030] bg-[#2a3923]">
       <div className="mx-auto flex max-w-6xl items-center justify-between px-6 py-4">
-        <Link to="/" className="flex items-center gap-3">
+        <Link to="/" className="flex items-center gap-3" aria-label={t('public.nav.homeLink')}>
           <img
             src={melodiLogo}
-            alt="Melodi Nails logo"
+            alt={t('public.nav.logoAlt')}
             loading="lazy"
             className="h-12 w-auto object-cover shadow-[0_8px_24px_rgba(0,0,0,0.3)]"
           />

@@ -3,18 +3,21 @@
     "id": "sofia-r",
     "name": "Sofia R.",
     "quote": "My nails looked clean, elegant, and lasted beautifully. The attention to detail around the cuticle work was exactly what I wanted.",
+    "quote_es": "Mis uñas quedaron limpias y elegantes, y duraron muchísimo. La atención al detalle en el trabajo de cutícula fue justo lo que quería.",
     "rating": 5
   },
   {
     "id": "valentina-m",
     "name": "Valentina M.",
     "quote": "The booking process was easy, I uploaded my inspo photo, and my appointment felt organized from start to finish. I already booked my next set.",
+    "quote_es": "Reservar fue muy fácil: subí mi foto de inspiración y la cita se sintió organizada de principio a fin. Ya reservé mi próximo set.",
     "rating": 5
   },
   {
     "id": "camila-p",
     "name": "Camila P.",
     "quote": "I came in for a gel pedicure and left feeling completely taken care of. The space, the finish, and the overall experience were all on point.",
+    "quote_es": "Vine por una pedicura en gel y salí sintiendo que me cuidaron de verdad. El espacio, el acabado y toda la experiencia fueron impecables.",
     "rating": 5
   }
 ]

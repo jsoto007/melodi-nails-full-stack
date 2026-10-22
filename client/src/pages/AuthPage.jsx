@@ -4,6 +4,7 @@ import Button from '../components/Button.jsx';
 import Card from '../components/Card.jsx';
 import SectionTitle from '../components/SectionTitle.jsx';
 import { useAuth } from '../contexts/AuthContext.jsx';
+import { useLanguage } from '../contexts/LanguageContext.jsx';
 import { apiPost } from '../lib/api.js';
 
 const INITIAL_LOGIN = {
@@ -19,6 +20,7 @@ const LOGIN_FIELD_IDS = {
 export default function AuthPage() {
   const navigate = useNavigate();
   const { refreshSession } = useAuth();
+  const { t } = useLanguage();
   const [loginForm, setLoginForm] = useState(INITIAL_LOGIN);
   const [notice, setNotice] = useState(null);
   const [error, setError] = useState(null);
@@ -29,10 +31,9 @@ export default function AuthPage() {
     loginEmailRef.current?.focus();
   }, []);
 
-
-
-  const heroTitle = 'Sign in to your Melodi Nails portal';
-  const heroDescription = 'View appointments, share inspiration, and manage your profile.';
+  // Messages are stored as keys so they re-render in the active language.
+  const heroTitle = t('auth.login.title');
+  const heroDescription = t('auth.login.description');
 
   const handleLoginChange = (field) => (event) => {
     setLoginForm((prev) => ({
@@ -40,8 +41,6 @@ export default function AuthPage() {
       [field]: event.target.value
     }));
   };
-
-
 
   const handleLoginSubmit = async (event) => {
     event.preventDefault();
@@ -60,18 +59,22 @@ export default function AuthPage() {
 
       if (redirect) {
         setLoginForm(INITIAL_LOGIN);
-        setNotice('Signed in successfully – redirecting.');
+        setNotice('auth.login.success');
         await refreshSession();
         navigate(redirect, { replace: true });
         return;
       }
 
-      setError('Unexpected response. Please try again.');
+      setError('auth.errors.unexpectedResponse');
     } catch (err) {
-      if (err.status === 401) {
-        setError('Invalid email or password.');
+      if (err?.status === 401) {
+        setError('auth.login.invalidCredentials');
+      } else if (err?.status === 429) {
+        setError('auth.errors.rateLimited');
+      } else if (err?.status === 400) {
+        setError('auth.login.missingFields');
       } else {
-        setError('Unable to sign in right now.');
+        setError('auth.login.failed');
       }
     } finally {
       setSubmitting(false);
@@ -81,25 +84,25 @@ export default function AuthPage() {
   return (
     <main className="bg-white py-16 text-gray-900">
       <div className="mx-auto flex max-w-5xl flex-col gap-8 px-6">
-        <SectionTitle eyebrow="Account" title={heroTitle} description={heroDescription} />
+        <SectionTitle eyebrow={t('auth.eyebrow.account')} title={heroTitle} description={heroDescription} />
         {notice ? (
           <div className="rounded-2xl border border-gray-200 bg-gray-50 px-6 py-4 text-xs uppercase tracking-[0.3em] text-gray-600">
-            {notice}
+            {t(notice)}
           </div>
         ) : null}
         {error ? (
           <div className="rounded-2xl border border-rose-500 bg-rose-50 px-6 py-4 text-xs uppercase tracking-[0.3em] text-rose-700">
-            {error}
+            {t(error)}
           </div>
         ) : null}
         <div className="mx-auto w-full max-w-2xl space-y-6">
           <Card className="space-y-6">
             <div className="space-y-2">
               <h2 className="text-sm font-semibold uppercase tracking-[0.3em] text-gray-500">
-                Sign in
+                {t('auth.login.cardTitle')}
               </h2>
               <p className="text-xs uppercase tracking-[0.3em] text-gray-500">
-                Securely log in to manage your appointments and profile.
+                {t('auth.login.cardDescription')}
               </p>
             </div>
               <form className="space-y-4" onSubmit={handleLoginSubmit}>
@@ -108,7 +111,7 @@ export default function AuthPage() {
                     htmlFor={LOGIN_FIELD_IDS.email}
                     className="text-xs uppercase tracking-[0.3em] text-gray-500"
                   >
-                    Email
+                    {t('auth.fields.email')}
                   </label>
                   <input
                     id={LOGIN_FIELD_IDS.email}
@@ -116,6 +119,8 @@ export default function AuthPage() {
                     type="email"
                     value={loginForm.email}
                     onChange={handleLoginChange('email')}
+                    placeholder={t('auth.fields.emailPlaceholder')}
+                    autoComplete="email"
                     className="mt-2 w-full rounded-xl border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 focus:border-gray-900 focus:outline-none focus:ring-0"
                     required
                   />
@@ -125,33 +130,34 @@ export default function AuthPage() {
                     htmlFor={LOGIN_FIELD_IDS.password}
                     className="text-xs uppercase tracking-[0.3em] text-gray-500"
                   >
-                    Password
+                    {t('auth.fields.password')}
                   </label>
                   <input
                     id={LOGIN_FIELD_IDS.password}
                     type="password"
                     value={loginForm.password}
                     onChange={handleLoginChange('password')}
+                    autoComplete="current-password"
                     className="mt-2 w-full rounded-xl border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 focus:border-gray-900 focus:outline-none focus:ring-0"
                     required
                   />
                 </div>
                 <div className="flex flex-wrap items-center justify-between gap-3">
                   <Button type="submit" disabled={submitting}>
-                    {submitting ? 'Signing in...' : 'Sign in'}
+                    {submitting ? t('auth.login.submitting') : t('auth.login.submit')}
                   </Button>
                   <Link
                     to="/forgot-password"
                     className="text-xs uppercase tracking-[0.3em] text-gray-500 hover:text-black"
                   >
-                    Forgot password?
+                    {t('auth.login.forgotPassword')}
                   </Link>
                 </div>
               </form>
         <p className="text-[0.6rem] uppercase tracking-[0.35em] text-gray-500 mt-6">
-          Studio staff?{' '}
+          {t('auth.login.staffPrompt')}{' '}
           <Link to="/dashboard/admin" className="font-semibold text-gray-900 underline">
-            Go to the Admin Console
+            {t('auth.login.staffLink')}
           </Link>
         </p>
       </Card>

@@ -3,6 +3,8 @@ import { Link, NavLink, Navigate, Outlet, useLocation, useNavigate } from 'react
 import { useAuth } from '../../contexts/AuthContext.jsx';
 import { ClientPortalProvider } from '../../contexts/ClientPortalContext.jsx';
 import Button from '../../components/Button.jsx';
+import LanguageToggle from '../../components/LanguageToggle.jsx';
+import { useLanguage } from '../../contexts/LanguageContext.jsx';
 import { USER_NAV_ITEMS } from '../../data/navigation.js';
 
 function classNames(...classes) {
@@ -10,6 +12,7 @@ function classNames(...classes) {
 }
 export default function ClientPortalLayout() {
   const { isAuthenticated, status, isAdmin, logout } = useAuth();
+  const { t } = useLanguage();
   const navigate = useNavigate();
   const location = useLocation();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
@@ -27,7 +30,7 @@ export default function ClientPortalLayout() {
   if (loading) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-white text-gray-900">
-        <p className="text-sm uppercase tracking-[0.4em] text-gray-500">Loading portal…</p>
+        <p className="text-sm uppercase tracking-[0.4em] text-gray-500">{t('portal.layout.loading')}</p>
       </div>
     );
   }
@@ -68,21 +71,26 @@ export default function ClientPortalLayout() {
               >
                 Melodi Nails
               </Link>
-              <nav className="hidden items-center gap-4 text-[0.65rem] uppercase tracking-[0.3em] md:flex">
+              <nav
+                aria-label={t('portal.nav.label')}
+                className="hidden items-center gap-4 text-[0.65rem] uppercase tracking-[0.3em] md:flex"
+              >
                 {USER_NAV_ITEMS.map((item) => (
                   <NavLink key={item.to} to={item.to} className={linkClasses} end={item.end}>
-                    {item.label}
+                    {t(item.labelKey)}
                   </NavLink>
                 ))}
               </nav>
             </div>
             <div className="flex items-center gap-3">
+              <LanguageToggle className="hidden md:inline-flex" />
               <button
                 type="button"
                 onClick={() => setMobileMenuOpen((prev) => !prev)}
                 className={menuButtonClass}
                 aria-expanded={mobileMenuOpen}
-                aria-label={mobileMenuOpen ? 'Close navigation menu' : 'Open navigation menu'}
+                aria-controls="portal-mobile-navigation"
+                aria-label={mobileMenuOpen ? t('portal.nav.closeMenu') : t('portal.nav.openMenu')}
               >
                 {mobileMenuOpen ? (
                   <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" aria-hidden="true">
@@ -95,10 +103,10 @@ export default function ClientPortalLayout() {
                 )}
               </button>
               <Button as={Link} to="/appointments/new" className="hidden md:inline-flex">
-                Book Consult
+                {t('portal.layout.bookAppointment')}
               </Button>
               <Button variant="secondary" onClick={handleSignOut} className="hidden md:inline-flex">
-                Sign Out
+                {t('portal.layout.signOut')}
               </Button>
             </div>
           </div>
@@ -107,7 +115,7 @@ export default function ClientPortalLayout() {
               id="portal-mobile-navigation"
               className="border-t border-gray-200 bg-white px-6 py-4 text-xs uppercase tracking-[0.3em] md:hidden"
             >
-              <nav className="flex flex-col gap-3">
+              <nav aria-label={t('portal.nav.label')} className="flex flex-col gap-3">
                 {USER_NAV_ITEMS.map((item) => (
                   <NavLink
                     key={item.to}
@@ -116,13 +124,14 @@ export default function ClientPortalLayout() {
                     onClick={() => setMobileMenuOpen(false)}
                     end={item.end}
                   >
-                    {item.label}
+                    {t(item.labelKey)}
                   </NavLink>
                 ))}
               </nav>
+              <LanguageToggle className="mt-4" />
               <div className="mt-4 flex flex-col gap-2">
                 <Button as={Link} to="/appointments/new" className="w-full" onClick={() => setMobileMenuOpen(false)}>
-                  Book Consult
+                  {t('portal.layout.bookAppointment')}
                 </Button>
                 <Button
                   variant="secondary"
@@ -132,7 +141,7 @@ export default function ClientPortalLayout() {
                   }}
                   className="w-full"
                 >
-                  Sign Out
+                  {t('portal.layout.signOut')}
                 </Button>
               </div>
             </div>

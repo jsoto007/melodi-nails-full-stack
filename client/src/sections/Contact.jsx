@@ -3,70 +3,26 @@ import Card from '../components/Card.jsx';
 import SectionTitle from '../components/SectionTitle.jsx';
 import { useLanguage } from '../contexts/LanguageContext.jsx';
 
+const PHONE = '(929) 342-8062';
+const EMAIL = 'nailsmelodi@gmail.com';
+const ADDRESS = '1205 College Ave, Bronx, NY 10456';
+
 export default function Contact() {
-  const { isSpanish } = useLanguage();
-  const contactPoints = isSpanish
-    ? [
-        {
-          id: 'call',
-          heading: 'Teléfono',
-          value: '(929) 342-8062',
-          body: 'Llama o envía un mensaje si tienes preguntas rápidas antes de reservar.',
-        },
-        {
-          id: 'email',
-          heading: 'Correo',
-          value: 'nailsmelodi@gmail.com',
-          body: 'Ideal para preguntas sobre citas y solicitudes especiales.',
-        },
-        {
-          id: 'studio',
-          heading: 'Salón',
-          value: '1205 College Ave, Bronx, NY 10456',
-          body: 'Solo con cita previa.',
-        },
-      ]
-    : [
-        {
-          id: 'call',
-          heading: 'Phone',
-          value: '(929) 342-8062',
-          body: 'Text or call to ask quick questions before booking.',
-        },
-        {
-          id: 'email',
-          heading: 'Email',
-          value: 'nailsmelodi@gmail.com',
-          body: 'Best for appointment questions and special requests.',
-        },
-        {
-          id: 'studio',
-          heading: 'Studio',
-          value: '1205 College Ave, Bronx, NY 10456',
-          body: 'By appointment only.',
-        },
-      ];
-  const copy = isSpanish
-    ? {
-        eyebrow: 'Contacto',
-        title: 'Mantente conectada',
-        description:
-          'Escríbenos antes de tu visita si necesitas ayuda para elegir un servicio, confirmar disponibilidad o compartir más inspiración para tu set.',
-        mapLabel: 'Abrir mapa del salón Melodi Nails',
-        smsLabel: 'Enviar mensaje de texto',
-        emailLabel: 'Enviar correo',
-        instagramLabel: 'Visitar Melodi Nails en Instagram',
-      }
-    : {
-        eyebrow: 'Contact',
-        title: 'Stay connected',
-        description:
-          'Reach out before your visit if you need help choosing a service, confirming availability, or sharing extra inspiration for your set.',
-        mapLabel: 'Open map to Melodi Nails studio',
-        smsLabel: 'Send text message',
-        emailLabel: 'Send email',
-        instagramLabel: 'Visit Melodi Nails on Instagram',
-      };
+  const { t } = useLanguage();
+  const contactPoints = [
+    { id: 'call', heading: t('public.contact.phoneHeading'), value: PHONE, body: t('public.contact.phoneBody') },
+    { id: 'email', heading: t('public.contact.emailHeading'), value: EMAIL, body: t('public.contact.emailBody') },
+    { id: 'studio', heading: t('public.contact.salonHeading'), value: ADDRESS, body: t('public.contact.salonBody') },
+  ];
+  const copy = {
+    eyebrow: t('public.contact.eyebrow'),
+    title: t('public.contact.title'),
+    description: t('public.contact.description'),
+    mapLabel: t('public.contact.mapLabel'),
+    smsLabel: t('public.contact.smsLabel'),
+    emailLabel: t('public.contact.emailLabel'),
+    instagramLabel: t('public.contact.instagramLabel'),
+  };
   return (
     <section id="contact" className="bg-[#fffaf5] py-16 text-[#23301d]">
       <FadeIn className="mx-auto flex w-full max-w-7xl flex-col gap-12 px-6" delayStep={0.16}>
@@ -133,6 +89,7 @@ export default function Contact() {
               stroke="currentColor"
               strokeWidth="1.5"
               className="h-5 w-5"
+              aria-hidden="true"
             >
               <rect x="3" y="3" width="18" height="18" rx="5" />
               <circle cx="12" cy="12" r="4" />
