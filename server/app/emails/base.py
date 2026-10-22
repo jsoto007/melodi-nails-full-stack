@@ -5,7 +5,7 @@ from urllib.parse import urlsplit
 
 from flask import current_app, request
 
-DEFAULT_BRAND_NAME = "Black Work NYC"
+DEFAULT_BRAND_NAME = "Melodi Nails"
 
 
 def brand_name() -> str:

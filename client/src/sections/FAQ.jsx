@@ -9,21 +9,21 @@ export default function FAQ() {
     ? [
         {
           id: 'faq-1',
-          question: 'Necesito una cuenta para reservar?',
+          question: '¿Necesito una cuenta para reservar?',
           answer:
-            'No. Puedes reservar como invitada con tu nombre, apellido, correo, telefono, servicio seleccionado y metodo de pago.',
+            'No. Puedes reservar como invitada con tu nombre, apellido, correo, teléfono, servicio seleccionado y método de pago.',
         },
         {
           id: 'faq-2',
-          question: 'Puedo llevar fotos de inspiracion?',
+          question: '¿Puedo llevar fotos de inspiración?',
           answer:
-            'Si. Puedes subir una imagen durante la reserva y tambien dejar notas opcionales para que la tecnica conozca el estilo que buscas.',
+            'Sí. Puedes subir una imagen durante la reserva y también dejar notas opcionales para que la técnica conozca el estilo que buscas.',
         },
         {
           id: 'faq-3',
-          question: 'Como funciona el pago?',
+          question: '¿Cómo funciona el pago?',
           answer:
-            'Al finalizar puedes pagar el porcentaje de deposito configurado por la administracion o el monto total del servicio. Stripe procesa el pago de forma segura antes de confirmar tu cita.',
+            'Al finalizar puedes pagar el porcentaje de depósito configurado por la administración o el monto total del servicio. Stripe procesa el pago de forma segura antes de confirmar tu cita.',
         },
       ]
     : [
@@ -51,7 +51,7 @@ export default function FAQ() {
         eyebrow: 'Preguntas',
         title: 'Antes de tu visita',
         description:
-          'Tres respuestas rapidas sobre reservas, fotos de inspiracion y como funciona el pago en la nueva experiencia de citas.',
+          'Tres respuestas rápidas sobre reservas, fotos de inspiración y cómo funciona el pago en la nueva experiencia de citas.',
       }
     : {
         eyebrow: 'FAQ',

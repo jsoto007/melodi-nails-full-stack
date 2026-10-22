@@ -5,9 +5,9 @@ export default function BlogLayout() {
   const { isSpanish } = useLanguage();
   const posts = isSpanish
     ? [
-        { slug: 'aftercare', title: 'Guia de Cuidado de Unas' },
+        { slug: 'aftercare', title: 'Guía de Cuidado de Uñas' },
         { slug: 'faq', title: 'Preguntas Frecuentes' },
-        { slug: 'custom-fine-line', title: 'Como se crea un set exclusivo' },
+        { slug: 'custom-fine-line', title: 'Cómo se crea un set exclusivo' },
       ]
     : [
         { slug: 'aftercare', title: 'Nail Aftercare Guide' },

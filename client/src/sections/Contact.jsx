@@ -9,9 +9,9 @@ export default function Contact() {
     ? [
         {
           id: 'call',
-          heading: 'Telefono',
+          heading: 'Teléfono',
           value: '(929) 342-8062',
-          body: 'Llama o envia mensaje si tienes preguntas rapidas antes de reservar.',
+          body: 'Llama o envía un mensaje si tienes preguntas rápidas antes de reservar.',
         },
         {
           id: 'email',
@@ -21,7 +21,7 @@ export default function Contact() {
         },
         {
           id: 'studio',
-          heading: 'Salon',
+          heading: 'Salón',
           value: '1205 College Ave, Bronx, NY 10456',
           body: 'Solo con cita previa.',
         },
@@ -51,8 +51,8 @@ export default function Contact() {
         eyebrow: 'Contacto',
         title: 'Mantente conectada',
         description:
-          'Escribenos antes de tu visita si necesitas ayuda para elegir un servicio, confirmar disponibilidad o compartir mas inspiracion para tu set.',
-        mapLabel: 'Abrir mapa del salon Melodi Nails',
+          'Escríbenos antes de tu visita si necesitas ayuda para elegir un servicio, confirmar disponibilidad o compartir más inspiración para tu set.',
+        mapLabel: 'Abrir mapa del salón Melodi Nails',
         smsLabel: 'Enviar mensaje de texto',
         emailLabel: 'Enviar correo',
         instagramLabel: 'Visitar Melodi Nails en Instagram',

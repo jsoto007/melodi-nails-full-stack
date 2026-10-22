@@ -4,40 +4,40 @@ export default function CustomFineLine() {
   const { isSpanish } = useLanguage();
   const copy = isSpanish
     ? {
-        eyebrow: 'Detras del set',
-        title: 'Como se crea un set exclusivo en Melodi Nails',
+        eyebrow: 'Detrás del set',
+        title: 'Cómo se crea un set exclusivo en Melodi Nails',
         intro:
-          'Un set exclusivo es mucho mas que esmalte y color. En Melodi Nails, el proceso se construye alrededor de preparacion, estructura, forma y acabado para que el resultado se vea intencional, favorecedor y duradero.',
+          'Un set exclusivo es mucho más que esmalte y color. En Melodi Nails, el proceso se construye alrededor de preparación, estructura, forma y acabado para que el resultado se vea intencional, favorecedor y duradero.',
         sections: [
           {
-            title: 'Consulta y vision creativa',
+            title: 'Consulta y visión creativa',
             body:
-              'Cada set comienza con una conversacion sobre forma, color, acabado, largo y estilo de vida. Algunas clientas buscan un manicure limpio para todos los dias, mientras otras quieren algo mas atrevido o con mas diseno. Las fotos de inspiracion ayudan, pero la idea siempre es adaptar el look a la clienta.',
+              'Cada set comienza con una conversación sobre forma, color, acabado, largo y estilo de vida. Algunas clientas buscan un manicure limpio para todos los días, mientras otras quieren algo más atrevido o con más diseño. Las fotos de inspiración ayudan, pero la idea siempre es adaptar el look a la clienta.',
           },
           {
-            title: 'Planificacion y preparacion',
+            title: 'Planificación y preparación',
             body:
-              'Los mejores resultados comienzan con una buena preparacion. Eso incluye cuidado de cuticula, forma, refinamiento de la superficie y seleccion del servicio correcto, ya sea manicure natural, gel overlay o estructura completa en acrilico.',
+              'Los mejores resultados comienzan con una buena preparación. Eso incluye cuidado de cutícula, forma, refinamiento de la superficie y selección del servicio correcto, ya sea manicure natural, gel overlay o estructura completa en acrílico.',
           },
           {
-            title: 'Aplicacion precisa y acabado',
+            title: 'Aplicación precisa y acabado',
             body:
-              'Cuando la base esta lista, la aplicacion se enfoca en simetria, estructura y limpieza. El producto se coloca con atencion al equilibrio y la durabilidad, y luego se perfecciona para que el set se vea pulido desde cualquier angulo.',
+              'Cuando la base está lista, la aplicación se enfoca en simetría, estructura y limpieza. El producto se coloca con atención al equilibrio y la durabilidad, y luego se perfecciona para que el set se vea pulido desde cualquier ángulo.',
           },
           {
             title: 'Detalle y nail art',
             body:
-              'Si el set incluye frances, chrome, piedras, lineas o nail art personalizado, esos detalles llegan despues de tener una estructura limpia. Los mejores disenos siempre dependen de una base fuerte.',
+              'Si el set incluye francés, chrome, piedras, líneas o nail art personalizado, esos detalles llegan después de tener una estructura limpia. Los mejores diseños siempre dependen de una base fuerte.',
           },
           {
-            title: 'Cuidado y duracion',
+            title: 'Cuidado y duración',
             body:
-              'La duracion no depende solo del producto. Tambien depende del cuidado posterior, de los habitos diarios y de que el mantenimiento se haga a tiempo. Aceite para cuticula, guantes y rellenos puntuales ayudan muchisimo.',
+              'La duración no depende solo del producto. También depende del cuidado posterior, de los hábitos diarios y de que el mantenimiento se haga a tiempo. Aceite para cutícula, guantes y rellenos puntuales ayudan muchísimo.',
           },
           {
             title: 'Una experiencia personalizada',
             body:
-              'Melodi Nails esta construido alrededor del detalle, el cuidado y la constancia. Eso significa un servicio personal, un proceso sin prisa y unas terminadas que se mantienen hermosas entre visitas.',
+              'Melodi Nails está construido alrededor del detalle, el cuidado y la constancia. Eso significa un servicio personal, un proceso sin prisa y uñas terminadas que se mantienen hermosas entre visitas.',
           },
         ],
       }
@@ -73,7 +73,7 @@ export default function CustomFineLine() {
               'Longevity does not come from product alone. It also depends on aftercare, daily habits, and how consistently maintenance is scheduled. Cuticle oil, gloves for chores, and timely fills can help keep the service looking polished while reducing unnecessary lifting or breakage.',
           },
           {
-            title: 'A Personalized Salon Experience',
+            title: 'A Personalized Salón Experience',
             body:
               "Melodi Nails is built around detail, care, and consistency. The goal is not just a beautiful result on the day of the appointment, but a set that fits the client's style, routine, and maintenance preferences.",
           },

@@ -7,26 +7,26 @@ export default function BlogIndex() {
     ? {
         title: 'Journal de Melodi Nails',
         description:
-          'Compartimos respuestas utiles sobre el salon, recomendaciones de cuidado y consejos para prepararte para tu proximo manicure, pedicure, gel o acrilico en el Bronx.',
+          'Compartimos respuestas útiles sobre el salón, recomendaciones de cuidado y consejos para prepararte para tu próximo manicure, pedicure, gel o acrílico en el Bronx.',
         featured: 'Destacado',
-        readMore: 'Leer mas ->',
+        readMore: 'Leer más ->',
         posts: [
           {
-            title: 'Guia de Cuidado de Unas',
+            title: 'Guía de Cuidado de Uñas',
             description:
-              'Pasos simples para que tu servicio en gel, acrilico o unas naturales se mantenga limpio, brillante y duradero.',
+              'Pasos simples para que tu servicio en gel, acrílico o uñas naturales se mantenga limpio, brillante y duradero.',
             to: 'aftercare',
           },
           {
-            title: 'Preguntas Frecuentes del Salon',
+            title: 'Preguntas Frecuentes del Salón',
             description:
-              'Respuestas claras sobre reservas, preparacion, reparaciones, tiempos y lo que puedes esperar en Melodi Nails.',
+              'Respuestas claras sobre reservas, preparación, reparaciones, tiempos y lo que puedes esperar en Melodi Nails.',
             to: 'faq',
           },
           {
-            title: 'Como se crea un set exclusivo',
+            title: 'Cómo se crea un set exclusivo',
             description:
-              'Una mirada al proceso de preparacion, estructura, forma y acabado de Melodi Nails para resultados pulidos y listos para foto.',
+              'Una mirada al proceso de preparación, estructura, forma y acabado de Melodi Nails para resultados pulidos y listos para foto.',
             to: 'custom-fine-line',
           },
         ],

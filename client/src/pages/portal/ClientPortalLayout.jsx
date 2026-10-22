@@ -66,7 +66,7 @@ export default function ClientPortalLayout() {
                 to="/"
                 className="text-[0.65rem] font-semibold uppercase tracking-[0.5em] text-gray-900 transition hover:text-gray-600"
               >
-                BLACKWORKNYC
+                Melodi Nails
               </Link>
               <nav className="hidden items-center gap-4 text-[0.65rem] uppercase tracking-[0.3em] md:flex">
                 {USER_NAV_ITEMS.map((item) => (

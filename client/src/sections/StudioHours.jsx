@@ -130,13 +130,13 @@ export default function StudioHours() {
         eyebrow: 'Horario',
         title: 'Disponibilidad de citas',
         description:
-          'La disponibilidad se actualiza en tiempo real segun la duracion del servicio para que cada reserva tenga el tiempo correcto.',
+          'La disponibilidad se actualiza en tiempo real según la duración del servicio para que cada reserva tenga el tiempo correcto.',
         cta: 'Reservar cita',
-        loading: 'Cargando horario del salon...',
+        loading: 'Cargando horario del salón...',
         fallback: 'Actualmente no aceptamos visitas sin cita.',
         defaultDescription:
-          'Melodi Nails trabaja con cita previa para que cada manicure, pedicure o servicio de acrilico tenga el tiempo necesario para una buena preparacion, detalle y acabado pulido.',
-        error: 'No se pudo cargar el horario del salon en este momento.',
+          'Melodi Nails trabaja con cita previa para que cada manicure, pedicure o servicio de acrílico tenga el tiempo necesario para una buena preparación, detalle y acabado pulido.',
+        error: 'No se pudo cargar el horario del salón en este momento.',
       }
     : {
         eyebrow: 'Hours',

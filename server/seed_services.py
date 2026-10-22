@@ -22,7 +22,7 @@ SERVICES = [
         "name": "Manicura Rusa",
         "tagline": "Acabado limpio",
         "description": (
-            "Manicure en seco enfocado en cuticula detallada, refinamiento de la piel, "
+            "Manicure en seco enfocado en cutícula detallada, refinamiento de la piel, "
             "esmalte semipermanente y calcio gel para un acabado natural y pulido."
         ),
         "category": "Manicura",

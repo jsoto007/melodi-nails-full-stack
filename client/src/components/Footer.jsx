@@ -10,7 +10,7 @@ export default function Footer() {
     ? {
         studio: 'Estudio',
         quickLinks: 'Accesos',
-        policies: 'Politicas',
+        policies: 'Políticas',
         backToTop: 'Volver arriba',
         admin: 'Admin',
         poweredBy: 'Desarrollado por SotoDev, LLC',
@@ -109,7 +109,7 @@ export default function Footer() {
             </div>
             <p className="max-w-xs text-sm leading-relaxed text-[#6f7863]">
               {isSpanish
-                ? 'El idioma inicial se elige automaticamente segun el navegador del visitante.'
+                ? 'El idioma inicial se elige automáticamente según el navegador del visitante.'
                 : 'The initial language is selected automatically from the visitor browser settings.'}
             </p>
           </div>

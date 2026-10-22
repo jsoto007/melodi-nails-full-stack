@@ -10,9 +10,9 @@ export default function Booking() {
   const { isSpanish } = useLanguage();
   const bookingRequirements = isSpanish
     ? [
-        'Ingresa tu informacion de contacto',
-        'Elige un servicio de unas y un horario disponible',
-        'Agrega notas opcionales o una imagen de inspiracion, luego paga el deposito o el monto completo',
+        'Ingresa tu información de contacto',
+        'Elige un servicio de uñas y un horario disponible',
+        'Agrega notas opcionales o una imagen de inspiración, luego paga el depósito o el monto completo',
       ]
     : [
         'Enter your contact information',
@@ -25,7 +25,7 @@ export default function Booking() {
         title: 'Reserva tu cita',
         description: 'Elige un servicio, selecciona un horario y paga de forma segura con Stripe.',
         detail:
-          'Aceptamos reservas como invitada. Puedes agregar notas o una foto de inspiracion y luego pagar el deposito o el monto completo.',
+          'Aceptamos reservas como invitada. Puedes agregar notas o una foto de inspiración y luego pagar el depósito o el monto completo.',
         cta: 'Comenzar reserva',
       }
     : {

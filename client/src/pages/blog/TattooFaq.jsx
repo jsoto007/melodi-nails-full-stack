@@ -4,42 +4,42 @@ export default function TattooFaq() {
   const { isSpanish } = useLanguage();
   const copy = isSpanish
     ? {
-        title: 'Preguntas Frecuentes del Salon',
+        title: 'Preguntas Frecuentes del Salón',
         intro:
-          'Estas son algunas de las preguntas que recibimos con mas frecuencia antes de reservar en Melodi Nails. Cubren tiempos, preparacion, mantenimiento y lo que puedes esperar al visitar el estudio.',
+          'Estas son algunas de las preguntas que recibimos con más frecuencia antes de reservar en Melodi Nails. Cubren tiempos, preparación, mantenimiento y lo que puedes esperar al visitar el estudio.',
         questions: [
           {
-            question: 'Cuanto dura mi servicio de unas?',
+            question: '¿Cuánto dura mi servicio de uñas?',
             answer:
-              'Depende del servicio y de tu rutina diaria. Manicures naturales, gel y sets acrilicos tienen desgastes distintos, pero muchas clientas regresan entre dos y tres semanas para mantener un resultado limpio y equilibrado.',
+              'Depende del servicio y de tu rutina diaria. Manicures naturales, gel y sets acrílicos tienen desgastes distintos, pero muchas clientas regresan entre dos y tres semanas para mantener un resultado limpio y equilibrado.',
           },
           {
-            question: 'Cuando debo reservar relleno, retoque o reparacion?',
+            question: '¿Cuándo debo reservar relleno, retoque o reparación?',
             answer:
-              'Si usas acrilico o sets estructurados, no esperes a que varias unas ya esten levantadas o rotas. Reservar mantenimiento antes de que el set se desestabilice suele dar un resultado mas limpio y protege mejor la una natural.',
+              'Si usas acrílico o sets estructurados, no esperes a que varias uñas ya estén levantadas o rotas. Reservar mantenimiento antes de que el set se desestabilice suele dar un resultado más limpio y protege mejor la uña natural.',
           },
           {
-            question: 'Que debo hacer antes de mi cita?',
+            question: '¿Qué debo hacer antes de mi cita?',
             answer:
-              'Trae fotos de inspiracion si tienes un estilo especifico en mente y avisa si necesitas retiro, soak-off, reparaciones o nail art detallado. Eso ayuda a reservar el tiempo correcto para tu cita.',
+              'Trae fotos de inspiración si tienes un estilo específico en mente y avisa si necesitas retiro, soak-off, reparaciones o nail art detallado. Eso ayuda a reservar el tiempo correcto para tu cita.',
           },
           {
-            question: 'Trabajan solo con cita?',
+            question: '¿Trabajan solo con cita?',
             answer:
-              'Si. Las citas permiten dedicar el tiempo suficiente para preparacion, forma, seleccion del servicio y detalles finales sin apresurar el proceso.',
+              'Sí. Las citas permiten dedicar el tiempo suficiente para preparación, forma, selección del servicio y detalles finales sin apresurar el proceso.',
           },
           {
-            question: 'Puedo llevar una foto de inspiracion?',
+            question: '¿Puedo llevar una foto de inspiración?',
             answer:
-              'Si. Las fotos ayudan con color, forma, acabado e ideas de nail art. El set final puede ajustarse segun el largo, condicion de la una y servicio reservado, pero sirven mucho para colaborar mejor.',
+              'Sí. Las fotos ayudan con color, forma, acabado e ideas de nail art. El set final puede ajustarse según el largo, condición de la uña y servicio reservado, pero sirven mucho para colaborar mejor.',
           },
           {
-            question: 'Y si necesito retiro o soak-off completo?',
+            question: '¿Y si necesito retiro o soak-off completo?',
             answer:
-              'Lo mejor es avisarlo antes de empezar la cita. El retiro toma tiempo adicional y mencionarlo desde el inicio ayuda a no apresurar la preparacion del nuevo set.',
+              'Lo mejor es avisarlo antes de empezar la cita. El retiro toma tiempo adicional y mencionarlo desde el inicio ayuda a no apresurar la preparación del nuevo set.',
           },
         ],
-        footer: 'Todavia tienes dudas? Escribenos a',
+        footer: '¿Todavía tienes dudas? Escríbenos a',
       }
     : {
         title: 'Nail Salon Frequently Asked Questions',
