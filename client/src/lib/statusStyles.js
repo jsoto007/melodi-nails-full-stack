@@ -1,3 +1,5 @@
+import { getCurrentLanguage, translate } from '../i18n/index.js';
+
 const STATUS_META = {
   awaiting_payment: {
     label: 'Awaiting payment',
@@ -71,12 +73,13 @@ export function getStatusMeta(status) {
   return STATUS_META[resolveStatusKey(status)];
 }
 
-export function formatStatusLabel(status) {
-  return getStatusMeta(status).label;
+// Labels follow the site language; `label` in STATUS_META is the English fallback.
+export function formatStatusLabel(status, language = getCurrentLanguage()) {
+  return translate(`common.status.${resolveStatusKey(status)}`, language);
 }
 
-export function getStatusBadgeLabel(status) {
-  return formatStatusLabel(status);
+export function getStatusBadgeLabel(status, language) {
+  return formatStatusLabel(status, language);
 }
 
 export function getStatusBadgeClasses(status) {

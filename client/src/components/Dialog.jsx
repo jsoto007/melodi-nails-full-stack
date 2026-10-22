@@ -1,3 +1,4 @@
+import { useLanguage } from '../contexts/LanguageContext.jsx';
 import { useEffect, useId, useRef } from 'react';
 import { shouldIgnoreHotkeys } from '../lib/hotkeys.js';
 
@@ -12,6 +13,7 @@ function getFocusableElements(container) {
 }
 
 export default function Dialog({ open, onClose, title, children, footer, className = '' }) {
+  const { t } = useLanguage();
   const overlayRef = useRef(null);
   const dialogRef = useRef(null);
   const titleId = useId();
@@ -103,7 +105,7 @@ export default function Dialog({ open, onClose, title, children, footer, classNa
             type="button"
             onClick={() => onCloseRef.current?.()}
             className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-gray-300 text-gray-500 transition hover:border-gray-900 hover:text-black focus:outline-none focus-visible:ring-2 focus-visible:ring-gray-400 focus-visible:ring-offset-2 focus-visible:ring-offset-white"
-            aria-label="Close dialog"
+            aria-label={t('common.a11y.closeDialog')}
           >
             <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" aria-hidden="true">
               <path d="M6 6l12 12M18 6L6 18" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />

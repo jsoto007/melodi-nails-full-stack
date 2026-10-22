@@ -1,3 +1,4 @@
+import { useLanguage } from '../contexts/LanguageContext.jsx';
 import { useId, useRef } from 'react';
 
 function classNames(...classes) {
@@ -5,6 +6,7 @@ function classNames(...classes) {
 }
 
 export default function Tabs({ tabs, activeTab, onTabChange, renderPanel }) {
+  const { t } = useLanguage();
   const tablistId = useId();
   const tabRefs = useRef([]);
 
@@ -45,7 +47,7 @@ export default function Tabs({ tabs, activeTab, onTabChange, renderPanel }) {
     <div className="w-full">
       <div
         role="tablist"
-        aria-label="Tabs"
+        aria-label={t('common.a11y.tabs')}
         className="inline-flex rounded-full border border-gray-200 bg-gray-100 p-1 text-xs font-semibold uppercase tracking-[0.3em]"
       >
         {tabs.map((tab, index) => {

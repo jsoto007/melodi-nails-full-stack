@@ -1,3 +1,5 @@
+import { getCurrentLanguage, translate } from '../i18n/index.js';
+
 const DEFAULT_BASE_URL = '';
 
 const rawBaseUrl = import.meta.env.VITE_API_BASE_URL ?? DEFAULT_BASE_URL;
@@ -79,6 +81,8 @@ async function request(path, options = {}, { _csrfRetried = false } = {}) {
   const url = BASE_URL ? buildUrl(path) : path;
   const headers = {
     'Content-Type': 'application/json',
+    // Lets the API answer (errors, emails, Stripe checkout) in the visitor's language.
+    'X-Language': getCurrentLanguage(),
     ...(options.headers || {})
   };
 
@@ -118,7 +122,7 @@ async function request(path, options = {}, { _csrfRetried = false } = {}) {
     const detail =
       payload?.error ||
       (payload?.errors && payload.errors.length ? payload.errors[0]?.message : null);
-    const error = new Error(detail || `Request failed with status ${response.status}`);
+    const error = new Error(detail || translate('common.errors.requestFailed', undefined, { status: response.status }));
     error.status = response.status;
     error.body = payload;
 
@@ -180,7 +184,7 @@ export function apiPut(path, body, { signal } = {}) {
 
 export async function apiUpload(path, formData, { signal } = {}) {
   const url = BASE_URL ? buildUrl(path) : path;
-  const uploadHeaders = {};
+  const uploadHeaders = { 'X-Language': getCurrentLanguage() };
   try {
     const token = await ensureCsrfToken();
     if (token) {
@@ -209,7 +213,7 @@ export async function apiUpload(path, formData, { signal } = {}) {
   if (!response.ok) {
     const detail =
       payload?.error || (payload?.errors && payload.errors.length ? payload.errors[0]?.message : null);
-    const error = new Error(detail || `Request failed with status ${response.status}`);
+    const error = new Error(detail || translate('common.errors.requestFailed', undefined, { status: response.status }));
     error.status = response.status;
     error.body = payload;
     throw error;

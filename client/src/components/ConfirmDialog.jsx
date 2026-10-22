@@ -1,3 +1,4 @@
+import { useLanguage } from '../contexts/LanguageContext.jsx';
 import Button from './Button.jsx';
 import Dialog from './Dialog.jsx';
 
@@ -5,13 +6,14 @@ export default function ConfirmDialog({
   open,
   title,
   description,
-  confirmLabel = 'Confirm',
-  cancelLabel = 'Cancel',
+  confirmLabel,
+  cancelLabel,
   onConfirm,
   onClose,
   busy = false,
   children
 }) {
+  const { t } = useLanguage();
   return (
     <Dialog
       open={open}
@@ -19,10 +21,10 @@ export default function ConfirmDialog({
       title={title}
       footer={[
         <Button key="cancel" type="button" variant="ghost" onClick={onClose} disabled={busy}>
-          {cancelLabel}
+          {cancelLabel ?? t('common.actions.cancel')}
         </Button>,
         <Button key="confirm" type="button" onClick={onConfirm} disabled={busy}>
-          {confirmLabel}
+          {confirmLabel ?? t('common.actions.confirm')}
         </Button>
       ]}
     >

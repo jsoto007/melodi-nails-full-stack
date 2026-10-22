@@ -1,11 +1,12 @@
 import { Link } from 'react-router-dom';
+import LanguageToggle from './LanguageToggle.jsx';
 import { useLanguage } from '../contexts/LanguageContext.jsx';
 import melodiLogo from '../assets/melodi/LogoWithBg.png';
 
 const year = new Date().getFullYear();
 
 export default function Footer() {
-  const { language, setLanguage, isSpanish } = useLanguage();
+  const { isSpanish } = useLanguage();
   const copy = isSpanish
     ? {
         studio: 'Estudio',
@@ -85,32 +86,11 @@ export default function Footer() {
 
           <div className="space-y-4">
             <p className="text-[11px] font-semibold uppercase tracking-[0.35em] text-[#8d755a]">{copy.language}</p>
-            <div className="inline-flex items-center rounded-full border border-[#c8af8f]/60 bg-white/70 p-1 shadow-[0_8px_24px_rgba(42,57,35,0.06)]">
-              <button
-                type="button"
-                onClick={() => setLanguage('en')}
-                className={`rounded-full px-4 py-2 text-[10px] font-semibold uppercase tracking-[0.24em] transition ${
-                  language === 'en' ? 'bg-[#c8af8f] text-[#243020]' : 'text-[#5e6755]'
-                }`}
-                aria-pressed={language === 'en'}
-              >
-                EN
-              </button>
-              <button
-                type="button"
-                onClick={() => setLanguage('es')}
-                className={`rounded-full px-4 py-2 text-[10px] font-semibold uppercase tracking-[0.24em] transition ${
-                  language === 'es' ? 'bg-[#c8af8f] text-[#243020]' : 'text-[#5e6755]'
-                }`}
-                aria-pressed={language === 'es'}
-              >
-                ES
-              </button>
-            </div>
+            <LanguageToggle />
             <p className="max-w-xs text-sm leading-relaxed text-[#6f7863]">
               {isSpanish
-                ? 'El idioma inicial se elige automáticamente según el navegador del visitante.'
-                : 'The initial language is selected automatically from the visitor browser settings.'}
+                ? 'El idioma inicial se elige automáticamente según la configuración de tu navegador.'
+                : 'The initial language is picked automatically from your browser settings.'}
             </p>
           </div>
         </div>
