@@ -1,4 +1,4 @@
-import { getCurrentLanguage, translate } from '../i18n/index.js';
+import { translate } from '../i18n/index.js';
 
 const DEFAULT_BASE_URL = '';
 
@@ -81,8 +81,6 @@ async function request(path, options = {}, { _csrfRetried = false } = {}) {
   const url = BASE_URL ? buildUrl(path) : path;
   const headers = {
     'Content-Type': 'application/json',
-    // Lets the API answer (errors, emails, Stripe checkout) in the visitor's language.
-    'X-Language': getCurrentLanguage(),
     ...(options.headers || {})
   };
 
@@ -184,7 +182,7 @@ export function apiPut(path, body, { signal } = {}) {
 
 export async function apiUpload(path, formData, { signal } = {}) {
   const url = BASE_URL ? buildUrl(path) : path;
-  const uploadHeaders = { 'X-Language': getCurrentLanguage() };
+  const uploadHeaders = {};
   try {
     const token = await ensureCsrfToken();
     if (token) {

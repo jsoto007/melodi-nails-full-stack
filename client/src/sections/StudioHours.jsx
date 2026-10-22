@@ -7,26 +7,15 @@ import SectionTitle from '../components/SectionTitle.jsx';
 import { useLanguage } from '../contexts/LanguageContext.jsx';
 import { apiGet } from '../lib/api.js';
 
-const WEEKDAY_ORDER = [
-  { key: 'monday', label: 'Monday' },
-  { key: 'tuesday', label: 'Tuesday' },
-  { key: 'wednesday', label: 'Wednesday' },
-  { key: 'thursday', label: 'Thursday' },
-  { key: 'friday', label: 'Friday' },
-  { key: 'saturday', label: 'Saturday' },
-  { key: 'sunday', label: 'Sunday' }
-];
-const WEEKDAY_INDEX = WEEKDAY_ORDER.reduce((acc, entry, index) => {
-  acc[entry.key] = index;
+const WEEKDAY_ORDER = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'];
+const WEEKDAY_INDEX = WEEKDAY_ORDER.reduce((acc, key, index) => {
+  acc[key] = index;
   return acc;
 }, {});
 
-const TIME_FORMATTER = new Intl.DateTimeFormat('en-US', {
-  hour: 'numeric',
-  minute: '2-digit'
-});
-
-function formatTimeValue(value) {
+// "HH:MM" wall-clock values from the salon config. Format them as-is (UTC in,
+// UTC out) so the viewer's own time zone never shifts the salon's hours.
+function formatTimeValue(value, formatTime) {
   if (!value) {
     return null;
   }
@@ -34,24 +23,20 @@ function formatTimeValue(value) {
   if (!Number.isFinite(hours) || !Number.isFinite(minutes)) {
     return null;
   }
-  const dateValue = new Date();
-  dateValue.setHours(hours, minutes, 0, 0);
-  return TIME_FORMATTER.format(dateValue);
+  return formatTime(new Date(Date.UTC(2000, 0, 1, hours, minutes)), {
+    hour: 'numeric',
+    minute: '2-digit',
+    timeZone: 'UTC',
+  });
 }
 
-function formatTimeRange(openTime, closeTime) {
-  const start = formatTimeValue(openTime);
-  const end = formatTimeValue(closeTime);
+function formatTimeRange(openTime, closeTime, { t, formatTime }) {
+  const start = formatTimeValue(openTime, formatTime);
+  const end = formatTimeValue(closeTime, formatTime);
   if (start && end) {
     return `${start} – ${end}`;
   }
-  if (start) {
-    return start;
-  }
-  if (end) {
-    return end;
-  }
-  return 'Hours coming soon';
+  return start || end || t('public.hours.comingSoon');
 }
 
 function splitIntoRanges(indexes) {
@@ -75,7 +60,7 @@ function splitIntoRanges(indexes) {
   return ranges;
 }
 
-function buildSummary(hours) {
+function buildSummary(hours, helpers) {
   const openEntries = (hours || [])
     .filter((entry) => entry?.is_open)
     .map((entry) => ({
@@ -107,12 +92,13 @@ function buildSummary(hours) {
     const uniqueIndexes = Array.from(new Set(indexes)).sort((a, b) => a - b);
     const ranges = splitIntoRanges(uniqueIndexes);
     ranges.forEach((range) => {
-      const startLabel = WEEKDAY_ORDER[range.start]?.label ?? WEEKDAY_ORDER[range.start]?.key ?? '';
-      const endLabel = WEEKDAY_ORDER[range.end]?.label ?? WEEKDAY_ORDER[range.end]?.key ?? '';
-      const dayLabel = range.start === range.end ? startLabel : `${startLabel} - ${endLabel}`;
+      const startLabel = helpers.t(`public.hours.weekdays.${WEEKDAY_ORDER[range.start]}`);
+      const endLabel = helpers.t(`public.hours.weekdays.${WEEKDAY_ORDER[range.end]}`);
+      const dayLabel =
+        range.start === range.end ? startLabel : helpers.t('public.hours.dayRange', { start: startLabel, end: endLabel });
       summary.push({
         dayLabel,
-        timeLabel: formatTimeRange(open_time, close_time),
+        timeLabel: formatTimeRange(open_time, close_time, helpers),
         startIndex: range.start
       });
     });
@@ -121,35 +107,20 @@ function buildSummary(hours) {
 }
 
 export default function StudioHours() {
-  const { isSpanish } = useLanguage();
+  const { t, formatTime } = useLanguage();
   const [hours, setHours] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
-  const copy = isSpanish
-    ? {
-        eyebrow: 'Horario',
-        title: 'Disponibilidad de citas',
-        description:
-          'La disponibilidad se actualiza en tiempo real según la duración del servicio para que cada reserva tenga el tiempo correcto.',
-        cta: 'Reservar cita',
-        loading: 'Cargando horario del salón...',
-        fallback: 'Actualmente no aceptamos visitas sin cita.',
-        defaultDescription:
-          'Melodi Nails trabaja con cita previa para que cada manicure, pedicure o servicio de acrílico tenga el tiempo necesario para una buena preparación, detalle y acabado pulido.',
-        error: 'No se pudo cargar el horario del salón en este momento.',
-      }
-    : {
-        eyebrow: 'Hours',
-        title: 'Appointment availability',
-        description:
-          'Availability updates in real-time based on service duration, so each booking has the right amount of time.',
-        cta: 'Book Appointment',
-        loading: 'Loading studio hours...',
-        fallback: 'Currently not accepting walk-ins.',
-        defaultDescription:
-          'Melodi Nails works by appointment so each manicure, pedicure, or acrylic service has enough time for proper prep, detail work, and a polished finish.',
-        error: 'Unable to load studio hours right now.',
-      };
+  const [error, setError] = useState(false);
+  const copy = {
+    eyebrow: t('public.hours.eyebrow'),
+    title: t('public.hours.title'),
+    description: t('public.hours.description'),
+    cta: t('public.hours.cta'),
+    loading: t('public.hours.loading'),
+    fallback: t('public.hours.fallback'),
+    defaultDescription: t('public.hours.defaultDescription'),
+    error: t('public.hours.error'),
+  };
 
   useEffect(() => {
     let isMounted = true;
@@ -163,12 +134,12 @@ export default function StudioHours() {
         }
         const operatingHours = Array.isArray(data?.operating_hours) ? data.operating_hours : [];
         setHours(operatingHours);
-        setError('');
-      } catch (loadError) {
+        setError(false);
+      } catch {
         if (!isMounted) {
           return;
         }
-        setError(copy.error);
+        setError(true);
       } finally {
         if (isMounted) {
           setLoading(false);
@@ -182,9 +153,9 @@ export default function StudioHours() {
       isMounted = false;
       controller.abort();
     };
-  }, [copy.error]);
+  }, []);
 
-  const summaryRows = useMemo(() => buildSummary(hours), [hours]);
+  const summaryRows = useMemo(() => buildSummary(hours, { t, formatTime }), [hours, t, formatTime]);
   const showFallback = !summaryRows.length && !loading && !error;
 
   return (
@@ -209,7 +180,7 @@ export default function StudioHours() {
             {loading ? (
               <p className="text-sm uppercase tracking-[0.3em] text-[#6f7863]">{copy.loading}</p>
             ) : error ? (
-              <p className="text-sm uppercase tracking-[0.3em] text-rose-500">{error}</p>
+              <p className="text-sm uppercase tracking-[0.3em] text-rose-500">{copy.error}</p>
             ) : showFallback ? (
               <p className="text-sm uppercase tracking-[0.3em] text-[#6f7863]">{copy.fallback}</p>
             ) : null}

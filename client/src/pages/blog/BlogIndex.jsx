@@ -2,66 +2,13 @@ import { Link } from 'react-router-dom';
 import { useLanguage } from '../../contexts/LanguageContext.jsx';
 
 export default function BlogIndex() {
-  const { isSpanish } = useLanguage();
-  const copy = isSpanish
-    ? {
-        title: 'Journal de Melodi Nails',
-        description:
-          'Compartimos respuestas útiles sobre el salón, recomendaciones de cuidado y consejos para prepararte para tu próximo manicure, pedicure, gel o acrílico en el Bronx.',
-        featured: 'Destacado',
-        readMore: 'Leer más ->',
-        posts: [
-          {
-            title: 'Guía de Cuidado de Uñas',
-            description:
-              'Pasos simples para que tu servicio en gel, acrílico o uñas naturales se mantenga limpio, brillante y duradero.',
-            to: 'aftercare',
-          },
-          {
-            title: 'Preguntas Frecuentes del Salón',
-            description:
-              'Respuestas claras sobre reservas, preparación, reparaciones, tiempos y lo que puedes esperar en Melodi Nails.',
-            to: 'faq',
-          },
-          {
-            title: 'Cómo se crea un set exclusivo',
-            description:
-              'Una mirada al proceso de preparación, estructura, forma y acabado de Melodi Nails para resultados pulidos y listos para foto.',
-            to: 'custom-fine-line',
-          },
-        ],
-      }
-    : {
-        title: 'Melodi Nails Journal',
-        description:
-          'We use this space to answer common salon questions, share aftercare guidance, and help clients prepare for their next manicure, pedicure, acrylic, or gel appointment in the Bronx.',
-        featured: 'Featured',
-        readMore: 'Read more ->',
-        posts: [
-          {
-            title: 'Nail Aftercare Guide',
-            description:
-              'Simple steps to help your gel, acrylic, or natural nail service stay clean, glossy, and long-lasting.',
-            to: 'aftercare',
-          },
-          {
-            title: 'Nail Salon FAQ',
-            description: 'Clear answers about booking, prep, repairs, timing, and what to expect at Melodi Nails.',
-            to: 'faq',
-          },
-          {
-            title: 'How a Signature Nail Set Comes Together',
-            description:
-              "A look at Melodi Nails' prep, shaping, structure, and finishing process for polished, photo-ready results.",
-            to: 'custom-fine-line',
-          },
-        ],
-      };
+  const { t } = useLanguage();
+  const copy = t('blog.index');
   return (
     <article className="space-y-8">
       <header className="space-y-3">
         <p className="text-xs font-semibold uppercase tracking-[0.3em] text-gray-500">
-          Insights
+          {copy.eyebrow}
         </p>
         <h1 className="text-3xl font-semibold tracking-tight text-gray-900">
           {copy.title}

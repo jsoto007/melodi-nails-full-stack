@@ -7,58 +7,18 @@ import Dialog from '../../components/Dialog.jsx';
 import Lightbox from '../../components/Lightbox.jsx';
 import SectionTitle from '../../components/SectionTitle.jsx';
 import { apiPost, resolveApiUrl } from '../../lib/api.js';
-import { useClientPortal } from '../../contexts/ClientPortalContext.jsx';
+import { getLocalizedServiceName, useClientPortal } from '../../contexts/ClientPortalContext.jsx';
+import { useLanguage } from '../../contexts/LanguageContext.jsx';
 import { getAppointmentTypeLabel } from '../../lib/appointments.js';
 import { formatStatusLabel, getStatusBadgeClasses } from '../../lib/statusStyles.js';
 
 const PAST_STATUSES = new Set(['cancelled', 'cancelled_by_client', 'declined', 'completed', 'no_show']);
-
-function formatSessionDate(value) {
-  if (!value) {
-    return '—';
-  }
-  try {
-    return new Date(value).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
-  } catch {
-    return '—';
-  }
-}
-
-function formatSessionTime(value) {
-  if (!value) {
-    return '—';
-  }
-  try {
-    return new Date(value).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
-  } catch {
-    return '—';
-  }
-}
-
-function formatFriendlyDate(value) {
-  if (!value) {
-    return '—';
-  }
-  try {
-    return new Date(value).toLocaleDateString(undefined, {
-      weekday: 'long',
-      month: 'long',
-      day: 'numeric'
-    });
-  } catch {
-    return '—';
-  }
-}
-
-function formatDialogTitle(value) {
-  if (!value) {
-    return 'Note';
-  }
-  return value.replace(/_/g, ' ').replace(/\b\w/g, (char) => char.toUpperCase());
-}
+const SHORT_DATE = { month: 'short', day: 'numeric' };
+const FRIENDLY_DATE = { weekday: 'long', month: 'long', day: 'numeric' };
 
 export default function ClientDashboardPage() {
   const navigate = useNavigate();
+  const { t, language, formatDate, formatTime } = useLanguage();
   const notificationsRef = useRef(null);
   const [selectedAppointment, setSelectedAppointment] = useState(null);
   const [actionDialog, setActionDialog] = useState(null);
@@ -108,12 +68,12 @@ export default function ClientDashboardPage() {
       notificationsRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
     };
     return [
-      { label: 'Share Inspiration', description: 'Upload reference imagery before your next session.', action: shareInspiration },
-      { label: 'Share an Idea', description: 'Send your concept to the studio quickly.', action: shareIdea },
-      { label: 'View Documents', description: 'Review IDs, contracts, and studio files.', action: viewDocuments },
-      { label: 'Check Notifications', description: 'Refresh your latest studio updates.', action: checkNotifications }
+      { id: 'shareInspiration', label: t('portal.dashboard.quickActions.shareInspiration'), description: t('portal.dashboard.quickActions.shareInspirationHint'), action: shareInspiration },
+      { id: 'shareIdea', label: t('portal.dashboard.quickActions.shareIdea'), description: t('portal.dashboard.quickActions.shareIdeaHint'), action: shareIdea },
+      { id: 'viewDocuments', label: t('portal.dashboard.quickActions.viewDocuments'), description: t('portal.dashboard.quickActions.viewDocumentsHint'), action: viewDocuments },
+      { id: 'checkNotifications', label: t('portal.dashboard.quickActions.checkNotifications'), description: t('portal.dashboard.quickActions.checkNotificationsHint'), action: checkNotifications }
     ];
-  }, [navigate, notificationsRef]);
+  }, [navigate, notificationsRef, t]);
 
   const recentUploads = useMemo(() => {
     if (!documents || !documents.length) {
@@ -128,7 +88,7 @@ export default function ClientDashboardPage() {
       return;
     }
     if (!ideaNotes.trim()) {
-      setIdeaError('Describe the nail look you want before sending it.');
+      setIdeaError(t('portal.dashboard.idea.empty'));
       return;
     }
     setIdeaSubmitting(true);
@@ -144,10 +104,10 @@ export default function ClientDashboardPage() {
         description: ideaNotes.trim(),
         preferred_date: null
       });
-      setIdeaStatus('Your nail inspiration was shared with the studio. Expect a reply soon.');
+      setIdeaStatus(t('portal.dashboard.idea.success'));
       setIdeaNotes('');
-    } catch (err) {
-      setIdeaError(err?.message || 'Unable to send your idea right now.');
+    } catch {
+      setIdeaError(t('portal.dashboard.idea.failure'));
     } finally {
       setIdeaSubmitting(false);
     }
@@ -162,9 +122,9 @@ export default function ClientDashboardPage() {
   };
 
   const renderAppointmentCard = (appointment, variant) => {
-    const start = appointment.scheduled_start ? new Date(appointment.scheduled_start) : null;
-    const leftDate = start ? start.toLocaleDateString(undefined, { month: 'short', day: 'numeric' }) : 'TBD';
-    const leftTime = start ? start.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' }) : 'TBD';
+    const leftDate = formatDate(appointment.scheduled_start, SHORT_DATE) || t('common.states.tbd');
+    const leftTime = formatTime(appointment.scheduled_start) || t('common.states.tbd');
+    const serviceName = getLocalizedServiceName(appointment, language);
     return (
       <article
         key={appointment.id}
@@ -176,36 +136,34 @@ export default function ClientDashboardPage() {
         </div>
         <div className="flex-1 space-y-2">
           <p className="text-[0.65rem] uppercase tracking-[0.3em] text-gray-500">
-            {getAppointmentTypeLabel(appointment)}
+            {getAppointmentTypeLabel(appointment, language)}
           </p>
           {appointment.assigned_admin ? (
             <p className="text-sm font-semibold text-gray-900">{appointment.assigned_admin.name}</p>
           ) : null}
           <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.3em]">
             <Badge className={getStatusBadgeClasses(appointment.status)}>
-              {formatStatusLabel(appointment.status)}
+              {formatStatusLabel(appointment.status, language)}
             </Badge>
-            {appointment.service?.name ? (
-              <span className="text-gray-500">{appointment.service.name}</span>
-            ) : null}
+            {serviceName ? <span className="text-gray-500">{serviceName}</span> : null}
           </div>
         </div>
         <div className="flex flex-wrap items-center gap-2 text-xs font-semibold uppercase tracking-[0.3em]">
           <Button variant="ghost" onClick={() => handleViewDetails(appointment)}>
-            View details
+            {t('portal.appointment.viewDetails')}
           </Button>
           {variant === 'upcoming' ? (
             <>
               <Button variant="ghost" onClick={() => handleAction('reschedule', appointment)}>
-                Reschedule
+                {t('portal.appointment.reschedule')}
               </Button>
               <Button variant="ghost" onClick={() => handleAction('cancel', appointment)}>
-                Cancel
+                {t('portal.appointment.cancel')}
               </Button>
             </>
           ) : (
             <Button variant="ghost" onClick={() => navigate('/appointments/new')}>
-              Rebook
+              {t('portal.appointment.rebook')}
             </Button>
           )}
         </div>
@@ -219,10 +177,10 @@ export default function ClientDashboardPage() {
     }
     const { type } = actionDialog;
     if (type === 'reschedule') {
-      return 'Reschedule requests are handled by the studio. Reply to your confirmation email or drop us a DM for a time change.';
+      return t('portal.appointment.rescheduleMessage');
     }
     if (type === 'cancel') {
-      return 'Need to cancel? Please let the studio know at least 48 hours before your session so we can release the slot.';
+      return t('portal.appointment.cancelMessage');
     }
     return null;
   };
@@ -230,7 +188,7 @@ export default function ClientDashboardPage() {
   if (loading) {
     return (
       <main className="space-y-8">
-        <SectionTitle eyebrow="Client portal" title="Dashboard" description="Loading your portal…" />
+        <SectionTitle eyebrow={t('portal.eyebrow')} title={t('portal.dashboard.title')} description={t('portal.dashboard.loading')} />
       </main>
     );
   }
@@ -238,48 +196,52 @@ export default function ClientDashboardPage() {
   if (error) {
     return (
       <main className="space-y-8">
-        <SectionTitle eyebrow="Client portal" title="Dashboard" description="We hit a snag." />
+        <SectionTitle eyebrow={t('portal.eyebrow')} title={t('portal.dashboard.title')} description={t('common.states.somethingWrong')} />
         <Card className="text-xs uppercase tracking-[0.3em] text-rose-600">{error}</Card>
         <Button as={Link} to="/auth" variant="secondary">
-          Return to sign in
+          {t('portal.errors.returnToSignIn')}
         </Button>
       </main>
     );
   }
 
-  const welcomeName = profile?.first_name || profile?.display_name || 'there';
+  const welcomeName = profile?.first_name || profile?.display_name || '';
+  const welcomeText = welcomeName
+    ? t('portal.dashboard.welcome', { name: welcomeName })
+    : t('portal.dashboard.welcomeNoName');
 
   return (
     <div className="space-y-8">
       <SectionTitle
-        eyebrow="Client portal"
-        title="Dashboard"
-        description="Track appointments, upload inspiration, and stay updated with the studio."
+        eyebrow={t('portal.eyebrow')}
+        title={t('portal.dashboard.title')}
+        description={t('portal.dashboard.description')}
       />
 
       <Card>
         <div className="grid gap-6 md:grid-cols-[1fr_280px] md:items-center">
           <div className="space-y-3">
-            <p className="text-[0.6rem] uppercase tracking-[0.4em] text-gray-500">Welcome back, {welcomeName}</p>
-            <h1 className="text-2xl font-semibold text-gray-900">Track appointments, share inspiration, and stay informed with ease.</h1>
+            <p className="text-[0.6rem] uppercase tracking-[0.4em] text-gray-500">{welcomeText}</p>
+            <h1 className="text-2xl font-semibold text-gray-900">{t('portal.dashboard.headline')}</h1>
           </div>
           <div className="rounded-2xl border border-dashed border-gray-300 bg-gray-50/80 p-4 text-sm text-gray-700">
             {nextAppointment ? (
               <div className="space-y-2">
-                <p className="text-xs uppercase tracking-[0.4em] text-gray-500">Next session</p>
+                <p className="text-xs uppercase tracking-[0.4em] text-gray-500">{t('portal.dashboard.nextAppointment')}</p>
                 <p className="text-lg font-semibold text-gray-900">
-                  {formatSessionDate(nextAppointment.scheduled_start)} · {formatSessionTime(nextAppointment.scheduled_start)}
+                  {formatDate(nextAppointment.scheduled_start, SHORT_DATE) || t('common.states.tbd')} ·{' '}
+                  {formatTime(nextAppointment.scheduled_start) || t('common.states.tbd')}
                 </p>
                 <Button variant="ghost" onClick={() => handleViewDetails(nextAppointment)}>
-                  View details
+                  {t('portal.appointment.viewDetails')}
                 </Button>
               </div>
             ) : (
               <div className="space-y-2">
-                <p className="text-xs uppercase tracking-[0.4em] text-gray-500">No upcoming sessions yet</p>
-                <p className="text-sm text-gray-600">Book a consult to set up your next session.</p>
+                <p className="text-xs uppercase tracking-[0.4em] text-gray-500">{t('portal.dashboard.noUpcoming')}</p>
+                <p className="text-sm text-gray-600">{t('portal.dashboard.noUpcomingHint')}</p>
                 <Button as={Link} to="/appointments/new">
-                  Book consult
+                  {t('portal.layout.bookAppointment')}
                 </Button>
               </div>
             )}
@@ -291,20 +253,20 @@ export default function ClientDashboardPage() {
         <Card className="space-y-4">
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-xs uppercase tracking-[0.3em] text-gray-500">Upcoming appointment</p>
-              <p className="text-sm text-gray-500">All details are read-only here; toggle to edit via Profile.</p>
+              <p className="text-xs uppercase tracking-[0.3em] text-gray-500">{t('portal.dashboard.upcomingTitle')}</p>
+              <p className="text-sm text-gray-500">{t('portal.dashboard.upcomingHint')}</p>
             </div>
             <Button as={Link} to="/portal/appointments" variant="ghost">
-              View all
+              {t('portal.dashboard.viewAll')}
             </Button>
           </div>
           {nextAppointment ? (
             renderAppointmentCard(nextAppointment, 'upcoming')
           ) : (
             <div className="space-y-2 text-xs uppercase tracking-[0.3em] text-gray-500">
-              <p>You don’t have any upcoming sessions yet.</p>
+              <p>{t('portal.dashboard.noUpcomingLong')}</p>
               <Button as={Link} to="/appointments/new" variant="ghost">
-                Book consult
+                {t('portal.layout.bookAppointment')}
               </Button>
             </div>
           )}
@@ -313,11 +275,11 @@ export default function ClientDashboardPage() {
         <Card ref={notificationsRef} className="space-y-4">
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-xs uppercase tracking-[0.3em] text-gray-500">Notifications</p>
-              <p className="text-sm text-gray-500">Latest studio updates.</p>
+              <p className="text-xs uppercase tracking-[0.3em] text-gray-500">{t('portal.dashboard.notificationsTitle')}</p>
+              <p className="text-sm text-gray-500">{t('portal.dashboard.notificationsHint')}</p>
             </div>
             <Button as={Link} to="/portal/profile" variant="ghost">
-              View all
+              {t('portal.dashboard.viewAll')}
             </Button>
           </div>
           {notifications?.items?.length ? (
@@ -326,14 +288,14 @@ export default function ClientDashboardPage() {
                 <article key={notification.id} className="rounded-2xl border border-gray-200 bg-white/80 p-3 text-sm text-gray-700">
                   <p className="font-semibold text-gray-900">{notification.title}</p>
                   <p className="text-xs uppercase tracking-[0.3em] text-gray-500">
-                    {new Date(notification.created_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}
+                    {formatDate(notification.created_at, SHORT_DATE)}
                   </p>
                   <p className="mt-1 text-[0.75rem] text-gray-600">{notification.body}</p>
                 </article>
               ))}
             </div>
           ) : (
-            <p className="text-xs uppercase tracking-[0.3em] text-gray-500">No studio updates yet.</p>
+            <p className="text-xs uppercase tracking-[0.3em] text-gray-500">{t('portal.dashboard.noNotifications')}</p>
           )}
         </Card>
       </div>
@@ -341,19 +303,20 @@ export default function ClientDashboardPage() {
       <Card>
         <div className="flex items-center justify-between">
           <div>
-            <p className="text-xs uppercase tracking-[0.3em] text-gray-500">Quick actions</p>
-            <p className="text-sm text-gray-500">Shortcuts to the features you use most often.</p>
+            <p className="text-xs uppercase tracking-[0.3em] text-gray-500">{t('portal.dashboard.quickActionsTitle')}</p>
+            <p className="text-sm text-gray-500">{t('portal.dashboard.quickActionsHint')}</p>
           </div>
           <Button variant="ghost" onClick={() => navigate('/appointments/new')}>
-            Book consult
+            {t('portal.layout.bookAppointment')}
           </Button>
         </div>
         <div className="mt-6 grid gap-3 sm:grid-cols-2">
           {quickActions.map((action) => (
             <button
-              key={action.label}
+              key={action.id}
               type="button"
               onClick={action.action}
+              title={action.description}
               className="flex w-full items-center justify-between gap-2 rounded-full border border-gray-200 bg-gray-50/70 px-5 py-3 text-left text-xs font-semibold uppercase tracking-[0.3em] text-gray-700 transition hover:border-black hover:text-black"
             >
               <span>{action.label}</span>
@@ -366,11 +329,11 @@ export default function ClientDashboardPage() {
       <Card>
         <div className="flex items-center justify-between">
           <div>
-            <p className="text-xs uppercase tracking-[0.3em] text-gray-500">Recent uploads</p>
-            <p className="text-sm text-gray-500">Tap to preview and share additional notes with the studio.</p>
+            <p className="text-xs uppercase tracking-[0.3em] text-gray-500">{t('portal.dashboard.recentUploadsTitle')}</p>
+            <p className="text-sm text-gray-500">{t('portal.dashboard.recentUploadsHint')}</p>
           </div>
           <Button variant="ghost" onClick={() => navigate('/portal/profile', { state: { focus: 'inspiration' } })}>
-            Upload inspiration
+            {t('portal.dashboard.uploadInspiration')}
           </Button>
         </div>
         {recentUploads.length ? (
@@ -384,32 +347,33 @@ export default function ClientDashboardPage() {
               >
                 <img
                   src={resolveApiUrl(upload.file_url)}
-                  alt={upload.title}
+                  alt={upload.title || t('portal.profile.documents.uploadedFile')}
                   className="h-full w-full object-cover"
                 />
                 <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-gray-900/80 to-transparent p-2 text-[0.6rem] uppercase tracking-[0.3em] text-white">
-                  {new Date(upload.created_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}
+                  {formatDate(upload.created_at, SHORT_DATE)}
                 </div>
               </button>
             ))}
           </div>
         ) : (
-          <p className="mt-4 text-xs uppercase tracking-[0.3em] text-gray-500">No inspiration uploads yet.</p>
+          <p className="mt-4 text-xs uppercase tracking-[0.3em] text-gray-500">{t('portal.dashboard.noUploads')}</p>
         )}
       </Card>
 
-      <Dialog open={ideaModalOpen} onClose={() => setIdeaModalOpen(false)} title="Share an idea" footer={
+      <Dialog open={ideaModalOpen} onClose={() => setIdeaModalOpen(false)} title={t('portal.dashboard.idea.title')} footer={
         <>
           <Button variant="ghost" onClick={() => setIdeaModalOpen(false)} disabled={ideaSubmitting}>
-            Cancel
+            {t('common.actions.cancel')}
           </Button>
           <Button onClick={handleIdeaSubmit} disabled={ideaSubmitting}>
-            {ideaSubmitting ? 'Sending…' : 'Send to studio'}
+            {ideaSubmitting ? t('common.states.sending') : t('portal.dashboard.idea.send')}
           </Button>
         </>
       }>
-        <p className="text-sm text-gray-600">Describe your concept or inspiration for your next session.</p>
+        <p className="text-sm text-gray-600">{t('portal.dashboard.idea.prompt')}</p>
         <textarea
+          aria-label={t('portal.dashboard.idea.fieldLabel')}
           rows={4}
           value={ideaNotes}
           onChange={(event) => setIdeaNotes(event.target.value)}
@@ -422,8 +386,12 @@ export default function ClientDashboardPage() {
       <Dialog
         open={!!actionDialog}
         onClose={() => setActionDialog(null)}
-        title={actionDialog ? formatDialogTitle(actionDialog.type) : 'Note'}
-        footer={<Button onClick={() => setActionDialog(null)}>Close</Button>}
+        title={
+          actionDialog?.type === 'reschedule' || actionDialog?.type === 'cancel'
+            ? t(`portal.appointment.dialogTitles.${actionDialog.type}`)
+            : t('portal.appointment.note')
+        }
+        footer={<Button onClick={() => setActionDialog(null)}>{t('common.actions.close')}</Button>}
       >
         <p className="text-sm text-gray-600">{buildActionMessage()}</p>
       </Dialog>
@@ -431,25 +399,25 @@ export default function ClientDashboardPage() {
       <Dialog
         open={!!selectedAppointment}
         onClose={() => setSelectedAppointment(null)}
-        title="Appointment details"
-        footer={<Button onClick={() => setSelectedAppointment(null)}>Close</Button>}
+        title={t('portal.appointment.detailsTitle')}
+        footer={<Button onClick={() => setSelectedAppointment(null)}>{t('common.actions.close')}</Button>}
       >
         {selectedAppointment ? (
           <div className="space-y-3 text-sm text-gray-700">
-            <p className="font-semibold text-gray-900">{formatFriendlyDate(selectedAppointment.scheduled_start)}</p>
+            <p className="font-semibold text-gray-900">{formatDate(selectedAppointment.scheduled_start, FRIENDLY_DATE) || t('common.states.tbd')}</p>
             <p className="text-xs uppercase tracking-[0.3em] text-gray-500">
-              {getAppointmentTypeLabel(selectedAppointment)}
+              {getAppointmentTypeLabel(selectedAppointment, language)}
             </p>
             {selectedAppointment.assigned_admin ? (
-              <p>Artist: {selectedAppointment.assigned_admin.name}</p>
+              <p>{t('portal.appointment.nailTech', { name: selectedAppointment.assigned_admin.name })}</p>
             ) : null}
             <p>
-              Status:{' '}
+              {t('portal.appointment.status')}{' '}
               <span className={getStatusBadgeClasses(selectedAppointment.status)}>
-                {formatStatusLabel(selectedAppointment.status)}
+                {formatStatusLabel(selectedAppointment.status, language)}
               </span>
             </p>
-            {selectedAppointment.service?.notes ? <p>Notes: {selectedAppointment.service.notes}</p> : null}
+            {selectedAppointment.service?.notes ? <p>{t('portal.appointment.notes', { notes: selectedAppointment.service.notes })}</p> : null}
           </div>
         ) : null}
       </Dialog>

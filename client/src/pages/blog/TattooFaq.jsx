@@ -1,88 +1,12 @@
 import { useLanguage } from '../../contexts/LanguageContext.jsx';
 
 export default function TattooFaq() {
-  const { isSpanish } = useLanguage();
-  const copy = isSpanish
-    ? {
-        title: 'Preguntas Frecuentes del Salón',
-        intro:
-          'Estas son algunas de las preguntas que recibimos con más frecuencia antes de reservar en Melodi Nails. Cubren tiempos, preparación, mantenimiento y lo que puedes esperar al visitar el estudio.',
-        questions: [
-          {
-            question: '¿Cuánto dura mi servicio de uñas?',
-            answer:
-              'Depende del servicio y de tu rutina diaria. Manicures naturales, gel y sets acrílicos tienen desgastes distintos, pero muchas clientas regresan entre dos y tres semanas para mantener un resultado limpio y equilibrado.',
-          },
-          {
-            question: '¿Cuándo debo reservar relleno, retoque o reparación?',
-            answer:
-              'Si usas acrílico o sets estructurados, no esperes a que varias uñas ya estén levantadas o rotas. Reservar mantenimiento antes de que el set se desestabilice suele dar un resultado más limpio y protege mejor la uña natural.',
-          },
-          {
-            question: '¿Qué debo hacer antes de mi cita?',
-            answer:
-              'Trae fotos de inspiración si tienes un estilo específico en mente y avisa si necesitas retiro, soak-off, reparaciones o nail art detallado. Eso ayuda a reservar el tiempo correcto para tu cita.',
-          },
-          {
-            question: '¿Trabajan solo con cita?',
-            answer:
-              'Sí. Las citas permiten dedicar el tiempo suficiente para preparación, forma, selección del servicio y detalles finales sin apresurar el proceso.',
-          },
-          {
-            question: '¿Puedo llevar una foto de inspiración?',
-            answer:
-              'Sí. Las fotos ayudan con color, forma, acabado e ideas de nail art. El set final puede ajustarse según el largo, condición de la uña y servicio reservado, pero sirven mucho para colaborar mejor.',
-          },
-          {
-            question: '¿Y si necesito retiro o soak-off completo?',
-            answer:
-              'Lo mejor es avisarlo antes de empezar la cita. El retiro toma tiempo adicional y mencionarlo desde el inicio ayuda a no apresurar la preparación del nuevo set.',
-          },
-        ],
-        footer: '¿Todavía tienes dudas? Escríbenos a',
-      }
-    : {
-        title: 'Nail Salon Frequently Asked Questions',
-        intro:
-          'These are some of the questions clients ask most often before booking with Melodi Nails. They cover timing, prep, maintenance, and what to expect when visiting the studio.',
-        questions: [
-          {
-            question: 'How long will my nail service last?',
-            answer:
-              'That depends on the service and your lifestyle. Natural manicures, gel polish, and acrylic sets all wear differently, but many clients return within two to three weeks to keep everything looking clean and balanced.',
-          },
-          {
-            question: 'When should I book a fill, refresh, or repair?',
-            answer:
-              'If you wear acrylics or structured sets, do not wait until multiple nails are lifting or breaking. Booking maintenance before the set becomes unstable usually gives you a cleaner result and helps protect the natural nail underneath.',
-          },
-          {
-            question: 'What should I do before my appointment?',
-            answer:
-              'Bring inspiration photos if you have a specific look in mind, and mention soak-off, removals, repairs, or detailed nail art when booking. That helps make sure enough time is reserved for your appointment.',
-          },
-          {
-            question: 'Do you work by appointment only?',
-            answer:
-              'Yes. Appointments allow enough time for proper prep, shaping, service selection, and finishing details without rushing the process. Booking ahead is also the best way to secure your preferred day and time.',
-          },
-          {
-            question: 'Can I bring an inspiration photo?',
-            answer:
-              'Yes. Inspiration photos are helpful for color direction, shape, finish, and nail art ideas. The final set may be adjusted to suit your nail length, condition, and the service you booked, but reference images make collaboration much easier.',
-          },
-          {
-            question: 'What if I need removal or a full soak-off?',
-            answer:
-              'It is best to mention that before your appointment starts. Removal takes extra time, and adding it in advance helps avoid rushing the prep work for your new set.',
-          },
-        ],
-        footer: 'Still curious about something? Email us at',
-      };
+  const { t } = useLanguage();
+  const copy = t('blog.faq');
   return (
     <article className="space-y-10 text-base leading-relaxed text-gray-600">
       <header>
-        <p className="tracking-[0.3em] text-xs font-semibold uppercase text-gray-500">FAQ</p>
+        <p className="tracking-[0.3em] text-xs font-semibold uppercase text-gray-500">{copy.eyebrow}</p>
         <h1 className="mt-2 text-4xl font-semibold tracking-tight text-gray-900">
           {copy.title}
         </h1>
@@ -99,11 +23,11 @@ export default function TattooFaq() {
 
       <footer>
         <p>
-          {copy.footer}{' '}
+          {copy.footerBefore}{' '}
           <a className="font-medium text-black underline" href="mailto:nailsmelodi@gmail.com">
             nailsmelodi@gmail.com
           </a>{' '}
-          {isSpanish ? 'y te responderemos pronto.' : 'and we will get back to you soon.'}
+          {copy.footerAfter}
         </p>
       </footer>
     </article>

@@ -1,12 +1,33 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { useLanguage } from '../contexts/LanguageContext.jsx';
+import { STUDIO_TIME_ZONE } from '../i18n/index.js';
 
 const QUICK_DAY_COUNT = 14;
 
 const PERIODS = [
-  { key: 'morning', label: 'Morning', matches: (hour) => hour < 12 },
-  { key: 'afternoon', label: 'Afternoon', matches: (hour) => hour >= 12 && hour < 17 },
-  { key: 'evening', label: 'Evening', matches: (hour) => hour >= 17 },
+  { key: 'morning', matches: (hour) => hour < 12 },
+  { key: 'afternoon', matches: (hour) => hour >= 12 && hour < 17 },
+  { key: 'evening', matches: (hour) => hour >= 17 },
 ];
+
+const STUDIO_HOUR_FORMATTER = new Intl.DateTimeFormat('en-US', {
+  hour: 'numeric',
+  hourCycle: 'h23',
+  timeZone: STUDIO_TIME_ZONE,
+});
+
+// Hour of a slot in the studio's time zone, so a slot shown as "5:00 PM" (ET)
+// is grouped under evening even for a visitor whose browser is elsewhere.
+function studioHour(value) {
+  return Number(STUDIO_HOUR_FORMATTER.format(new Date(value))) % 24;
+}
+
+// A YYYY-MM-DD key as noon UTC: formatting it in the studio zone always lands
+// on the same calendar day, whatever the visitor's browser zone is.
+function dateKeyToDisplayDate(value) {
+  const [year, month, day] = value.split('-').map(Number);
+  return new Date(Date.UTC(year, month - 1, day, 12));
+}
 
 // Local calendar date (not UTC) so "today" doesn't roll over early in the evening.
 export function toDateInputValue(date) {
@@ -26,10 +47,6 @@ function addDays(value, amount) {
   return toDateInputValue(date);
 }
 
-function formatTime(value) {
-  return new Date(value).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
-}
-
 export default function AppointmentTimePicker({
   date,
   onDateChange,
@@ -42,6 +59,7 @@ export default function AppointmentTimePicker({
   dateError,
   timeError,
 }) {
+  const { t, formatDate, formatTime } = useLanguage();
   const today = toDateInputValue(new Date());
   const dayStripRef = useRef(null);
   const selectedDayRef = useRef(null);
@@ -51,15 +69,16 @@ export default function AppointmentTimePicker({
       Array.from({ length: QUICK_DAY_COUNT }, (_, index) => {
         const value = addDays(today, index);
         const parsed = parseDateValue(value);
+        const display = dateKeyToDisplayDate(value);
         return {
           value,
-          weekday: index === 0 ? 'Today' : parsed.toLocaleDateString([], { weekday: 'short' }),
+          weekday: index === 0 ? t('confirmation.timePicker.today') : formatDate(display, { weekday: 'short' }),
           day: parsed.getDate(),
-          month: parsed.toLocaleDateString([], { month: 'short' }),
-          fullLabel: parsed.toLocaleDateString([], { weekday: 'long', month: 'long', day: 'numeric' }),
+          month: formatDate(display, { month: 'short' }),
+          fullLabel: formatDate(display, { weekday: 'long', month: 'long', day: 'numeric' }),
         };
       }),
-    [today]
+    [today, t, formatDate]
   );
 
   // Scroll only the day strip (not the page) so the selected day stays visible.
@@ -74,7 +93,7 @@ export default function AppointmentTimePicker({
     () =>
       PERIODS.map((period) => ({
         ...period,
-        slots: slots.filter((slot) => period.matches(new Date(slot.start).getHours())),
+        slots: slots.filter((slot) => period.matches(studioHour(slot.start))),
       })).filter((period) => period.slots.length),
     [slots]
   );
@@ -89,14 +108,14 @@ export default function AppointmentTimePicker({
     setExpandedPeriod(owner ? owner.key : null);
   }, [groupedSlots, selectedStart]);
   const dateLabel = date
-    ? parseDateValue(date).toLocaleDateString([], { weekday: 'long', month: 'long', day: 'numeric' })
+    ? formatDate(dateKeyToDisplayDate(date), { weekday: 'long', month: 'long', day: 'numeric' })
     : '';
   const inQuickDays = quickDays.some((day) => day.value === date);
 
   return (
     <div className="space-y-6">
       <div className="space-y-3">
-        <p className="text-sm font-semibold text-[#2a3923]">Pick a day</p>
+        <p className="text-sm font-semibold text-[#2a3923]">{t('confirmation.timePicker.pickDay')}</p>
         <div ref={dayStripRef} className="relative -mx-2 flex snap-x gap-2 overflow-x-auto px-2 pb-2">
           {quickDays.map((day) => {
             const selected = day.value === date;
@@ -124,7 +143,7 @@ export default function AppointmentTimePicker({
           })}
         </div>
         <label className="flex flex-wrap items-center gap-3 text-sm text-[#5e6755]">
-          <span>Need a later date?</span>
+          <span>{t('confirmation.timePicker.laterDate')}</span>
           <input
             name="selected_date"
             type="date"
@@ -142,16 +161,16 @@ export default function AppointmentTimePicker({
       <div className="space-y-4">
         <div className="flex items-baseline justify-between gap-3">
           <p className="text-sm font-semibold text-[#2a3923]">
-            Pick a time{dateLabel ? <span className="font-normal text-[#6f7863]"> · {dateLabel}</span> : null}
+            {t('confirmation.timePicker.pickTime')}{dateLabel ? <span className="font-normal text-[#6f7863]"> · {dateLabel}</span> : null}
           </p>
         </div>
 
         {!hasServices ? (
           <p className="rounded-xl border border-dashed border-[#d9cbbc] bg-white/60 px-4 py-6 text-center text-sm text-[#6f7863]">
-            Select at least one service above to see available times
+            {t('confirmation.timePicker.selectServiceFirst')}
           </p>
         ) : loading ? (
-          <div className="grid grid-cols-3 gap-2 sm:grid-cols-4" aria-busy="true" aria-label="Loading available times">
+          <div className="grid grid-cols-3 gap-2 sm:grid-cols-4" aria-busy="true" aria-label={t('confirmation.timePicker.loadingTimes')}>
             {Array.from({ length: 8 }, (_, index) => (
               <div key={index} className="h-12 animate-pulse rounded-xl bg-[#ede5d8]" />
             ))}
@@ -159,14 +178,14 @@ export default function AppointmentTimePicker({
         ) : !slots.length ? (
           <div className="space-y-3 rounded-xl border border-dashed border-[#d9cbbc] bg-white/60 px-4 py-6 text-center">
             <p className="text-sm text-[#6f7863]">
-              {isClosed ? 'The studio is closed on this date.' : 'No times left on this date.'}
+              {isClosed ? t('confirmation.timePicker.closed') : t('confirmation.timePicker.noTimes')}
             </p>
             <button
               type="button"
               onClick={() => onDateChange(addDays(date, 1))}
               className="rounded-xl border border-[#2a3923] px-4 py-2.5 text-sm font-semibold text-[#2a3923] transition hover:bg-[#2a3923] hover:text-white"
             >
-              Try the next day →
+              {t('confirmation.timePicker.nextDay')}
             </button>
           </div>
         ) : (
@@ -188,10 +207,10 @@ export default function AppointmentTimePicker({
                     }`}
                   >
                     <span className="flex-1 min-w-0">
-                      <span className="block text-sm font-semibold text-[#2a3923]">{period.label}</span>
+                      <span className="block text-sm font-semibold text-[#2a3923]">{t(`confirmation.timePicker.periods.${period.key}`)}</span>
                       <span className="block truncate text-xs text-[#6f7863]">
                         {periodSelected
-                          ? `Selected ${formatTime(periodSelected.start)}`
+                          ? t('confirmation.timePicker.selected', { time: formatTime(periodSelected.start) })
                           : `${formatTime(first.start)} – ${formatTime(last.start)}`}
                       </span>
                     </span>
@@ -203,7 +222,7 @@ export default function AppointmentTimePicker({
                       </span>
                     ) : (
                       <span className="shrink-0 rounded-full bg-[#eef1ea] px-2.5 py-1 text-xs font-semibold text-[#2a3923]">
-                        {period.slots.length} open
+                        {t('confirmation.timePicker.open', { count: period.slots.length })}
                       </span>
                     )}
                     <svg

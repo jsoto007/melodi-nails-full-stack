@@ -5,39 +5,30 @@ import SectionTitle from '../components/SectionTitle.jsx';
 import staticServices from '../data/services.json';
 import { useLanguage } from '../contexts/LanguageContext.jsx';
 import { apiGet } from '../lib/api.js';
+import { localizeService } from '../lib/localizedService.js';
 
-const PRICE_FORMATTER = new Intl.NumberFormat('en-US', {
-  style: 'currency',
-  currency: 'USD',
-  maximumFractionDigits: 0,
-});
-
-function formatPrice(cents) {
-  if (cents == null) return null;
-  if (cents === 0) return 'Gratis';
-  return PRICE_FORMATTER.format(cents / 100);
-}
-
-function formatDuration(minutes) {
-  if (!minutes) return null;
+// Normalize an API option (or a static fallback row) into the display shape,
+// picking Spanish or English catalogue text for the current language.
+function toDisplayService(option, { language, t, formatCurrency }) {
+  const localized = localizeService(option, language);
+  const minutes = Number(option.duration_minutes) || 0;
   const hours = Math.floor(minutes / 60);
   const remainder = minutes % 60;
-  const parts = [];
-  if (hours) parts.push(`${hours}h`);
-  if (remainder) parts.push(`${remainder}m`);
-  return parts.join(' ') || null;
-}
-
-// Normalize API option → display shape (DB fields take priority, fallback to static)
-function toDisplayService(option) {
+  const durationParts = [];
+  if (hours) durationParts.push(t('common.duration.hours', { count: hours }));
+  if (remainder) durationParts.push(t('common.duration.minutes', { count: remainder }));
+  let price = null;
+  if (option.price_cents != null) {
+    price = Number(option.price_cents) === 0 ? t('public.services.free') : formatCurrency(option.price_cents);
+  }
   return {
     id: String(option.id),
-    name: option.name || 'Servicio',
-    tagline: option.tagline || '',
-    description: option.description || '',
-    category: option.category || 'Otros',
-    duration: formatDuration(option.duration_minutes),
-    price_cents: option.price_cents,
+    name: localized.name || t('public.services.untitled'),
+    tagline: localized.tagline || '',
+    description: localized.description || '',
+    category: localized.category || t('public.services.otherCategory'),
+    duration: durationParts.join(' ') || null,
+    price,
   };
 }
 
@@ -45,15 +36,14 @@ function toDisplayService(option) {
 function groupByCategory(services) {
   const map = new Map();
   for (const svc of services) {
-    const cat = svc.category || 'Otros';
-    if (!map.has(cat)) map.set(cat, []);
-    map.get(cat).push(svc);
+    if (!map.has(svc.category)) map.set(svc.category, []);
+    map.get(svc.category).push(svc);
   }
   return map;
 }
 
 export default function Services() {
-  const { isSpanish } = useLanguage();
+  const { language, t, formatCurrency } = useLanguage();
   const [sessionOptions, setSessionOptions] = useState([]);
   const [loaded, setLoaded] = useState(false);
 
@@ -68,29 +58,19 @@ export default function Services() {
     return () => controller.abort();
   }, []);
 
-  // Use API data when available; fall back to static JSON (no prices).
+  // Use API data when available; fall back to the bundled static catalogue.
   const displayServices = useMemo(() => {
-    if (!loaded || !sessionOptions.length) {
-      return staticServices.map((s) => ({ ...s, id: s.id }));
-    }
-    return sessionOptions.map(toDisplayService);
-  }, [loaded, sessionOptions]);
+    const source = loaded && sessionOptions.length ? sessionOptions : staticServices;
+    return source.map((option) => toDisplayService(option, { language, t, formatCurrency }));
+  }, [loaded, sessionOptions, language, t, formatCurrency]);
 
   const groupedServices = useMemo(() => groupByCategory(displayServices), [displayServices]);
 
-  const copy = isSpanish
-    ? {
-        eyebrow: 'Servicios',
-        title: 'Servicios que ofrecemos',
-        description:
-          'Este menú destaca citas exclusivas enfocadas en estructura, detalle y belleza duradera.',
-      }
-    : {
-        eyebrow: 'Menu',
-        title: 'Services we offer',
-        description:
-          'This menu highlights signature appointments focused on structure, detail, and long-lasting beauty.',
-      };
+  const copy = {
+    eyebrow: t('public.services.eyebrow'),
+    title: t('public.services.title'),
+    description: t('public.services.description'),
+  };
 
   return (
     <section id="services" className="bg-[#ECE7E2] py-16 text-[#23301d]">
@@ -124,18 +104,18 @@ export default function Services() {
                   ) : null}
                   <div className="flex items-start justify-between gap-3">
                     <h3 className="text-xl font-semibold text-slate-900">{service.name}</h3>
-                    {service.price_cents != null && (
+                    {service.price ? (
                       <span className="mt-0.5 shrink-0 rounded-full bg-[#2a3923] px-3 py-1 text-xs font-semibold text-[#f3e7d9]">
-                        {formatPrice(service.price_cents)}
+                        {service.price}
                       </span>
-                    )}
+                    ) : null}
                   </div>
                   {service.description ? (
                     <p className="text-sm leading-relaxed text-slate-700">{service.description}</p>
                   ) : null}
                   {service.duration ? (
                     <p className="text-xs uppercase tracking-[0.3em] text-[#8d755a]">
-                      Aprox. {service.duration}
+                      {t('public.services.approx', { duration: service.duration })}
                     </p>
                   ) : null}
                 </Card>

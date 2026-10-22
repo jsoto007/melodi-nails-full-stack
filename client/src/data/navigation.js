@@ -5,10 +5,11 @@ export const DEFAULT_NAV_ITEMS = [
   { label: 'Contact', to: '/#contact', type: 'link' }
 ];
 
+// Client portal nav. `labelKey` is translated by ClientPortalLayout via t().
 export const USER_NAV_ITEMS = [
-  { label: 'Dashboard', to: '/portal/dashboard', type: 'link', end: true },
-  { label: 'Appointments', to: '/portal/appointments', type: 'link' },
-  { label: 'Profile', to: '/portal/profile', type: 'link' }
+  { labelKey: 'portal.nav.dashboard', to: '/portal/dashboard', type: 'link', end: true },
+  { labelKey: 'portal.nav.appointments', to: '/portal/appointments', type: 'link' },
+  { labelKey: 'portal.nav.profile', to: '/portal/profile', type: 'link' }
 ];
 
 export const ADMIN_NAV_ITEMS = [

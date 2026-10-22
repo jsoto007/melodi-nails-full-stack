@@ -124,7 +124,7 @@ export default {
       confirmed: 'Confirmada',
       completed: 'Completada',
       cancelled: 'Cancelada',
-      cancelled_by_client: 'Cancelada por la clienta',
+      cancelled_by_client: 'Cancelada por el cliente',
       declined: 'Rechazada',
       no_show: 'No asistió',
       payment_failed: 'Pago fallido',

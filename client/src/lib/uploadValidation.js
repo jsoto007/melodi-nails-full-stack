@@ -1,3 +1,5 @@
+import { getCurrentLanguage, translate } from '../i18n/index.js';
+
 const MAX_IMAGE_UPLOAD_SIZE = 10 * 1024 * 1024;
 const ALLOWED_IMAGE_EXTENSIONS = new Set(['jpg', 'jpeg', 'png', 'webp']);
 const ALLOWED_IMAGE_MIME_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp']);
@@ -10,12 +12,19 @@ const ALLOWED_DOCUMENT_MIME_TYPES = new Set([
   'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
 ]);
 
-const CLIENT_SIDE_UPLOAD_ERRORS = {
-  size: 'File is too large. Max size is 10MB.',
-  type: 'Unsupported image type. Only JPG, PNG, and WebP are allowed.',
-  document_type: 'Unsupported file type. Use JPG, PNG, WebP, PDF, DOC, DOCX, or TXT.',
-  missing: 'Select a file before uploading.'
+// Validation reason -> message key in i18n/messages/portal.js (uploadValidation.*).
+// Messages follow the current site language unless one is passed explicitly.
+const CLIENT_SIDE_UPLOAD_ERROR_KEYS = {
+  size: 'portal.uploadValidation.size',
+  type: 'portal.uploadValidation.type',
+  document_type: 'portal.uploadValidation.documentType',
+  missing: 'portal.uploadValidation.missing'
 };
+
+function uploadMessage(reason, language) {
+  const key = CLIENT_SIDE_UPLOAD_ERROR_KEYS[reason] ?? CLIENT_SIDE_UPLOAD_ERROR_KEYS.type;
+  return translate(key, language);
+}
 
 function _extractExtension(filename) {
   if (!filename) {
@@ -71,26 +80,28 @@ export function validateDocumentBeforeUpload(file) {
   return { isValid: true, isImage: ALLOWED_IMAGE_EXTENSIONS.has(extension) };
 }
 
-export function getClientSideUploadError(reason) {
+export function getClientSideUploadError(reason, language = getCurrentLanguage()) {
   if (!reason) {
     return null;
   }
-  return CLIENT_SIDE_UPLOAD_ERRORS[reason] ?? CLIENT_SIDE_UPLOAD_ERRORS.type;
+  return uploadMessage(reason, language);
 }
 
-export function getUploadErrorMessage(error) {
+export function getUploadErrorMessage(error, language = getCurrentLanguage()) {
   if (!error) {
     return null;
   }
   if (error.status === 413) {
-    return CLIENT_SIDE_UPLOAD_ERRORS.size;
+    return uploadMessage('size', language);
   }
   if (error.status === 415) {
-    return CLIENT_SIDE_UPLOAD_ERRORS.document_type || CLIENT_SIDE_UPLOAD_ERRORS.type;
+    return uploadMessage('document_type', language);
   }
   if (error.status === 429) {
-    return 'Too many uploads. Please wait a moment and try again.';
+    return translate('portal.uploadValidation.tooMany', language);
   }
+  // Anything below is server-provided text (English-only for now). Callers
+  // that must stay monolingual can use isKnownUploadErrorStatus() first.
   if (error.body?.error) {
     return error.body.error;
   }
@@ -101,6 +112,12 @@ export function getUploadErrorMessage(error) {
     return error.message;
   }
   return null;
+}
+
+// True when getUploadErrorMessage() answers with a translated message rather
+// than server-provided text.
+export function isKnownUploadErrorStatus(error) {
+  return [413, 415, 429].includes(error?.status);
 }
 
 export { MAX_IMAGE_UPLOAD_SIZE };

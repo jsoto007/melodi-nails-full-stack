@@ -4,61 +4,13 @@ import SectionTitle from '../components/SectionTitle.jsx';
 import { useLanguage } from '../contexts/LanguageContext.jsx';
 
 export default function FAQ() {
-  const { isSpanish } = useLanguage();
-  const faqs = isSpanish
-    ? [
-        {
-          id: 'faq-1',
-          question: '¿Necesito una cuenta para reservar?',
-          answer:
-            'No. Puedes reservar como invitada con tu nombre, apellido, correo, teléfono, servicio seleccionado y método de pago.',
-        },
-        {
-          id: 'faq-2',
-          question: '¿Puedo llevar fotos de inspiración?',
-          answer:
-            'Sí. Puedes subir una imagen durante la reserva y también dejar notas opcionales para que la técnica conozca el estilo que buscas.',
-        },
-        {
-          id: 'faq-3',
-          question: '¿Cómo funciona el pago?',
-          answer:
-            'Al finalizar puedes pagar el porcentaje de depósito configurado por la administración o el monto total del servicio. Stripe procesa el pago de forma segura antes de confirmar tu cita.',
-        },
-      ]
-    : [
-        {
-          id: 'faq-1',
-          question: 'Do I need an account to book?',
-          answer:
-            'No. You can book as a guest with your first name, last name, email, phone number, selected service, and payment choice.',
-        },
-        {
-          id: 'faq-2',
-          question: 'Can I bring inspiration photos?',
-          answer:
-            'Yes. You can upload an inspiration image during booking, and you can also leave optional notes so the nail tech knows the look you want.',
-        },
-        {
-          id: 'faq-3',
-          question: 'How does payment work?',
-          answer:
-            'At checkout you can pay the admin-set deposit percentage or the full service amount. Stripe securely handles payment before your appointment is confirmed.',
-        },
-      ];
-  const copy = isSpanish
-    ? {
-        eyebrow: 'Preguntas',
-        title: 'Antes de tu visita',
-        description:
-          'Tres respuestas rápidas sobre reservas, fotos de inspiración y cómo funciona el pago en la nueva experiencia de citas.',
-      }
-    : {
-        eyebrow: 'FAQ',
-        title: 'Before you visit',
-        description:
-          'Three quick answers for booking, inspiration photos, and how payment works with the new nails appointment flow.',
-      };
+  const { t } = useLanguage();
+  const faqs = t('public.faq.items');
+  const copy = {
+    eyebrow: t('public.faq.eyebrow'),
+    title: t('public.faq.title'),
+    description: t('public.faq.description'),
+  };
   return (
     <section id="faq" className="bg-[#ECE7E2] py-16 text-[#23301d]">
       <FadeIn className="mx-auto flex max-w-6xl flex-col gap-12 px-6" delayStep={0.18}>

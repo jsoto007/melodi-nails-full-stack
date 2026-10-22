@@ -9,51 +9,35 @@ import nailsWhiteBg from '../assets/melodi/nailsWhiteBg.jpg';
 import russianManicure2 from '../assets/melodi/russianManicure2.jpg';
 
 // Desktop: 3-column staggered layout — 5 images matching melodinails.com
+// `altKey` points at public.hero.images.<key> so alt text follows the language.
 const COL_OFFSETS = ['lg:pt-36', 'lg:pt-12', 'lg:pt-0'];
 const HERO_COLS = [
   [
-    { src: russianManicure2, alt: 'Refined Russian manicure close-up' },
-    { src: nailsWhiteBg, alt: 'Neutral nail set on a clean background' },
+    { src: russianManicure2, altKey: 'russianManicure' },
+    { src: nailsWhiteBg, altKey: 'neutralSet' },
   ],
   [
-    { src: whiteNails, alt: 'Classic white nail set' },
-    { src: greenNails, alt: 'Green manicure detail' },
+    { src: whiteNails, altKey: 'whiteSet' },
+    { src: greenNails, altKey: 'greenManicure' },
   ],
-  [
-    
-    { src: melodiShowingNails, alt: 'Melodi showing a completed nail set' },
-  ],
+  [{ src: melodiShowingNails, altKey: 'melodi' }],
 ];
 
 // Mobile: 2-col with 5 images and slight offset on alternating items
 const MOBILE_IMAGES = [
-  { src: melodiShowingNails, alt: 'Melodi showing a completed nail set', offset: false },
-  { src: whiteNails, alt: 'Classic white nail set', offset: true },
-  { src: russianManicure2, alt: 'Refined Russian manicure close-up', offset: false },
-  { src: greenNails, alt: 'Green manicure detail', offset: false },
-  { src: nailsWhiteBg, alt: 'Neutral nail set on a clean background', offset: true },
+  { src: melodiShowingNails, altKey: 'melodi', offset: false },
+  { src: whiteNails, altKey: 'whiteSet', offset: true },
+  { src: russianManicure2, altKey: 'russianManicure', offset: false },
+  { src: greenNails, altKey: 'greenManicure', offset: false },
+  { src: nailsWhiteBg, altKey: 'neutralSet', offset: true },
 ];
+
+const ADDRESS = '1205 College Ave, Bronx, NY 10456';
 
 export default function Hero() {
   const navigate = useNavigate();
-  const { isSpanish } = useLanguage();
-  const copy = isSpanish
-    ? {
-        eyebrow: 'Salón de uñas en el Bronx, Nueva York',
-        address: '1205 College Ave, Bronx, NY 10456',
-        description:
-          'Hola, soy Melodi Mejia. Bienvenida a un salón de uñas en el Bronx enfocado en preparación saludable, estructura limpia y acabados duraderos. Reserva tu manicure, pedicure, set de acrílico o nail art en línea en minutos.',
-        primaryCta: 'Reserva Ahora',
-        secondaryCta: 'Ver Servicios',
-      }
-    : {
-        eyebrow: 'Nail salon in Bronx, New York',
-        address: '1205 College Ave, Bronx, NY 10456',
-        description:
-          'Hi, I am Melodi Mejia. Welcome to a Bronx nail salon focused on healthy prep, clean structure, and long-lasting finishes. Book your manicure, pedicure, acrylic set, or custom nail art online in minutes.',
-        primaryCta: 'Book Now',
-        secondaryCta: 'View Menu',
-      };
+  const { t } = useLanguage();
+  const altFor = (img) => t(`public.hero.images.${img.altKey}`);
 
   return (
     <section id="hero" className="relative isolate overflow-hidden bg-[#ECE7E2] py-16 text-[#23301d] sm:py-24">
@@ -101,18 +85,18 @@ export default function Hero() {
       >
         {/* Left: text + CTA */}
         <div className="max-w-xl space-y-7 lg:pt-10">
-          <p className="text-xs font-semibold uppercase tracking-[0.4em] text-[#6f7863]">{copy.eyebrow}</p>
+          <p className="text-xs font-semibold uppercase tracking-[0.4em] text-[#6f7863]">{t('public.hero.eyebrow')}</p>
           <h1 className="text-5xl leading-none text-[#2A3923] sm:text-6xl">Melodi Nails</h1>
           <p className="text-sm font-semibold uppercase tracking-[0.22em] text-[#6f7863]">
-            {copy.address}
+            {ADDRESS}
           </p>
-          <p className="max-w-lg text-base leading-8 text-[#5e6755]">{copy.description}</p>
+          <p className="max-w-lg text-base leading-8 text-[#5e6755]">{t('public.hero.description')}</p>
           <div className="flex flex-col gap-4 sm:flex-row">
             <Button type="button" onClick={() => navigate('/appointments/new')}>
-              {copy.primaryCta}
+              {t('public.hero.primaryCta')}
             </Button>
             <Button as="a" href="#services" variant="secondary">
-              {copy.secondaryCta}
+              {t('public.hero.secondaryCta')}
             </Button>
           </div>
         </div>
@@ -123,10 +107,10 @@ export default function Hero() {
             <div key={colIdx} className={`flex flex-col gap-4 ${COL_OFFSETS[colIdx]}`}>
               {col.map((img) => (
                 <div
-                  key={img.alt}
+                  key={img.altKey}
                   className="overflow-hidden rounded-[2rem] border border-white/60 shadow-[0_22px_50px_rgba(42,57,35,0.13)]"
                 >
-                  <img src={img.src} alt={img.alt} loading="lazy" className="w-full object-cover" />
+                  <img src={img.src} alt={altFor(img)} loading="lazy" className="w-full object-cover" />
                 </div>
               ))}
             </div>
@@ -137,10 +121,10 @@ export default function Hero() {
         <div className="grid grid-cols-2 gap-4 lg:hidden">
           {MOBILE_IMAGES.map((img) => (
             <div
-              key={img.alt}
+              key={img.altKey}
               className={`overflow-hidden rounded-[2rem] border border-white/60 shadow-[0_22px_50px_rgba(42,57,35,0.13)] ${img.offset ? 'mt-10' : ''}`}
             >
-              <img src={img.src} alt={img.alt} loading="lazy" className="w-full object-cover" />
+              <img src={img.src} alt={altFor(img)} loading="lazy" className="w-full object-cover" />
             </div>
           ))}
         </div>

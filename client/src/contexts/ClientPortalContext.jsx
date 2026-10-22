@@ -1,7 +1,14 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { apiGet } from '../lib/api.js';
+import { localizedServiceField } from '../lib/localizedService.js';
 import { useAuth } from './AuthContext.jsx';
+import { useLanguage } from './LanguageContext.jsx';
+
+// Service name shown next to an appointment, in the active language.
+export function getLocalizedServiceName(appointment, language) {
+  return appointment?.service ? localizedServiceField(appointment.service, 'name', language).trim() : '';
+}
 
 function createInitialState() {
   return {
@@ -20,6 +27,7 @@ const ClientPortalContext = createContext(null);
 
 export function ClientPortalProvider({ children }) {
   const { isUser } = useAuth();
+  const { t } = useLanguage();
   const navigate = useNavigate();
   const mountedRef = useRef(true);
   const [state, setState] = useState(createInitialState);
@@ -68,7 +76,8 @@ export function ClientPortalProvider({ children }) {
       setState((prev) => ({
         ...prev,
         loading: false,
-        error: 'Unable to load your portal right now.'
+        // Stored as a message key so it re-renders in the active language.
+        error: 'portal.errors.loadPortal'
       }));
     }
   }, [isUser]);
@@ -84,9 +93,10 @@ export function ClientPortalProvider({ children }) {
   const value = useMemo(
     () => ({
       ...state,
+      error: state.error ? t(state.error) : null,
       refresh: fetchDashboard
     }),
-    [state, fetchDashboard]
+    [state, fetchDashboard, t]
   );
 
   return <ClientPortalContext.Provider value={value}>{children}</ClientPortalContext.Provider>;

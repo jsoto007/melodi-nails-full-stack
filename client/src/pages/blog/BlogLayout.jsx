@@ -2,25 +2,19 @@ import { NavLink, Outlet } from 'react-router-dom';
 import { useLanguage } from '../../contexts/LanguageContext.jsx';
 
 export default function BlogLayout() {
-  const { isSpanish } = useLanguage();
-  const posts = isSpanish
-    ? [
-        { slug: 'aftercare', title: 'Guía de Cuidado de Uñas' },
-        { slug: 'faq', title: 'Preguntas Frecuentes' },
-        { slug: 'custom-fine-line', title: 'Cómo se crea un set exclusivo' },
-      ]
-    : [
-        { slug: 'aftercare', title: 'Nail Aftercare Guide' },
-        { slug: 'faq', title: 'Nail Salon FAQ' },
-        { slug: 'custom-fine-line', title: 'How a Signature Nail Set Comes Together' },
-      ];
+  const { t } = useLanguage();
+  const posts = [
+    { slug: 'aftercare', title: t('blog.layout.posts.aftercare') },
+    { slug: 'faq', title: t('blog.layout.posts.faq') },
+    { slug: 'custom-fine-line', title: t('blog.layout.posts.signatureSet') },
+  ];
 
   return (
     <main className="bg-gray-50 text-gray-900">
       <div className="mx-auto flex w-full max-w-6xl flex-col gap-12 px-6 py-16 lg:flex-row">
         <aside className="lg:w-72">
           <p className="text-xs font-semibold uppercase tracking-[0.3em] text-gray-500">
-            {isSpanish ? 'Blog' : 'Blog'}
+            {t('blog.layout.label')}
           </p>
           <nav className="mt-6 space-y-3">
             {posts.map((post) => (

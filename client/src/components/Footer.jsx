@@ -5,31 +5,23 @@ import melodiLogo from '../assets/melodi/LogoWithBg.png';
 
 const year = new Date().getFullYear();
 
+const LOCATION = '1205 College Ave, Bronx, NY 10456';
+
 export default function Footer() {
-  const { isSpanish } = useLanguage();
-  const copy = isSpanish
-    ? {
-        studio: 'Estudio',
-        quickLinks: 'Accesos',
-        policies: 'Políticas',
-        backToTop: 'Volver arriba',
-        admin: 'Admin',
-        poweredBy: 'Desarrollado por SotoDev, LLC',
-        language: 'Idioma',
-        location: '1205 College Ave, Bronx, NY 10456',
-        contact: 'Solo con cita previa',
-      }
-    : {
-        studio: 'Studio',
-        quickLinks: 'Quick Links',
-        policies: 'Policies',
-        backToTop: 'Back to top',
-        admin: 'Admin',
-        poweredBy: 'Powered by SotoDev, LLC',
-        language: 'Language',
-        location: '1205 College Ave, Bronx, NY 10456',
-        contact: 'By appointment only',
-      };
+  const { t } = useLanguage();
+  const copy = {
+    studio: t('public.footer.salon'),
+    quickLinks: t('public.footer.quickLinks'),
+    policies: t('public.footer.policies'),
+    backToTop: t('public.footer.backToTop'),
+    admin: t('public.footer.admin'),
+    poweredBy: t('public.footer.poweredBy'),
+    language: t('public.footer.language'),
+    languageHint: t('public.footer.languageHint'),
+    location: LOCATION,
+    contact: t('public.footer.byAppointment'),
+    logoAlt: t('public.footer.logoAlt'),
+  };
 
   return (
     <footer className="border-t border-[#d8c7b4] bg-[linear-gradient(180deg,rgba(255,253,249,0.96)_0%,rgba(246,239,231,0.92)_100%)]">
@@ -39,7 +31,7 @@ export default function Footer() {
             <div className="flex items-center gap-4">
               <img
                 src={melodiLogo}
-                alt="Melodi Nails logo"
+                alt={copy.logoAlt}
                 className="h-16 w-auto rounded-2xl shadow-[0_10px_24px_rgba(42,57,35,0.12)]"
               />
               <div className="space-y-2">
@@ -88,9 +80,7 @@ export default function Footer() {
             <p className="text-[11px] font-semibold uppercase tracking-[0.35em] text-[#8d755a]">{copy.language}</p>
             <LanguageToggle />
             <p className="max-w-xs text-sm leading-relaxed text-[#6f7863]">
-              {isSpanish
-                ? 'El idioma inicial se elige automáticamente según la configuración de tu navegador.'
-                : 'The initial language is picked automatically from your browser settings.'}
+              {copy.languageHint}
             </p>
           </div>
         </div>
