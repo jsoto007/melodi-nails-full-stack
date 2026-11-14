@@ -60,8 +60,23 @@ def _resolve_database_uri(app: Flask) -> str:
         )
         return legacy_uri
 
-    # Default to the known Render database to prevent accidental data wipes from ephemeral SQLite on redeploy
-    return "postgresql://melody_nails_db_user:dorBBpHD9Q8FTbzoE4OZ8qqvYHjsFPWD@dpg-d6u43rn5gffc739gs80g-a.ohio-postgres.render.com/melody_nails_db"
+    # Local SQLite only when development is set explicitly (an unset FLASK_ENV does
+    # not count) and never on Render, where the file would vanish on redeploy.
+    flask_env = (os.getenv("FLASK_ENV") or "").strip().lower()
+    if flask_env == "development" and not os.getenv("RENDER"):
+        app.logger.warning(
+            "DATABASE_URI is not set; FLASK_ENV=development so using local SQLite at %s.",
+            _DEFAULT_DB_PATH,
+        )
+        return f"sqlite:///{_DEFAULT_DB_PATH}"
+
+    # Anywhere else a missing variable must stop startup instead of silently
+    # pointing the app at some other database.
+    raise RuntimeError(
+        "DATABASE_URI is not set. Set DATABASE_URI (or the legacy DATABASE_URL) to the "
+        "app's database URL. A local SQLite fallback is only used when "
+        "FLASK_ENV=development is set explicitly and the app is not running on Render."
+    )
 
 
 def configure_app(app: Flask) -> SQLAlchemy:

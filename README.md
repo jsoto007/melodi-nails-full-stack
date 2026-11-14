@@ -58,7 +58,7 @@ The dev server proxies `/api/*` to `http://127.0.0.1:5000`, keeping credentialed
 | --- | --- | --- |
 | `VITE_API_BASE_URL` | `client/.env` | Base URL for the Flask API (default blank so relative paths hit the hosting origin – override this when the API lives on another host) |
 | `FLASK_ENV` | `server/.env` | Flask environment (`development`, `production`, etc.) |
-| `DATABASE_URI` | `server/.env` | Database connection string; fallback is a local SQLite file (`server/blackink_dev.db`) |
+| `DATABASE_URI` | `server/.env` | Database connection string (legacy name `DATABASE_URL` also read). Required: startup fails if neither is set, except with `FLASK_ENV=development` off Render, which falls back to a local SQLite file (`server/melodi_nails_dev.db`) |
 | `SECRET_KEY` | `server/.env` | Secret key for Flask session security |
 | `UPLOADS_S3_BUCKET` | `server/.env` | Optional. When set, gallery uploads are stored in this AWS S3 bucket. |
 | `UPLOADS_S3_REGION` | `server/.env` | AWS region for the uploads bucket. |

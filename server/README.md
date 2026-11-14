@@ -24,7 +24,7 @@ Build the React client (`npm run build --prefix client`) so Flask can serve the 
 | Name | Description |
 | --- | --- |
 | `FLASK_ENV` | Flask environment name |
-| `DATABASE_URI` | Database connection string (fallback is `sqlite:///blackink_dev.db` when empty) |
+| `DATABASE_URI` | Database connection string (legacy `DATABASE_URL` also read). Required: startup fails when unset, unless `FLASK_ENV=development` is set explicitly (not on Render), which falls back to `sqlite:///melodi_nails_dev.db` |
 | `SECRET_KEY` | Secret key for session security and signing |
 | `SESSION_COOKIE_SAMESITE` | Optional override for the session cookie's `SameSite` attribute (defaults to `Strict` in production and `Lax` in development). Use `None` only when the API and frontend are separated hosts *and* the service is served over HTTPS. |
 
